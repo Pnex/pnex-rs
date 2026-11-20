@@ -1,746 +1,564 @@
-# Gestion des accès (IAM) — spécification
+# Gestion des accès (IAM) : moteur, rôles, comptes de service (D285–D299)
 
-> Statut : **en cours (2026-10-19)** — PRD validé, lots I0, I1, I2 (sauf
-> `allowed` des DTO), I3, I6 (comptes de service, lecture seule) et I7
-> (page Accès, sans simulateur ni « Gérer l'accès ») livrés (§16) ; décisions D285–D299, arbitrages
-> du 2026-10-19 (§14).
-> Rouvre D188 (`ontology.md`) : les accès par objet ne sont plus
-> repoussés.
+| | |
+|---|---|
+| Statut | Lots I0–I3 livrés. I6 livré en lecture seule, I7 livré sans simulateur ni « Gérer l'accès ». I4 et I5 à faire (§16) |
+| Numérotation | **D285…D299**. Rouvre D188 (`ontology.md`) |
+| Repose sur | D117 (rôles d'org), D72 (admin plateforme), `security.md` (R1–R23), `api-contract.md` (D238–D245), `ontology.md` (D183, D185, D187, D190), `design-system.md` §7 (lexique) |
+| Sécurité | Chaque changement passe `security.md` §6 |
 
-## 1. Ce qui change
+## Résumé
 
-Aujourd'hui, un accès se résume à **un rôle par org** (owner, admin,
-member, viewer, D117) testé à la main dans chaque handler
-(`can_write()`, `can_administer()`…), plus un verrou d'écriture par type
-d'ontologie (`write_role`). Toute lecture est ouverte à tout membre, et
-il n'existe aucune identité non humaine pour une application externe.
+L'IAM de PNEX décide qui peut faire quoi sur quelle ressource, dans une org. Un moteur unique refuse
+par défaut. Il couvre l'UI, le SDK, la CLI `pnex`, le serveur MCP, l'assistant et les applications
+externes. Les rôles, les équipes et les attributions donnent les droits. Les comptes de service
+donnent une identité aux applications externes, avec une clé d'accès côté serveur.
 
-PNEX est une plateforme multi-org : ses consommateurs sont l'UI, le SDK,
-la CLI `pnex`, le serveur MCP, l'assistant, et demain des applications
-web tierces (Next.js, Dioxus fullstack) qui lisent des données choisies.
-Ce PRD pose **un modèle d'autorisation unique**, à la manière d'un IAM
-de cloud : *qui* (principal) peut faire *quoi* (action) sur *quoi*
-(ressource), sous quelles *conditions*, refusé par défaut.
+## 1. Périmètre
 
-Le besoin déclencheur — des **comptes de service** porteurs de **clés
-d'accès** en lecture seule et finement restreintes — est le dernier
-étage : un compte de service n'est qu'un principal de plus. Il ne vaut
-rien tant que le moteur, le registre des actions et le filtrage des
-lectures n'existent pas (§12).
+Dans le périmètre :
+- le moteur d'autorisation, le registre des actions, les rôles gérés et personnalisés, les équipes,
+  les attributions à portée.
+- l'application de la décision à l'API HTTP, à l'assistant, aux WebSockets, à la recherche, aux
+  notifications temps réel.
+- les accès fins sur l'ontologie : type, objet, propriété, lien, action.
+- les comptes de service et les clés d'accès (usage serveur).
+- la page Accès et l'audit.
 
-## 2. Périmètre
+Hors périmètre :
+- les principaux machine : device, agent edge, agent navigateur, runtime de flows (§5.4).
+- une clé utilisable depuis un navigateur (pas de CORS).
+- une autorisation venue de Rauthy : Rauthy authentifie, PNEX autorise (§14).
+- un partage hors org : l'org reste la frontière (R1).
 
-**Dans le périmètre**
-- Moteur d'autorisation, registre des actions, rôles gérés et
-  personnalisés, équipes, attributions à portée.
-- Application de la décision sur toute l'API HTTP, l'assistant, la
-  recherche globale, les notifications temps réel.
-- Accès fins sur l'ontologie : type, objet, propriété, lien, action.
-- Comptes de service et clés d'accès (usage serveur).
-- Interface « Accès » : rôles, équipes, comptes de service, simulateur,
-  « Gérer l'accès » depuis un objet ; audit.
+## 2. Principes
 
-**Hors périmètre (V1)**
-- Principaux machine existants : devices (jeton, X.509), agents edge,
-  agents navigateur, runtime de flows (`/internal/*`). Ils sont déjà
-  scopés à un device ou au flow déployé ; ils restent sur leur mécanisme
-  (§5.4).
-- Clés utilisables depuis un navigateur (CORS, clé « publique ») : §14.
-- Toute autorisation venant de Rauthy : Rauthy authentifie, PNEX autorise (§14).
-- Partage hors org : la frontière reste l'org (R1).
+- Le moteur refuse tout ce qu'aucun énoncé n'autorise.
+- La frontière plateforme, puis la frontière org, passent avant le moteur. L'org vient toujours du
+  principal (R1). Le moteur restreint seulement à l'intérieur de l'org.
+- Le serveur décide. Le front masque ce qu'un droit ne permet pas, mais il ne décide jamais (R2).
+- Un changement de droit s'applique à l'appel suivant, sur tous les pods.
 
-## 3. Vocabulaire
+## 3. Concepts
 
-À reporter au lexique (`design-system.md` §7) avec sa règle dans
-`lexicon_guard.rs`. Les termes ont été choisis contre les collisions
-relevées dans les `.ftl` (2026-10-18).
+Le lexique (`design-system.md` §7) et la garde `lexicon_guard.rs` portent ces termes.
 
 | Notion | FR | EN | N'est pas |
 |---|---|---|---|
-| Ensemble nommé de permissions, attribuable | Rôle | Role | le rôle d'un acteur dans un dossier (`case-role`, à renommer « Fonction ») |
-| Liaison principal × rôle × portée | Attribution | Assignment | un partage public |
+| Ensemble nommé de permissions, attribuable | Rôle | Role | le rôle d'un acteur dans un dossier (`case-role`) |
+| Liaison principal × rôle × portée | Attribution | Assignment | un partage public, une « affectation » |
 | Ce que couvre une attribution (org, type, objets, étiquettes) | Portée | Scope | — |
-| Regroupement de membres de l'org | Équipe | Team | « Groupe » (déjà : groupe froid, groupe de sociétés, groupes de nœuds) |
+| Regroupement de membres de l'org | Équipe | Team | un « groupe » (groupe froid, groupe de sociétés, groupe de nœuds) |
 | Identité non humaine d'une org | Compte de service | Service account | un device, un agent |
-| Secret d'authentification d'un compte de service | Clé d'accès | Access key | « Clé d'API » (= clé d'un fournisseur tiers : LLM, géo) ; « jeton » (= jeton device) |
-| Unité d'autorisation (`service:verbe`) | Permission | Permission | une autorisation du navigateur ou du device (`permission` existant, à requalifier) |
-| Écran « qui peut faire quoi » | Accès | Access | « Partager » (= lien public d'un tour) |
+| Secret d'authentification d'un compte de service | Clé d'accès | Access key | une « clé d'API » (fournisseur tiers), un « jeton » (device) |
+| Unité d'autorisation (`service:verbe`) | Permission | Permission | une permission du navigateur ou du device |
+| Écran « qui peut faire quoi » | Accès | Access | « Partager » (lien public d'un tour) |
 | Vérification d'un accès hypothétique | Simulateur d'accès | Access checker | — |
 
-Le mot « Rôle » garde son sens actuel : les quatre rôles deviennent des
-**rôles gérés**, d'où la continuité pour l'utilisateur.
-
-## 4. Architecture
+Autres termes :
+- **Principal** : celui qui appelle. Utilisateur, équipe ou compte de service (D286).
+- **Rôle géré** : rôle livré par la plateforme. Propriétaire, Administrateur, Membre, Lecteur (D117).
+- **Rôle personnalisé** : rôle qu'une org écrit. C'est une liste d'énoncés (D287).
+- **Énoncé** : `{effet, permissions, ressources, conditions}`. L'effet est « autoriser » ou « refuser ».
+- **Droits effectifs** (`Grants`) : le rôle d'adhésion, plus les rôles attribués au principal et à
+  ses équipes.
+- **Registre des actions** : la table `operationId` → permission de `pnex-api-contract/src/iam.rs` (D289).
+- **Permission de champ** : permission qu'un handler teste dans une opération (`GATES` du registre).
 
 ```mermaid
-flowchart LR
-  subgraph Principaux
-    U[Utilisateur]
-    T[Équipe]
-    S[Compte de service<br/>via clé d'accès]
-  end
-  U -- membre de --> T
-  U & T & S -- attribution<br/>rôle × portée --> E{{authorize<br/>principal, action, ressource}}
-  R[(Registre des actions<br/>operationId → service:verbe)] --> E
-  E --> X[Extracteur HTTP<br/>action + ressource du chemin]
-  E --> F[Prédicat SQL<br/>listes, requêtes, recherche]
-  E --> A[Assistant, notify,<br/>caches]
-  E --> J[(Audit O2<br/>iam_decisions)]
+classDiagram
+  direction LR
+  Utilisateur "*" --> "*" Equipe : membre de
+  Attribution --> Role : donne
+  Attribution --> Portee : bornée par
+  Attribution --> Utilisateur : à
+  Attribution --> Equipe : à
+  Attribution --> CompteDeService : à
+  CompteDeService "1" --> "0..2" CleAcces : actives
+  Role "1" --> "*" Enonce : contient
+  Enonce --> Permission : nomme
 ```
 
-### Décisions
+## 4. Fonctionnement : la décision d'accès
 
-**D285 — Un moteur d'autorisation unique, refus par défaut.** Toute
-décision d'accès d'un principal humain ou de service passe par
-`authorize(principal, action, ressource) → Allow | Deny(raison)`. Ordre
-d'évaluation : refus explicite > autorisation > refus implicite. Les
-frontières **plateforme** puis **org** sont antérieures au moteur et
-infranchissables : l'org vient toujours du principal (R1), aucune règle
-ne peut nommer une autre org. Le moteur ne fait que **restreindre à
-l'intérieur** de l'org.
+### 4.1 Points d'application (D291)
 
-**D286 — Principaux.** Utilisateur (membre d'une org), équipe
-(ensemble d'utilisateurs d'une org, sans imbrication), compte de service
-(principal d'org sans connexion interactive), administrateur plateforme
-(D72, inchangé, orthogonal). Les droits effectifs d'un utilisateur =
-union de ses attributions directes et de celles de ses équipes, moins
-les refus explicites.
+```mermaid
+---
+config:
+  layout: elk
+---
+flowchart LR
+  reg[(Registre des actions)] --> eng{{Moteur}}
+  gr[(Attributions, rôles, équipes)] --> eng
+  eng --> ext[Extracteur OrgContext]
+  eng --> tools[Outils de l'assistant]
+  eng --> ws[WebSockets]
+  eng --> sql[Prédicat SQL des listes]
+  eng --> aud[(O2 iam_decisions)]
+```
 
-**D287 — Rôles = documents de permissions.** Un rôle est une liste
-d'énoncés `{effet, permissions, ressources, conditions}`.
-- **Rôles gérés** par la plateforme : Propriétaire, Administrateur,
-  Membre, Lecteur. Leur contenu traduit **exactement** D117 ; un test
-  d'équivalence opération par opération le prouve avant toute bascule.
-  Non modifiables, versionnés avec la plateforme.
-- **Rôles personnalisés** par org (owner/admin), versionnés (historique
-  commun D221).
-- Le `write_role` des types d'ontologie disparaît : il devient un énoncé
-  de rôle (« écrire les objets de type Pompe »). Bêta : pas de
-  rétrocompatibilité, migration des types existants vers les rôles gérés.
+Le moteur a trois points d'application. L'extracteur `OrgContext` couvre toute l'API HTTP. Le MCP
+rejoue les opérations par le routeur avec les identifiants de l'appelant : il hérite de la même
+décision. Les outils de l'assistant et les WebSockets appellent le moteur hors HTTP. Le prédicat SQL
+des listes est le lot I4 (à faire).
 
-**D288 — Attribution = principal × rôle × portée.** La portée restreint
-le rôle : org entière (défaut), types de ressource, objets nommés,
-étiquettes (D218), types d'ontologie. Exemple : *Lecteur* sur
-`étiquette site=lyon` ; *Membre* sur `type d'ontologie = Pompe`. Les
-droits d'une attribution = rôle ∩ portée. C'est la forme que l'UI
-manipule ; le document JSON reste accessible pour les cas avancés.
+### 4.2 Une requête HTTP
 
-**D289 — Registre des actions, gardé.** Chaque `operationId` du spec
-(449 au 2026-10-18) déclare dans `pnex-api-contract/src/iam.rs` :
-permission `service:verbe` (`flows:read`, `flows:deploy`,
-`ontology.objects:write`…), type de ressource, lecture ou écriture, et
-**d'où vient la ressource** (paramètre de chemin, corps, filtre de
-liste, aucune). Les actions hors HTTP y figurent aussi (outils de
-l'assistant, actions d'ontologie D183, sessions WebSocket). Garde
-bloquante `tests/iam.rs` sur le modèle de `tests/mcp.rs` : couverture
-exacte du spec, aucune écriture marquée lecture, toute permission
-utilisée par un rôle géré existe. Le verbe est la granularité vue par
-l'humain ; l'`operationId` reste disponible dans le JSON.
+```mermaid
+sequenceDiagram
+  participant C as Client
+  participant X as OrgContext
+  participant S as iam::store
+  participant M as Moteur
+  participant H as Handler
+  C->>X: requête + X-Org-Id
+  X->>S: adhésion + grants (sans cache)
+  X->>M: permission de l'opération
+  alt refusé
+    M-->>X: Deny
+    X-->>C: 403 access-denied + permission
+  else autorisé
+    X->>H: OrgContext
+    H-->>C: réponse
+  end
+  X--)S: refus journalisé (D294)
+```
 
-**D290 — Nom de ressource.** `prn:<type>:<id>` (org implicite), plus
-des attributs évaluables : nom, étiquettes, type d'ontologie,
-propriétaire/auteur, valeurs de propriétés indexées. Motifs : glob sur
-l'id et le nom (`prn:dashboard:name/prod-*`), conditions sur étiquettes
-(`labels.site = lyon`). La table `resource_labels` (D42) fournit déjà
-l'adressage `(kind, id)` et les étiquettes.
+L'extracteur lit l'adhésion et les droits effectifs en une requête par appel, sans cache. La table
+`operation_of(méthode, route)` vient du spec, construite une fois. Le handler peut tester une
+permission de champ avec `org.can("service:verb")`. Il ne teste jamais un rôle.
 
-**D291 — Trois points d'application, un seul moteur.**
-1. **Extracteur HTTP** (`OrgContext` devient porteur du principal) :
-   permission de l'opération + ressource du chemin (`/{id}`). Couvre
-   toute l'API d'un coup.
-2. **Services** : un prédicat SQL partagé `visible(principal, type)`
-   appliqué à chaque liste, requête, recherche, graphe. Les totaux de
-   pagination sont calculés **après** filtrage.
-3. **Hors HTTP** : outils de l'assistant (`ToolDeps` porte le principal,
-   plus le booléen `can_write`), recherche globale D69, diffusion
-   `notify::publish` (filtrage par session), caches de visualisation
-   (filtre avant la clé de cache).
+### 4.3 Évaluation
 
-Les gardes de rôle actuelles (R2) restent en défense en profondeur
-jusqu'à la fin de la migration, puis sont retirées handler par handler.
+```mermaid
+---
+config:
+  layout: elk
+---
+flowchart TD
+  p[Permission demandée] --> d{Un énoncé refuse ?}
+  d -- oui --> no[Refus explicite]
+  d -- non --> a{Un énoncé autorise ?}
+  a -- oui --> yes[Autorisé]
+  a -- non --> imp[Refus implicite]
+```
 
-**D292 — Évaluation compilée, révocation immédiate.** Les attributions
-d'un principal sont compilées en mémoire par (principal, org) ; cache
-invalidé par Valkey pub/sub à chaque changement d'attribution, de rôle
-ou d'équipe (aujourd'hui le rôle n'est jamais mis en cache : on garde
-cette immédiateté). Objectif : décision en microsecondes côté
-extracteur, prédicat SQL généré une fois par requête.
+Un motif d'énoncé peut être `svc:verb`, `svc:*` ou `*`. Un rôle personnalisé n'accorde ni ne retire
+jamais `iam:*` (D293). Ainsi, aucun rôle personnalisé ne peut verrouiller un propriétaire.
 
-**D293 — Anti-escalade.** On ne peut attribuer qu'un rôle dont on
-détient soi-même toutes les permissions sur la portée visée. Les
-permissions `iam:*` ne sont détenues que par Propriétaire et
-Administrateur (gérés) et ne peuvent jamais être données à un compte de
-service. Protection du dernier propriétaire conservée.
+### 4.4 Droits effectifs
 
-**D294 — Audit.** Chaque refus et chaque écriture IAM sont journalisés
-dans un stream O2 `iam_decisions` (principal, permission, ressource,
-raison, origine : UI, MCP, clé d'accès, assistant). Les autorisations
-de lecture ne sont pas toutes journalisées (volume) ; elles le sont
-pour les clés d'accès. Les changements de rôles et d'attributions
-suivent l'historique commun (D221).
+```mermaid
+---
+config:
+  layout: elk
+---
+flowchart LR
+  m[Rôle d'adhésion] --> g[Grants]
+  d[Attributions directes] --> g
+  t[Attributions des équipes] --> g
+  g --> eng{{Moteur}}
+```
+
+Un membre reçoit son rôle d'adhésion, puis ses attributions directes et celles de ses équipes. Un
+compte de service n'a pas de rôle d'adhésion : il reçoit ses attributions seules. Le rôle géré
+Propriétaire reste un rôle d'adhésion et n'est jamais attribuable. Quand un membre quitte l'org,
+ses attributions directes et ses adhésions d'équipe de l'org partent avec lui.
+
+### 4.5 Observation (lot I1)
+
+`services/iam/observe.rs` compare la décision du moteur à la réponse du handler. Il a servi à
+prouver l'équivalence D287 avant la bascule. Il reste disponible :
+- `PNEX_IAM_OBSERVE=strict` : une divergence donne un 500 qui la nomme.
+- `PNEX_IAM_OBSERVE_LOG=<fichier>` : une ligne par divergence.
 
 ## 5. Application par surface
 
 ### 5.1 API HTTP
 
-- 446 paramètres `OrgContext` dans 62 contrôleurs ; 449 `operationId`.
-- Gardes actuelles : `can_write` 127, `require_write` 84,
-  `require_admin` 17, `can_manage_secrets` 14, `can_administer` 8,
-  ~15 `match OrgMemberRole` (orgs.rs, ws_doc.rs), ~15 helpers
-  `forbidden()` locaux à codes propres.
-- **89 réponses `Paginated`** et **8 `…/query`** à filtrer, plus les
-  lectures agrégées : recherches (`global_search`, `resources/search`,
-  `media/search`), graphe, exports (lab, cases, ontology, ai, camera),
-  résumé de tableau de bord.
-- Post-traitement OpenAPI (`openapi.rs:134-197`) : point d'injection de
-  la réponse 403 `access-denied` sur chaque opération.
-- **MCP** : rejoue les opérations via le routeur avec les identifiants
-  de l'appelant (`services/mcp/mod.rs:196`) → hérite de tout ce que
-  l'HTTP applique, sans travail propre.
+- Chaque opération d'org déclare sa permission au registre. L'extracteur l'applique avant le handler.
+- Le spec documente sur chaque 403 d'org la permission exigée (`openapi.rs`).
+- Restent dans les handlers : la propriété d'un objet (auteur d'un commentaire), le `write_role` des
+  types d'ontologie (`ontology-write-forbidden`) et les règles propriétaire de `orgs/{id}/…`.
+- Les routes `orgs/{id}/…` utilisent l'extracteur `AuthUser` avec l'org du chemin. Elles sont hors
+  moteur.
 
 ### 5.2 Assistant IA
 
-~57 outils appelés **en processus**, sans passer par le routeur ;
-lecture scopée à l'org seulement, écriture sur un booléen `can_write`
-(`services/ai/tools.rs:78`). Chaque outil déclare sa permission dans le
-registre (D289) et appelle `authorize`. Les consignes D142–D145 restent :
-l'assistant n'écrit jamais d'IAM, n'agit jamais physiquement. Le schéma
-d'ontologie injecté dans son contexte (`ai/context.rs:167`) est filtré
-par principal.
+`execute` appelle `tools::authorize_tool` avant chaque outil. L'outil déclare sa permission dans
+`TOOLS` du registre. `ToolDeps.grants` porte les droits complets du membre. Les consignes D142–D145
+restent : l'assistant n'écrit jamais d'IAM et n'agit jamais physiquement. Il peut expliquer un refus.
 
 ### 5.3 Temps réel et caches
 
-- `notify::publish(org_id, frame)` diffuse à toutes les sessions de
-  l'org : chaque trame porte sa ressource, chaque session est filtrée.
-- WebSockets navigateur : le ticket Valkey porte l'utilisateur ; les
-  droits sont réévalués à l'ouverture et à l'invalidation (D292).
-- Caches TTL de visualisation (`services/visualization.rs:122`) clés
-  `org|requête` : le filtre s'applique à la construction de la requête,
-  jamais après lecture du cache.
+```mermaid
+sequenceDiagram
+  participant B as Navigateur
+  participant W as Socket /ws/*
+  participant S as iam::store
+  B->>W: ouverture + ticket
+  W->>S: member_grants(org, user)
+  alt permission absente
+    W-->>B: fermeture 4006
+  else permission présente
+    W-->>B: session ouverte
+  end
+```
 
-### 5.4 Principaux machine (inchangés en V1)
+Les sockets n'ont pas d'`OrgContext`. Ils lisent les droits avec `iam::store::member_grants` (SEC-74).
+`/ws/notify` exige `notify:read`, la caméra `cameras:read`, `/ws/doc` `docs:read`. `/ws/doc` relit
+`docs:write` à chaque battement.
 
-| Principal | Mécanisme actuel | Décision V1 |
+Le lot I4 doit fermer deux fuites :
+- `notify::publish` diffuse une trame à toutes les sessions de l'org. Chaque session doit filtrer la
+  trame par sa ressource.
+- Les caches de visualisation (`services/visualization.rs`) ont une clé `org|requête`. Le filtre doit
+  s'appliquer à la construction de la requête, jamais après la lecture du cache.
+
+### 5.4 Principaux machine
+
+Ces principaux gardent leur mécanisme. Le registre les marque `Machine`.
+
+| Principal | Mécanisme | Portée |
 |---|---|---|
-| Device (jeton, X.509) | `device_link`, `device_pki` | inchangé, scopé à son device |
-| Agent edge, agent navigateur | enrôlement, ticket Noise | inchangé |
-| Runtime de flows | jeton de service `/internal/*`, `org_id` du corps | inchangé ; « les flows déployés de l'org » deviendra un principal en V2 (§14) |
-| Tour public | `share_token` 32 hex en clair | inchangé ; finding au registre (SEC-47) |
+| Device (jeton, X.509) | `device_link`, `device_pki` | son device |
+| Agent edge, agent navigateur | enrôlement, ticket Noise | son agent |
+| Runtime de flows | jeton de service `/internal/*`, `org_id` du corps | le flow déployé |
+| Tour public | `share_token` en clair | le tour (SEC-47) |
 
-## 6. Ontologie : accès fins
+## 6. Ontologie : accès fins (lot I5)
 
-### 6.1 Constat (2026-10-18)
+État actuel : la lecture d'un objet n'a aucun contrôle par objet. L'écriture teste `write_role` sur
+le rôle d'adhésion (objets, liens, actions, purge, plages). Les propriétés `personal` et `sensitive`
+sont déjà masquées sans `ontology.personal:read` ou `ontology.sensitive:read` (`crm.md` D443).
 
-- Le point unique de lecture D185 (`services/ontology/query.rs:114`)
-  n'est **pas** le seul : au moins dix chemins lisent `objects` ou
-  `resource_edges` directement — objet par id, résolution native, liens
-  et références, graphe/impact/chemin (CTE récursive `graph.rs:24`),
-  séries et liaisons, historique O2, recherche globale, dossiers
-  (workspace, relations, signaux, board, export, gels), voice ID,
-  plages temporelles, outils de l'assistant.
-- Lecture : **aucun contrôle** ; écriture : `role_allows` sur
-  `write_role` (objets, liens, actions, purge, plages).
-- Les propriétés n'ont aucun marquage de sensibilité.
+### 6.1 Où vit le filtre (D295)
 
-**D295 — Le filtre descend d'un niveau.** Le prédicat de visibilité vit
-dans `services/ontology/{objects,links,graph}.rs` (pas seulement dans
-D185) et tout accès direct à `objects`/`resource_edges` hors de ces
-modules devient interdit (garde par grep en test, sur le modèle
-d'`i18n_guard`).
+Le prédicat de visibilité doit vivre dans `services/ontology/{objects,links,graph}.rs`. Au moins dix
+chemins lisent aujourd'hui `objects` ou `resource_edges` en direct. Ils doivent passer par ces
+modules. Une garde par grep, sur le modèle d'`i18n_guard`, doit interdire tout autre accès (R21).
 
-### 6.2 Granularités
-
-**D296 — Cinq niveaux, tous exprimés comme portées et conditions.**
+### 6.2 Granularités (D296)
 
 | Niveau | Exemple de règle | Application | Fuites à fermer |
 |---|---|---|---|
 | **Type** | lire `Pompe`, écrire `Intervention` | `type_key IN (…)` dans le prédicat | schéma exporté, contexte de l'assistant, comptes par type |
-| **Objet** | par id, par étiquette (`site=lyon`), par valeur de propriété indexée (`statut = public`) | prédicat SQL (jointure `resource_labels`) | totaux de pagination, plafond de 5000 arêtes du graphe, titres dans la recherche |
-| **Propriété** | masquer `salaire`, `telephone` ; ou toute propriété classée `personal` | masquage dans `objects::view` (`objects.rs:25`) | filtre ou tri sur propriété masquée = oracle → refusé ; historique O2 caviardé ; séries, agrégats, exports, gels |
-| **Lien** | traverser `possède` mais pas `finance` | prédicat sur `relation` dans les liens, la CTE, les sauts de D185 | lien vers un objet invisible : supprimé ou bout caviardé (« objet non accessible ») |
-| **Action D183** | proposer sans invoquer | `actions::invoke` (`actions.rs:100`) et `propose_action` | — |
+| **Objet** | par id, par étiquette (`site=lyon`), par propriété indexée | prédicat SQL (jointure `resource_labels`) | totaux de pagination, plafond d'arêtes du graphe, titres dans la recherche |
+| **Propriété** | masquer `salaire` ou toute propriété `personal` | masquage dans `objects::view` | filtre ou tri sur propriété masquée (oracle) ; historique, séries, agrégats, exports, gels |
+| **Lien** | traverser `possède` mais pas `finance` | prédicat sur `relation` | lien vers un objet invisible : supprimé ou bout caviardé |
+| **Action D183** | proposer sans invoquer | `actions::invoke`, `propose_action` | — |
 
-**D297 — Le graphe ne traverse jamais l'invisible.** Graphe, impact et
-plus court chemin sont calculés sur le **sous-graphe visible** : le
-prédicat est appliqué dans la CTE récursive, pas après. Un chemin qui
-n'existe qu'à travers un objet invisible n'existe pas pour le principal.
+### 6.3 Graphe (D297)
 
-**D298 — Classification des propriétés.** `PropertyDef` gagne un champ
-`classification` (`public`, `internal`, `personal`, `sensitive`, liste
-fermée). Un rôle peut masquer une classification entière plutôt que
-nommer chaque propriété ; les packs (D190) livrent leurs types classés.
-La base légale des données personnelles des dossiers (existante) s'y
-rattache.
+```mermaid
+---
+config:
+  layout: elk
+---
+flowchart LR
+  a[Objet A] --> b[Objet B visible]
+  a --> h[Objet C invisible]
+  h --> d[Objet D]
+  b --> e[Objet E]
+```
 
-### 6.3 Cas particuliers
+Le graphe, l'impact et le plus court chemin se calculent sur le sous-graphe visible. Le prédicat
+s'applique dans la CTE récursive, pas après. Dans l'exemple, le chemin A → D n'existe pas pour un
+principal qui ne voit pas C.
 
-- **Gels de dossier** (`case_snapshots`) : geler, dégeler et ouvrir un
-  gel sont des permissions du service `cases` comme les autres. Un gel
-  est une copie : le filtre par objet s'applique à l'ouverture, chaque
-  élément refusé étant remplacé par « accès non accordé » (§14).
-- **Dashboards de type** (D187) : la liaison objet → série de device
-  passe par la lecture de télémétrie du device ; les deux droits sont
-  exigés.
+### 6.4 Cas particuliers
+
+- **Gel de dossier** (`case_snapshots`) : geler, dégeler et ouvrir un gel sont des permissions du
+  service `cases`. À l'ouverture, un élément refusé devient « accès non accordé », sans donnée.
+  C'est une exception assumée à D297 : l'existence de l'élément est connue, pas son contenu.
+- **Dashboard de type** (D187) : la liaison objet → série de device exige aussi la lecture de
+  télémétrie du device.
 - **Historique** (`object_changes`) : caviardé propriété par propriété.
+- **Page générée depuis un objet** : elle garde le texte que son auteur pouvait lire (SEC-53). Le
+  masquer pour un lecteur suivant exige la visibilité par objet.
 
 ## 7. Comptes de service et clés d'accès
 
-Livrés en dernier (§12), sur le socle.
+Un compte de service est une ligne `users` marquée `is_service`, liée à une org
+(`iam_service_accounts`). Il n'est jamais membre, jamais invité par email, jamais lié à l'IdP. Il a
+une identité pour l'historique et l'audit (D299). Seuls Propriétaire et Administrateur le gèrent.
 
-- **Compte de service** : principal d'org, nom, description, étiquettes,
-  attributions comme un membre ; créé et géré par Propriétaire et
-  Administrateur ; ne reçoit jamais `iam:*` ni de permission plateforme
-  (D293).
-- **Clé d'accès** : `pnex_sk_<32 octets CSPRNG>`, montrée une seule fois,
-  stockée en sha256 (R15, R16) avec un préfixe d'affichage ; expiration
-  **obligatoire** (1 an max) ; deux clés actives au plus par compte
-  (rotation sans coupure) ; `last_used_at` ; révocation immédiate (D292).
-  Aucun quota propre à la clé : les quotas sont ceux de l'org (§14).
-- **Limite de permissions** optionnelle sur la clé : plafond
-  supplémentaire (ex. « lecture seule ») qui intersecte les rôles du
-  compte.
-- **Usage cible** : côté serveur seulement — Next.js (Route Handler,
-  Server Component, variable d'environnement jamais `NEXT_PUBLIC_`),
-  Dioxus fullstack (server functions). Pas de CORS en V1 : une clé
-  présente dans un navigateur est publique.
-- `Authorization: Bearer pnex_sk_…` + `X-Org-Id` facultatif (l'org est
-  celle du compte).
-- **Jamais par le MCP** (arbitrage 2026-10-19, risque lié à l'IA) : le
-  MCP refuse les clés d'accès, et aucune opération `iam` n'est exposée au
-  MCP ni à l'assistant.
+### 7.1 Cycle de vie d'une clé
 
-### 7.1 Auteurs dans l'historique et suppression de compte
+```mermaid
+stateDiagram-v2
+  [*] --> Active : créer (secret montré une fois)
+  Active --> Active : appel (last_used_at)
+  Active --> Expiree : expires_at dépassé
+  Active --> Revoquee : révoquer
+  Expiree --> [*]
+  Revoquee --> [*]
+```
 
-Constat (2026-10-19) : les versions de flows, dashboards, tours et calques
-d'annotations stockent leur auteur en **texte libre envoyé par le
-client** (`flow_versions.author` ← `session::user().username`, en
-pratique l'email). Deux défauts : n'importe quel membre peut inscrire un
-autre nom dans l'historique (R3 : le serveur tamponne), et l'email
-recopié échappe à l'effacement d'un compte. Les commentaires de documents
-(`doc_comments.author_id`), les streams O2 `case_reads` et
-`object_changes` référencent déjà un identifiant : c'est le bon modèle.
+- Le secret est `pnex_sk_` + 32 octets aléatoires en hex. La base garde son sha256 et un préfixe
+  d'affichage (R15, R16, R23).
+- L'expiration est obligatoire, 366 jours au plus.
+- Un compte a deux clés actives au plus. Ainsi, la rotation se fait sans coupure.
+- Chaque appel relit la clé : une révocation s'applique à l'appel suivant.
+- `last_used_at` reçoit une écriture par minute au plus.
 
-**D299 — L'historique référence une identité, jamais un nom.**
-- Toute version, tout commentaire, toute trace d'audit porte un
-  `author_user_id` (ou l'id du compte de service) **tamponné par le
-  serveur** ; aucun nom ni email recopié, en base comme dans O2 (O2 ne
-  sait pas effacer un enregistrement isolé, D145). Le nom s'affiche par
-  résolution à la lecture.
-- **Suppression de compte = pierre tombale** : la ligne `users` reste,
-  email, nom et `idp_sub` effacés, `deleted_at` posé, plus une empreinte
-  courte stable et non réversible (HMAC de l'id, clé plateforme).
-  L'historique affiche alors « Utilisateur supprimé · `a3f9` · date » ;
-  deux auteurs supprimés restent distincts, aucune version n'est perdue
-  ni réécrite.
-- **Départ d'une org** : rien ne change dans l'historique, le nom reste
-  (le compte existe).
-- Bêta (pas de compatibilité) : les colonnes `author` texte sont
-  remplacées ; les versions existantes sans correspondance gardent un
-  auteur vide.
+### 7.2 Appel par clé
+
+```mermaid
+---
+config:
+  layout: elk
+---
+flowchart TD
+  r[Bearer pnex_sk_…] --> k{Clé valide ?}
+  k -- non --> e401[401]
+  k -- oui --> o{X-Org-Id = org du compte ?}
+  o -- non --> nm[403 org-not-member]
+  o -- oui --> op{Opération d'org au registre ?}
+  op -- non --> kn[403 access-key-not-allowed]
+  op -- oui --> rw{Lecture, ou dans SERVICE_WRITES ?}
+  rw -- non --> ad[403 access-denied]
+  rw -- oui --> pit{Clé point-in-time ?}
+  pit -- non --> eng[Moteur]
+  pit -- oui --> asof{as_of fourni ?}
+  asof -- non --> ar[400 as-of-required]
+  asof -- oui --> eng
+```
+
+- `X-Org-Id` est facultatif. L'org est celle du compte.
+- Un compte de service lit (`*:read`, jamais `iam`). Il écrit seulement les permissions de
+  `SERVICE_WRITES` (aujourd'hui `market-decisions:write`, `markets-research.md` D891).
+- Les extracteurs humains (`AuthUser`, `PlatformAdmin`) refusent une clé : profil, liste d'orgs, MCP,
+  plateforme.
+- Une clé point-in-time (`point_in_time`, `markets-research.md` D898) exige l'instant de chaque
+  lecture et refuse toute écriture.
+- Attribuer le rôle géré Administrateur à un compte de service est refusé (`not_for_service_account`).
+- Le MCP refuse les clés d'accès.
+- Les quotas sont ceux de l'org (§14).
+
+Usage cible : un serveur seulement. Exemples : Route Handler Next.js avec une variable
+d'environnement jamais `NEXT_PUBLIC_`, server function Dioxus fullstack. Une clé dans un navigateur
+est publique.
+
+### 7.3 Auteur dans l'historique (D299)
+
+```mermaid
+stateDiagram-v2
+  [*] --> Actif
+  Actif --> Parti : quitte l'org
+  Parti --> Actif : revient
+  Actif --> PierreTombale : compte supprimé
+  Parti --> PierreTombale : compte supprimé
+  note right of PierreTombale
+    « Utilisateur supprimé · a3f9 · date »
+  end note
+```
+
+- Toute version, tout commentaire et toute trace d'audit doit porter un `author_user_id` (ou l'id du
+  compte de service), tamponné par le serveur. Aucun nom ni email recopié, en base comme dans O2.
+- Le nom s'affiche par résolution à la lecture.
+- Un départ d'org ne change rien : le nom reste.
+- Un compte supprimé devient une pierre tombale. La ligne `users` reste, avec email, nom et
+  `idp_sub` effacés, `deleted_at` posé et une empreinte courte (HMAC de l'id, clé plateforme).
+  Deux auteurs supprimés restent distincts.
+
+État : pas encore codé. Les versions de flows, dashboards, tours et calques d'annotations gardent une
+colonne `author` texte envoyée par le client (SEC-48).
 
 ## 8. API
 
-Routes sous `/api/v1/iam`, contrat D238–D245 dans le même commit.
+Routes sous `/api/v1/iam`. Le contrat suit D238–D245. Toutes les routes `iam` sont `EXCLUDED` au MCP
+(motif `access`, et `credential` pour la création de clé). La CLI `pnex` les génère et exige `--yes`.
 
-| Ressource | Opérations |
+| Route | Opérations | Permission |
+|---|---|---|
+| `me/permissions` | droits effectifs du principal courant | `account:read` |
+| `permissions` | catalogue paginé du registre | `iam:read` |
+| `roles`, `roles/{id}` | lister (gérés + personnalisés), lire, créer, modifier (`expected_version`), supprimer | `iam:read\|write\|delete` |
+| `teams`, `teams/{id}`, `teams/{id}/members[/{user_id}]` | CRUD, membres | `iam:*` |
+| `assignments`, `assignments/{id}` | lister, créer (doublon → 409), supprimer | `iam:*` |
+| `service-accounts`, `service-accounts/{id}` | CRUD | `iam:*` |
+| `service-accounts/{id}/keys[/{key_id}]` | créer (secret dans la réponse, une fois), lister sans secret, révoquer | `iam:*` |
+
+Erreurs :
+- `access-denied` (403), `args.permission` = `service:verb`. L'UI la rend par service et verbe
+  (`iam-service-<s>`, `iam-verb-<v>`).
+- `access-key-not-allowed` (403) : une clé sur une opération hors org.
+- `iam-escalation` : création, modification ou attribution d'un rôle que l'appelant ne détient pas.
+- Jetons de champ : `unknown_permission`, `iam_permission`, `not_a_member`, `not_for_service_account`.
+
+Registre (`crates/pnex-api-contract/src/iam.rs`, partagé backend et front) :
+- `PERMISSIONS` : chaque permission `service:verb` avec le plus bas rôle géré qui la détient.
+- `OPERATIONS` : chaque `operationId` du spec, `Org(permission)` ou `User`, `Platform`, `Public`,
+  `Machine`.
+- `GATES` : les permissions de champ.
+- `TOOLS` : chaque outil de l'assistant avec sa permission (`None` = aucune donnée d'org).
+- `SERVICE_WRITES` : les seules écritures d'un compte de service.
+
+Verbes : `read`, `write`, `delete`, `deploy` (flows), `operate` (commande device, OTA, écriture de
+contrôle), `enroll`, `test` (sonde qui coûte ou sort), `build`, `download`, `connect`. Un service
+qui mélange deux niveaux a des sous-services : `ai.conversations`, `ai.providers`, `ontology.schema`,
+`orgs.members`, etc.
+
+## 9. Page Accès
+
+Route `/access`, menu Réglages › Accès, visible avec `iam:read`. Six onglets sur le socle CRUD
+(`ListLayout`, `DataTable`, `FormDialog`) :
+
+| Onglet | Contenu |
 |---|---|
-| `roles` | lister (gérés + personnalisés), lire, créer, modifier (`expected_version`), supprimer, versions |
-| `teams` | CRUD, membres |
-| `assignments` | lister (par principal, par ressource), créer, supprimer |
-| `service-accounts` | CRUD ; `…/{id}/keys` : créer (réponse = secret, une fois), lister (sans secret), révoquer |
-| `permissions` | catalogue du registre (services, verbes, types de ressource) |
-| `me/permissions` | droits effectifs résumés du principal courant (pour l'UI) |
-| `check` (`GET …/check` ou `…/check/query`) | simulateur : principal × permission × ressource → décision + énoncé déterminant |
-| `resources/{prn}/access` | qui a accès à cette ressource (« Gérer l'accès ») |
+| Rôles | rôles gérés en lecture ; rôle personnalisé édité dans une grille services × verbes (un clic permet, deux refusent, trois effacent ; motifs `*` et `svc:*` gardés tels quels) |
+| Équipes | membres cochés, ajout et retrait immédiats |
+| Attributions | « Donner un rôle » à un membre, une équipe ou un compte de service ; « Retirer » |
+| Comptes de service | clés : expiration, secret montré une fois avec copie et avertissement « côté serveur », révocation |
+| Applications | applications externes (`external-apps.md` D433) |
+| Gouvernance | marquages et habilitations (`governance.md` D798–D803) |
 
-- Les DTO de détail gagnent `allowed: [verbes]` pour que l'UI n'ait plus
-  à deviner.
-- **Erreur unique** `access-denied` (403) avec `args {permission,
-  resource}` ; l'UI la rend par service et verbe (`iam-service-<s>`,
-  `iam-verb-<v>`, ~50 clés au lieu d'une par opération). Les ~27 codes
-  `err-*-forbidden` actuels (« réservé aux administrateurs ») deviennent
-  faux dès qu'il existe des rôles personnalisés : ils sont remplacés.
-- MCP : toutes les routes `iam` en `EXCLUDED` motif `access` (déjà dans
-  `DANGEROUS` de la CLI).
-
-## 9. Interface
-
-Nouvelle entrée **Réglages › Accès** (`pages/shell.rs:559`), après
-Organisations ; la page Organisations garde l'identité de l'org.
-
-- **Membres** : la liste actuelle (`pages/orgs.rs`) enrichie des équipes
-  et des attributions de chaque membre.
-- **Équipes**, **Rôles**, **Comptes de service** : socle CRUD (tableau +
-  pager, `ListLayout`, `DataTable`, `FormDialog`).
-- **Éditeur de rôle** : formulaire guidé — services en lignes, niveaux
-  Lire / Écrire / Administrer en colonnes, détail par verbe dépliable ;
-  portée avec `ResourcePicker`, étiquettes avec `LabelChipsInput`,
-  types et classifications d'ontologie ; onglet JSON (`JsonEditor`).
-  Historique de versions commun (D221 : composant `VersionHistory` à
-  construire, pas encore livré).
-- **Simulateur d'accès** : choisir un principal, une permission, une
-  ressource → décision et énoncé qui l'a produite.
-- **« Gérer l'accès »** sur toute fiche d'objet listable : qui y a accès
-  et par quelle attribution ; ajouter une attribution à portée objet.
-  Jamais nommé « Partager ».
-- **Droits côté front** : un seul module (`state/access.rs`) alimenté par
-  `me/permissions` et les `allowed` des DTO ; remplace les 14 copies de
-  `current_role()` et les helpers `current_can_write`/`administer`
-  (~48 fichiers appelants). Le front masque ; le serveur décide (R2).
-- **Clé d'accès créée** : dialogue unique montrant le secret, bouton
-  copier, avertissement « usage serveur uniquement ».
+Le front lit les droits dans un seul module, `state/access.rs` (`can("service:verb")`). Il le
+recharge à chaque changement d'org, à partir de `me/permissions`.
 
 ## 10. Assistant, i18n, documentation
 
-- Fiches `assistant-kb` : `access.md` (page Accès), `service-accounts.md`,
-  `troubleshooting-access-denied.md` (symptôme → cause → geste dans
-  l'UI) ; `roles.md` réécrite. La garde interdit de citer `/api/v1` :
-  l'usage d'une clé d'accès depuis une application externe se documente
-  sur le site, pas dans les fiches.
-- L'assistant peut **expliquer** un refus (simulateur en lecture) mais
-  n'écrit jamais d'attribution, de rôle ni de clé.
-- Clés `.ftl` dans les deux langues ; lexique §3 ; `case-role` renommé.
+- Fiches `assistant-kb` : `access.md`, `roles.md`, `troubleshooting-access-denied.md`. Une fiche ne
+  cite jamais `/api/v1`. L'usage d'une clé depuis une application externe se documente sur le site.
+- Les libellés de service et de verbe existent dans les deux `.ftl` (garde de parité
+  `iam_permission_labels_en_fr`).
+- `lexicon_guard` refuse « groupe d'utilisateurs », « user group » et « affectation ».
 
-## 11. Sécurité (grille `security.md` §6)
+## 11. Sécurité
 
-- **R2 réécrite** : « chaque opération déclare sa permission au registre
-  IAM ; l'extracteur l'applique ; chaque liste passe par le prédicat de
-  visibilité ». Point 1 de la grille §6 adapté (test : principal sans la
-  permission → 403, autre org → 404).
-- **Nouvelles règles** proposées : R21 (aucune lecture d'objet ou d'arête
-  d'ontologie hors des modules filtrés), R22 (aucune permission `iam:*`
-  ni plateforme attribuable à un compte de service), R23 (secret de clé
-  d'accès : CSPRNG, hash seul en base, montré une fois, expiration
-  obligatoire).
-- **Registre §7** : SEC-47 `tours.share_token` stocké en clair (inscrit
-  le 2026-10-18). La diffusion `notify::publish` à toute l'org n'est pas
-  une fuite aujourd'hui (tout membre voit tout) ; elle le devient au lot
-  I4 et doit y être filtrée (§5.3).
-- Test d'équivalence des rôles gérés = garde de non-régression de toute
-  la bascule.
+- **R2** : chaque opération déclare sa permission au registre, l'extracteur l'applique. Test : un
+  principal sans la permission reçoit 403.
+- **R21** (réservée) : aucune lecture d'objet ou d'arête d'ontologie hors des modules filtrés (D295).
+- **R22** : aucune permission `iam:*` ni plateforme n'est attribuable à un compte de service.
+- **R23** : secret de clé d'accès en CSPRNG, hash seul en base, montré une fois, expiration
+  obligatoire.
+- Registre `security.md` §7 : SEC-47 (`share_token` en clair), SEC-48 (auteur fourni par le client),
+  SEC-53 (page générée), SEC-74 (sockets, corrigé).
 
-## 12. Lots
+**Danger :** Une opération absente du registre n'est pas contrôlée par l'extracteur. Seule la garde
+`tests/iam.rs` empêche de la livrer. Ne désactivez jamais cette garde.
 
-L'ordre suit la dépendance : les comptes de service n'ont de sens qu'une
-fois les lectures filtrables.
+## 12. Exigences
 
-| Lot | Contenu | Effet visible |
-|---|---|---|
-| **I0** | Ce PRD validé ; registre des actions `iam.rs` rempli pour les 449 opérations + outils de l'assistant ; garde `tests/iam.rs` | aucun |
-| **I1** | Moteur, rôles gérés, test d'équivalence ; `authorize` appelé **en observation** à côté des gardes R2 (divergences journalisées), puis bascule | aucun (par construction) |
-| **I2** | `me/permissions`, `allowed` dans les DTO, module front unique ; erreur `access-denied` | messages de refus exacts |
-| **I3** | Rôles personnalisés, équipes, attributions à portée org/type/étiquette ; API `iam` ; gestion par la **CLI `pnex`** (générée du spec, motif `access` ⇒ `--yes`) ; audit O2 | premier IAM utilisable, par un admin en ligne de commande |
-| **I4** | Prédicat de visibilité sur les 89 listes, 8 requêtes, recherches, exports, assistant, notify, caches | portées appliquées en lecture partout |
-| **I5** | Ontologie fine : objet, propriété (classification), lien, action ; graphe sur sous-graphe visible ; gels | D188 refermé |
-| **I6** | Comptes de service, clés d'accès, limite de permissions ; quotas d'org appliqués aux clés ; gestion par la CLI ; doc site (exemples Next.js, Dioxus) | **besoin déclencheur** |
-| **I7** | Page Accès (§9) : membres, équipes, rôles, comptes de service, simulateur, « Gérer l'accès » depuis un objet | gestion à la main par les utilisateurs de la plateforme |
+1. Chaque `operationId` du spec doit figurer dans `OPERATIONS`, dans le même commit que la route.
+2. Chaque outil de l'assistant doit figurer dans `TOOLS`, avec sa permission.
+3. Une permission doit exister dans `PERMISSIONS` avant qu'un rôle, un `can("…")` ou une opération la nomme.
+4. Un `POST`, `PUT` ou `PATCH` ne doit pas porter un verbe `read`, sauf `…/query` et les essais.
+5. Un `DELETE` doit porter le verbe `delete` ou `operate`.
+6. Aucune opération `iam_*` ne doit être exposée au MCP. L'assistant ne doit détenir aucune permission `iam`.
+7. Un handler ne doit jamais tester un rôle. Il doit tester une permission avec `org.can`.
+8. Le front doit lire un droit avec `state::access::can`, jamais avec un rôle.
+9. Un changement d'attribution, de rôle ou d'équipe doit s'appliquer à l'appel suivant.
+10. Un appelant ne doit jamais attribuer un rôle dont il ne détient pas toutes les permissions.
+11. Le dernier propriétaire d'une org ne doit jamais perdre son rôle.
+12. Un secret de clé ne doit jamais être relu. Une clé expirée ou révoquée doit recevoir 401.
+13. Une liste filtrée doit calculer ses totaux de pagination après le filtre (I4).
+14. Un filtre ou un tri sur une propriété masquée doit être refusé (I5).
 
-**Chemin court vers le besoin déclencheur** : I0 → I1 → I3 → I4
-restreint aux services lus par les applications externes (dashboards,
-télémétrie, objets d'ontologie) → I6, le tout géré par la CLI
-(arbitrage 2026-10-19 : la CLI d'abord, affaire d'admin ; l'interface
-I7 ensuite). I5 et le reste d'I4 suivent ; tant
-qu'une opération n'a pas son filtre de liste, le registre la marque
-**non appelable par un compte de service** (refus par défaut).
+## 13. Tests
 
-## 13. Tests et acceptation
+| Test | Couvre |
+|---|---|
+| `crates/pnex-backend/tests/iam.rs` | exigences 1 à 6 ; garde `every_checked_permission_exists` |
+| `custom_roles_teams_and_assignments` | rôle donné à un lecteur, refus explicite par équipe (même pour un admin), anti-escalade, conflit de version, départ |
+| `service_accounts_and_access_keys` | clé montrée une fois, lecture seule, expiration, révocation |
+| `tests/notify.rs` | socket refusé sans `notify:read` |
+| `e2e/tests/access.spec.ts` | grille de rôle, équipe, compte de service, clé qui lit exactement son rôle |
 
-- `tests/iam.rs` : couverture exacte du registre, cohérence lecture /
-  écriture, rôles gérés n'utilisant que des permissions existantes.
-- Équivalence : pour chaque opération et chaque rôle géré, la décision
-  du moteur = le comportement actuel (rejoué sur la suite de tests
-  existante : ~31 tests de rôles, 118 assertions 403 dans 36 fichiers).
-  Helpers de test communs (`tests/common`) pour créer membre, équipe,
-  compte de service et clé.
-- Fuites : objet invisible absent des listes, totaux, recherche, graphe,
-  chemin, historique, notify, contexte de l'assistant ; filtre sur
-  propriété masquée → refus.
-- Clés : secret jamais relu, expirée → 401, révoquée → 401 au plus tard
-  à l'invalidation, compte de service avec `iam:*` → refus à
-  l'attribution.
-- e2e : un rôle personnalisé « Lecteur site Lyon » ne voit que Lyon dans
-  l'UI ; une application Next.js de démonstration lit un dashboard avec
-  une clé et rien d'autre.
+Le lot I4 doit ajouter les tests de fuite : objet invisible absent des listes, totaux, recherche,
+graphe, chemin, historique, notifications et contexte de l'assistant.
 
-## 14. Arbitrages et questions ouvertes
-
-### Tranché le 2026-10-19
-
-- **MCP** : ni gestion des accès, ni clé d'accès par le MCP (risque lié
-  à l'IA). L'assistant non plus.
-- **Ordre de gestion** : d'abord la CLI `pnex` (usage admin), ensuite la
-  page Accès pour les utilisateurs de la plateforme (I7).
-- **Équipes** : retenues pour le traitement en masse (donner un rôle à
-  toute une équipe d'un coup).
-- **Gels de dossier** : geler, dégeler, ouvrir un gel = permissions
-  ordinaires du service `cases`.
-- **Rôle donné à une personne seule** : permis, comme via une équipe ;
-  les deux coexistent, l'usage réel n'est pas connu d'avance.
-- **Contenu gelé et objets cachés** : la personne voit que le dossier et
-  ses gels existent ; ce qu'elle n'a pas le droit de voir y est remplacé
-  par la mention « accès non accordé », sans aucune donnée. Exception
-  assumée à D297 : dans un gel, l'existence d'un élément caché est
-  connue, pas son contenu.
-- **Flow déployé et départ de son auteur** : le flow continue de tourner.
-  Il s'exécute sous une identité propre (compte de service choisi ou créé
-  au déploiement, V2), jamais sous les droits de la personne qui l'a
-  déployé ; celle-ci n'est qu'une trace d'audit. Affichage de l'auteur :
-  - départ de l'org, compte toujours existant → nom conservé ;
-  - compte supprimé (cascades RGPD, `ai-assistant.md` §9) → données
-    personnelles effacées, l'auteur devient « Utilisateur supprimé ·
-    `<empreinte courte>` · `<date>` » (empreinte stable non réversible,
-    pour distinguer deux auteurs supprimés).
-
-- **Refus explicites** dans les rôles personnalisés (« tout sauf le site
-  Paris ») : permis ; le simulateur affiche l'énoncé qui a refusé.
-- **Classification** : liste fermée `public`, `internal`,
-  `personal`, `sensitive` (D298), étendue seulement si un pack métier
-  en a besoin.
-- **Clés côté navigateur** : non en V1 ; une application externe passe
-  toujours par son serveur (Next.js, Dioxus fullstack).
-- **À trancher (2026-10-19, `partner-watch.md` D300)** : un SaaS tiers
-  (Quali-Watch) a besoin d'un compte de service qui **écrit** :
-  objets, liens et invocation d'actions, bornés aux types d'un pack
-  (portée D296), sans IAM, suppression, deploy ni action physique. Les
-  comptes de service V1 sont en lecture seule : ajout proposé au lot I4.
-- **Quotas** : par **org**, jamais par compte de service ni par clé.
-  Tous les principaux d'une org (membres, comptes de service) consomment
-  les mêmes quotas, rattachés au niveau d'abonnement de l'org
-  (`organizations.subscription_tier_id`). Quota et autorisation restent
-  deux mécanismes séparés.
-- **Rauthy authentifie, PNEX autorise** : Rauthy reste la seule source
-  de l'**identité** (qui est la personne) ; PNEX est la seule source des
-  **droits** (équipes, rôles, attributions). Raisons :
-  - une équipe appartient à une org, alors que Rauthy est commun à toute
-    la plateforme : y créer des groupes exigerait de donner aux owners
-    d'org (tout inscrit) un accès à l'API d'administration de l'IdP ;
-  - un groupe arrive dans le jeton et ne change qu'au renouvellement du
-    jeton : la révocation immédiate (D292) serait perdue ;
-  - la CLI et la page Accès gèrent tout au même endroit.
-
-  Aucune liaison de groupes Rauthy n'est prévue : complexité sans besoin
-  actuel. À rouvrir seulement si un client arrive avec son annuaire
-  d'entreprise.
-
-### Ouvertes
-
-Aucune au 2026-10-19 : le PRD est prêt pour la validation finale, puis
-le lot I0.
-
-## 15. Récapitulatif des décisions
+## 14. Décisions
 
 | # | Décision |
 |---|---|
-| D285 | Un moteur unique, refus par défaut, frontières plateforme puis org infranchissables (rouvre D188) |
-| D286 | Principaux : utilisateur, équipe, compte de service, admin plateforme |
-| D287 | Rôles = documents de permissions ; 4 rôles gérés = D117 prouvé par équivalence ; `write_role` remplacé |
-| D288 | Attribution = principal × rôle × portée (org, types, objets, étiquettes, types d'ontologie) |
-| D289 | Registre des actions gardé (`operationId` → `service:verbe`, ressource, lecture/écriture) |
-| D290 | Ressources `prn:<type>:<id>` + attributs (nom, étiquettes, type, propriétés indexées) |
-| D291 | Application : extracteur, prédicat SQL des services, chemins hors HTTP ; R2 en défense jusqu'à la fin |
-| D292 | Évaluation compilée en mémoire, invalidation Valkey immédiate |
-| D293 | Anti-escalade ; `iam:*` jamais à un compte de service |
-| D294 | Audit O2 `iam_decisions` ; historique des rôles (D221) |
-| D295 | Filtre ontologique dans les modules objets/liens/graphe, accès direct interdit |
+| D285 | Un moteur unique, refus par défaut. Les frontières plateforme puis org passent avant lui. Rouvre D188 |
+| D286 | Principaux : utilisateur, équipe (sans imbrication), compte de service, admin plateforme (D72, à part) |
+| D287 | Rôle = document de permissions. Les 4 rôles gérés traduisent D117, prouvé par équivalence. `write_role` doit devenir un énoncé de rôle |
+| D288 | Attribution = principal × rôle × portée (org, types, objets, étiquettes D218, types d'ontologie) |
+| D289 | Registre des actions gardé : `operationId` → `service:verbe`, ressource, lecture ou écriture |
+| D290 | Ressource `prn:<type>:<id>` + attributs (nom, étiquettes, type, propriétés indexées). `resource_labels` fournit l'adressage |
+| D291 | Trois points d'application : extracteur, prédicat SQL des services, chemins hors HTTP |
+| D292 | Évaluation compilée en mémoire, invalidée par Valkey. Aujourd'hui : une requête par appel, sans cache |
+| D293 | Anti-escalade. `iam:*` réservé aux rôles gérés Propriétaire et Administrateur, jamais à un compte de service |
+| D294 | Audit O2 `iam_decisions` : chaque refus, chaque écriture `iam`, chaque appel par clé. Historique des rôles par D221 |
+| D295 | Le filtre ontologique vit dans les modules objets, liens, graphe. Tout accès direct est interdit |
 | D296 | Cinq granularités ontologiques : type, objet, propriété, lien, action |
-| D297 | Graphe, impact, chemin sur le sous-graphe visible |
-| D298 | Classification des propriétés |
-| D299 | Historique : auteur = identité tamponnée par le serveur, jamais un nom ; compte supprimé = pierre tombale pseudonyme |
+| D297 | Graphe, impact et chemin sur le sous-graphe visible |
+| D298 | Classification des propriétés : `public`, `internal`, `personal`, `sensitive` (liste fermée, livrée par `crm.md` D442) |
+| D299 | Historique : auteur = identité tamponnée par le serveur. Compte supprimé = pierre tombale pseudonyme |
 
-## 16. Avancement
+Choix tranchés (2026-10-19) :
+- **MCP et assistant** : ni gestion des accès, ni clé d'accès.
+- **Ordre** : la CLI `pnex` d'abord (usage admin), la page Accès ensuite.
+- **Équipes** : retenues pour donner un rôle à plusieurs membres d'un coup. Un rôle donné à une
+  personne seule reste permis.
+- **Refus explicites** : permis dans un rôle personnalisé (« tout sauf le site Paris »).
+- **Clés côté navigateur** : non. Une application externe passe par son serveur.
+- **Quotas** : par org, jamais par compte de service ni par clé. Ils suivent le niveau d'abonnement
+  (`organizations.subscription_tier_id`). Quota et autorisation restent séparés.
+- **Flow déployé** : il tourne sous une identité propre (compte de service, V2), jamais sous les droits
+  de son auteur. Le départ de l'auteur ne l'arrête pas.
+- **Rauthy authentifie, PNEX autorise.** Une équipe appartient à une org, Rauthy est commun à la
+  plateforme. Un groupe Rauthy ne change qu'au renouvellement du jeton, ce qui casse la révocation
+  immédiate. Aucune liaison de groupes Rauthy n'est prévue.
 
-### I0 — registre des actions (livré 2026-10-19)
+## 15. Mise en œuvre
 
-- `crates/pnex-api-contract/src/iam.rs` (partagé backend + front, wasm-safe) :
-  - `PERMISSIONS` : 130 permissions `service:verb`, chacune avec le
-    **plus bas rôle géré** qui la détient (`Level`) ;
-  - `OPERATIONS` : les 469 `operationId` du spec, chacun `Org(permission)`
-    ou le type d'appelant hors moteur (`User`, `Platform`, `Public`,
-    `Machine`) ;
-  - `TOOLS` : les 56 outils de l'assistant, avec leur permission (`None` =
-    aucune donnée d'org : catalogues statiques, validations pures).
-- Verbes : `read`, `write`, `delete`, `deploy` (start/stop/restart/
-  rollback/deploy de flows), `operate` (commandes device, OTA, écriture de
-  contrôle), `enroll`, `test` (sondes et essais qui coûtent ou sortent),
-  `build`, `download`, `connect`. Sous-services quand un service mélange
-  deux niveaux : `ai.conversations`, `ai.providers`, `ai.settings`,
-  `ontology.schema`, `orgs.members`.
-- Classement initial : gardes R2 détectées dans le corps des handlers et
-  leurs helpers locaux, recoupées avec les descriptions du spec, puis
-  revue à la main des cas mixtes. **Le code fait foi** quand la
-  description diverge (constat : les `media_*` annoncent « Owner/admin
-  only » alors que le code exige `can_write` ; à corriger dans les
-  descriptions).
-- Garde bloquante `crates/pnex-backend/tests/iam.rs` : couverture exacte
-  du spec et de la table de dispatch de l'assistant, permissions
-  existantes et toutes utilisées, aucun `POST/PUT/PATCH` sous un verbe
-  `read` (hors `…/query` et essais), tout `DELETE` en `delete`/`operate`,
-  aucune opération `iam_*` exposée au MCP ni permission `iam` à
-  l'assistant.
+| Élément | Emplacement |
+|---|---|
+| Registre | `crates/pnex-api-contract/src/iam.rs` |
+| Moteur (`evaluate`, `Grants`, `operation_of`) | `crates/pnex-backend/src/services/iam/mod.rs` |
+| Rôles, équipes, attributions, `grants`, `member_grants` | `services/iam/store.rs` (migration `m20261019_000035_iam_roles_teams`) |
+| Comptes de service, clés | `services/iam/service.rs` (migration `m20261019_000036_iam_service_accounts`) |
+| Audit | `services/iam/audit.rs` |
+| Observation | `services/iam/observe.rs` |
+| Extracteur | `crates/pnex-backend/src/auth/mod.rs` (`OrgContext`) |
+| API | `crates/pnex-backend/src/controllers/iam.rs` |
+| Droits côté front | `crates/pnex-frontend/src/state/access.rs` |
+| Page Accès | `crates/pnex-frontend/src/pages/access/` |
 
-### I1 — moteur et bascule (livré 2026-10-19)
+## 16. État et reste à faire
 
-- `crates/pnex-backend/src/services/iam/` : `evaluate` (refus explicite >
-  autorisation > refus implicite, motifs `svc:verb`, `svc:*`, `*`),
-  rôles gérés construits depuis le registre, `authorize(rôle,
-  permission)`, `operation_of(méthode, route)` (table construite une fois
-  depuis le spec).
-- **Observation** (`services/iam/observe.rs`, couche HTTP) : compare la
-  décision du moteur à la réponse du handler ; `PNEX_IAM_OBSERVE=strict`
-  (500 nommant l'écart) ou `PNEX_IAM_OBSERVE_LOG=<fichier>`. Passe
-  complète de la suite backend avant bascule : **675 tests, une seule
-  divergence** (`boards_list` prend un `OrgContext`, marqué `User` par
-  erreur ; corrigé). Équivalence D287 tenue sur tout ce que la suite
-  exerce.
-- **Bascule** : l'extracteur `OrgContext` refuse avant le handler, 403
-  `access-denied` + `args.permission`. Suite complète après bascule :
-  677 tests, 0 divergence.
-- **Gardes R2 retirées** (même soir) : avec les rôles personnalisés, une
-  garde testant le rôle d'adhésion refuserait ce qu'une attribution donne.
-  207 gardes égales à la permission de l'opération supprimées
-  (`can_write`, `require_write`, `require_admin`, `require_manage`…), les
-  méthodes `can_write` / `can_administer` / `can_manage_secrets` /
-  `is_viewer` / `is_owner` d'`OrgContext` aussi ; ce qui gardait un champ
-  ou un cas devient `org.can("service:verb")` (attacher un secret :
-  `secrets:write` ; jeton device et lien de partage d'une visite visibles
-  des rédacteurs ; modérer un commentaire : `docs:moderate` ; destinataires
-  dynamiques : `notify:broadcast` ; usages d'un secret : `secrets:usage`).
-  Ces permissions de champ sont listées dans `GATES` du registre. 40 codes
-  `*-forbidden` / `ontology-admin-required` devenus inatteignables retirés
-  (`err_codes`, `.ftl`, fiches, réponses 403 du spec).
-- Restent dans les handlers (voulu) : la propriété (auteur d'un
-  commentaire), le `write_role` des types d'ontologie
-  (`ontology-write-forbidden`, à replier dans les rôles avec les portées
-  par type, lot I4/I5) et les règles propriétaire de `orgs/{id}/…`.
-- Hors moteur pour l'instant : les routes `orgs/{id}/…` (extracteur
-  `AuthUser`, org du chemin, règles propriétaire), les WebSockets, les
-  principaux machine (§5.4).
+```mermaid
+---
+config:
+  layout: elk
+---
+flowchart LR
+  i0[I0 registre ✔] --> i1[I1 moteur ✔]
+  i1 --> i2[I2 droits exposés ✔]
+  i1 --> i3[I3 rôles, équipes ✔]
+  i3 --> i4[I4 lectures filtrées]
+  i4 --> i5[I5 ontologie fine]
+  i3 --> i6[I6 comptes de service, lecture ✔]
+  i3 --> i7[I7 page Accès, partielle]
+```
 
-### I2 — droits exposés (livré 2026-10-19, sauf `allowed` des DTO)
+Tant qu'une opération n'a pas son filtre de liste (I4), une portée d'attribution reste « org
+entière ».
 
-- `GET /api/v1/iam/me/permissions` (`account:read`, tout membre) et
-  `GET /api/v1/iam/permissions` (catalogue paginé, `iam:read`,
-  owner/admin) ; MCP : `EXCLUDED` motif `access`.
-- Code unique `access-denied` (`err_codes::ALL`, clés `.ftl` FR/EN) ; le
-  spec documente sur chaque 403 d'org la permission exigée.
-- Assistant : `execute` appelle le moteur avec la permission de l'outil
-  (`tools::authorize_tool`) avant tout outil ; `ToolDeps` porte le rôle,
-  `require_write` et `ai-write-forbidden` supprimés.
-- Front : module unique `state/access.rs` (`can("service:verb")`,
-  `role_can`) alimenté par `me/permissions` (rechargé à chaque changement
-  d'org, repli sur le rôle d'adhésion le temps de la réponse) ; les 14
-  copies de `current_role()` et les helpers `current_can_write` /
-  `current_can_administer` supprimés, ~45 appels migrés vers une
-  permission explicite. Refus rendu par service et verbe (`iam-service-*`,
-  `iam-verb-*`, garde de parité `iam_permission_labels_en_fr`).
-- Garde `every_checked_permission_exists` : tout `can("…")` du backend et
-  du front nomme une permission du registre.
-- Fiches : `troubleshooting-access-denied.md`, `roles.md` mise à jour.
+Reste à faire :
+- **I2** : `allowed: [verbes]` dans les DTO de détail.
+- **I4** : prédicat de visibilité sur toutes les listes, les `…/query`, les recherches, les exports,
+  l'assistant, `notify::publish` et les caches. Portées d'attribution par type, objet et étiquette
+  (D288).
+- **I5** : ontologie fine (D295–D297), gels, `write_role` replié dans les rôles (D287). L'assistant
+  lit encore `write_role` sur le rôle d'adhésion (`Actor.role`).
+- **I6** : limite de permissions par clé, quotas d'org appliqués aux clés, doc du site (exemples
+  Next.js et Dioxus fullstack, dépôt `pnex-website`).
+- **I7** : simulateur d'accès (`check`), « Gérer l'accès » depuis une fiche d'objet
+  (`resources/{prn}/access`), historique des versions de rôle (D221 : seulement `version`
+  aujourd'hui), équipes et attributions sur la page Organisations.
+- **D292** : cache compilé avec invalidation Valkey, si la latence l'exige.
+- **D294** : écran de consultation de `iam_decisions`.
+- **D299** : `author_user_id` tamponné et pierre tombale (SEC-48).
+- `case-role` (« Rôle dans le dossier ») doit être renommé, par exemple « Fonction » (§3).
+- Les routes `orgs/{id}/…` restent hors moteur.
 
-### I3 — rôles personnalisés, équipes, attributions (livré 2026-10-19)
-
-- Migration `m20261019_000035_iam_roles_teams` : `iam_roles` (clé unique
-  par org, énoncés JSON, `version`), `iam_teams`, `iam_team_members`,
-  `iam_assignments` (membre **ou** équipe × rôle géré **ou** personnalisé ;
-  owner jamais attribuable : il reste un rôle d'adhésion).
-- `services/iam/store.rs` + `controllers/iam.rs` : CRUD rôles (concurrence
-  optimiste `expected_version`), équipes et membres, attributions
-  (doublon → 409) ; tout en `iam:read|write|delete` (owner/admin) ;
-  gérable par la CLI `pnex` (générée du spec, motif `access` ⇒ `--yes`) ;
-  `EXCLUDED` au MCP.
-- Moteur : `Grants` = rôle d'adhésion + rôles attribués (direct et par
-  équipe), une requête par appel d'org, sans cache (*raccourci* : le cache
-  compilé D292 viendra si la latence l'exige ; révocation immédiate par
-  construction). Un rôle personnalisé n'accorde ni ne retire jamais
-  `iam:*` (D293 : pas d'escalade, pas de verrouillage d'un owner) ; motifs
-  validés (`unknown_permission`, `iam_permission`) ; anti-escalation à la
-  création, à la modification et à l'attribution (`iam-escalation`).
-- Départ d'un membre : ses attributions directes et ses équipes de l'org
-  partent avec lui.
-- Portée des attributions : **org entière** en I3 ; types, objets et
-  étiquettes (D288) arrivent avec les lectures filtrées (I4).
-- Test `custom_roles_teams_and_assignments` : rôle donné à un lecteur,
-  refus explicite par équipe y compris pour un admin, anti-escalation,
-  conflit de version, départ.
-
-### I6 — comptes de service et clés d'accès (livré 2026-10-19, lecture seule)
-
-- Migration `m20261019_000036_iam_service_accounts` : `users.is_service`,
-  `iam_service_accounts` (une org, nom unique), `iam_access_keys` (sha256
-  seul, préfixe d'affichage, `expires_at` obligatoire, `last_used_at`,
-  `revoked_at`).
-- Un compte de service est une ligne `users` marquée service (identité pour
-  l'historique et l'audit, D299) **sans adhésion** : jamais listé parmi
-  les membres, jamais ajouté par email, jamais relié à un compte de l'IdP ;
-  ses droits = ses attributions seules (aucun rôle de base).
-- Clé : `pnex_sk_` + 32 octets aléatoires (hex), montrée une fois, au plus
-  366 jours, deux actives au plus (rotation), révocation immédiate (requête
-  à chaque appel, pas de cache), `last_used_at` au plus une écriture par
-  minute.
-- Authentification : `Authorization: Bearer pnex_sk_…`, `X-Org-Id`
-  facultatif (seule l'org du compte est acceptée, sinon `org-not-member`).
-  **V1 en lecture seule** : l'extracteur n'accepte que les permissions
-  `*:read`, jamais `iam`, jamais une opération hors registre d'org
-  (sockets, routes internes). Les extracteurs humains (`AuthUser`,
-  `PlatformAdmin` : profil, liste d'orgs, MCP, plateforme) refusent une
-  clé (`access-key-not-allowed`). Attribuer le rôle géré admin à un compte
-  de service est refusé (`not_for_service_account`, D293).
-- API : `/api/v1/iam/service-accounts` (CRUD) et `…/{id}/keys` (créer =
-  réponse avec le secret, lister sans secret, révoquer) ; attribution avec
-  `service_account_id` ; MCP : `EXCLUDED` (`access`, et `credential` pour
-  la création de clé) ; CLI `pnex` générée (⇒ `--yes`).
-- Test `service_accounts_and_access_keys`.
-- **Reste I6** : limite de permissions par clé (inutile tant que tout est
-  en lecture), quotas
-  d'org appliqués aux clés, doc site (exemples Next.js et Dioxus
-  fullstack, dépôt `pnex-website`), écriture bornée pour un SaaS tiers
-  (`partner-watch.md` D300, à trancher).
-
-### I7 — page Accès (livrée 2026-10-19, première version)
-
-- Route `/access`, Réglages › Accès (visible avec `iam:read`) ; quatre
-  onglets sur le socle CRUD : **Rôles** (gérés en lecture, personnalisés
-  édités dans une grille services × verbes : un clic permet, deux
-  refusent, trois effacent ; motifs avancés `*`/`svc:*` conservés tels
-  quels), **Équipes** (membres cochés, ajout/retrait immédiat),
-  **Attributions** (« Donner un rôle » à un membre, une équipe ou un
-  compte de service ; « Retirer »), **Comptes de service** (clés : date
-  d'expiration, secret montré une fois avec copie et avertissement
-  « côté serveur », révocation).
-- Lexique (`design-system.md` §7) : Rôle, Attribution, Équipe, Permission,
-  Accès ; garde `lexicon_guard` (« groupe d'utilisateurs », « user
-  group », « affectation » refusés).
-- Fiche `assistant-kb/access.md`.
-- e2e `e2e/tests/access.spec.ts` (rôle par la grille, équipe, compte de
-  service, clé montrée une fois, rôle donné, la clé lit exactement ce rôle),
-  route `/access` au smoke (fr/en) et à l'a11y stricte ; collections `iam`
-  balayées par le harnais.
-- **Reste I7** : simulateur d'accès, « Gérer l'accès » depuis une fiche
-  d'objet (avec les portées d'I4), historique des versions de rôle
-  (D221), équipes et attributions affichées sur la page Organisations.
-
-### Audit D294 (livré 2026-10-19)
-
-- `services/iam/audit.rs` : flux O2 `iam_decisions` par org (écrivain de
-  fond, au mieux) : chaque refus du moteur (HTTP et outils de l'assistant),
-  chaque écriture `iam:*` réussie, et **chaque appel par clé d'accès**
-  (lectures comprises) ; champs `operation`, `permission`, `allowed`,
-  `status`, `origin` (`ui`, `access-key`, `assistant`), `user_id`,
-  `service_account_id`. Les lectures des membres ne sont pas journalisées
-  (volume). Pas encore d'écran de consultation (page Événements ou Accès).
-- `/ws/doc` relit `docs:write` avec les attributions ; premier battement
-  décalé d'une période (le droit vient d'être lu à l'ouverture).
-
-### Reste
-
-- I2 : `allowed: [verbes]` dans les DTO de détail.
-- Assistant : il prend les droits complets du membre (`ToolDeps.grants`) ;
-  le `write_role` d'ontologie reste lu sur le rôle d'adhésion
-  (`Actor.role`).
-- Routes `orgs/{id}/…` (extracteur `AuthUser`) : hors moteur.
-- WebSockets : `/ws/doc` décide `docs:write` avec les attributions (relu à
-  chaque battement) ; les autres sockets restent sur l'appartenance (lecture
-  pour tout membre).
-- Historique des versions de rôles (D221) : seulement `version`.
-- I4 (lectures filtrées, portées d'attribution) et I5 (ontologie fine)
-  inchangés (§12).
+Questions ouvertes (choix de Shan) :
+- **Compte de service qui écrit pour un SaaS tiers** (`partner-watch.md` D300) : objets, liens et
+  actions bornés aux types d'un pack, sans IAM, suppression, deploy ni action physique. Aujourd'hui,
+  `SERVICE_WRITES` n'ouvre que `market-decisions:write`.
