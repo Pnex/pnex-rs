@@ -1,5 +1,5 @@
 //! The org's default transcription profile: what a capture without its own
-//! choice uses (the tray recorder, call-recording.md R1). At most one per
+//! choice uses (the tray recorder, media.md §3.13). At most one per
 //! org, enforced by a partial unique index.
 
 use sea_orm_migration::prelude::*;

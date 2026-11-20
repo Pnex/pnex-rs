@@ -287,7 +287,7 @@ Chaque concept a un seul nom dans chaque langue, un seul composant et une seule 
 | Caméra gérée par PNeX (matériel, firmware, réglages de capture) | Caméra | Camera | un flux |
 | Réglage de transcription d'un flux : modèle, langue, détection de voix, diarisation (D164) | Profil de transcription | Transcription profile | pas « modèle » (= le fichier importé) |
 | Profil de transcription pris quand rien d'autre n'est choisi, un par org | Profil par défaut | Default profile | pas « modèle par défaut », pas « profil principal » |
-| Utilitaire de bureau, dans la barre des tâches, qui capte l'audio vers PNeX (call-recording.md R1) | Enregistreur PNeX | PNeX recorder | pas « agent » (= agent navigateur, agent edge), pas « dictaphone » |
+| Utilitaire de bureau, dans la barre des tâches, qui capte l'audio vers PNeX (media.md §3.13) | Enregistreur PNeX | PNeX recorder | pas « agent » (= agent navigateur, agent edge), pas « dictaphone » |
 | Essai de 5 s qui vérifie que le serveur transcrit, depuis l'enregistreur | Test de transcription | Transcription test | pas « test STT », pas « speech to text » |
 | État sauvegardé d'un objet | Version | Version | — |
 | Proposition d'entrer dans une org, en attente de la réponse de la personne (SEC-72) | Invitation | Invitation | jamais « ajouter un membre » : personne n'entre sans accepter ; ≠ invitation de calendrier d'un mail |

@@ -1,4 +1,4 @@
-//! Spans of a media attributed to persons (media-review.md D272, D273):
+//! Spans of a media attributed to persons (media.md D272, D273):
 //! "from 12:30 to 14:10, this is X", whatever found it (a person, a voice
 //! profile, the transcript, the grid). Small rows, edited by people.
 //!

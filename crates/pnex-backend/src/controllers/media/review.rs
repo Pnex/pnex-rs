@@ -3,7 +3,7 @@ use crate::controllers::{coded_error, field_error};
 use crate::services::{media_attributions, media_runs};
 use pnex_core::media_review::{AttributionInput, AttributionPatch, SpeechAttribution};
 
-// ─────────── Review of a media file (media-review.md D271–D280) ───────────
+// ─────────── Review of a media file (media.md D271–D280) ───────────
 
 #[derive(serde::Deserialize, utoipa::IntoParams)]
 #[into_params(parameter_in = Query)]

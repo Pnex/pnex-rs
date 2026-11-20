@@ -1,4 +1,4 @@
-//! Audio model registry and transcription chain (media-ingest.md D166–D167)
+//! Audio model registry and transcription chain (media.md D166–D167)
 //! with a fake `pnex-asr` (tests/fixtures/asr): import of a sherpa-style
 //! archive, family read from the files, check on the reference sample,
 //! profile, enabled stream, capture → queued → transcribed by the worker

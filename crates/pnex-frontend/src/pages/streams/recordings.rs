@@ -1,4 +1,4 @@
-//! Video recordings of an IP stream (media-ingest.md D175): segments
+//! Video recordings of an IP stream (media.md D175): segments
 //! written by a `video_record` node fed by a `camera_source` reading the
 //! stream, newest first, each downloadable as MJPEG-AVI. The page's
 //! segments replay back to back in the shared recording player.

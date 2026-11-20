@@ -21,7 +21,7 @@
 > canaux extensible (D51), templates minijinja (D52), sémantique de
 > livraison (D53), secrets (D54). Sources amont :
 > `docs/architecture/flow-engine.md` (save ≠ déployé, nœuds `pnex_*`),
-> `docs/architecture/edge-model.md` (D44–D48), pattern registre
+> `docs/architecture/edge.md` (D44–D48), pattern registre
 > `ai_connectors` (migration 000010).
 
 ## 1. Le problème

@@ -1,4 +1,4 @@
-//! Media capture chain (media-ingest.md D160–D162) end to end on a local
+//! Media capture chain (media.md D160–D162) end to end on a local
 //! source: HTTP fetcher → confined ffmpeg → segmenter → MediaStore +
 //! `media_segments`. Skipped when ffmpeg is not installed.
 //!

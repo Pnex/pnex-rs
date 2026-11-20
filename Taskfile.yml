@@ -254,7 +254,7 @@ tasks:
           mkdir -p target/dist && rm -f target/dist/pnex-desktop-windows-x86_64.zip
           cd "$app/.." && rm -rf pnex && cp -r app pnex && zip -qr "{{.ROOT_DIR}}/target/dist/pnex-desktop-windows-x86_64.zip" pnex && rm -rf pnex
 
-  # PNeX recorder (call-recording.md R1): a plain cargo binary (no asset!(),
+  # PNeX recorder (media.md §3.13): a plain cargo binary (no asset!(),
   # so no dx). Linux needs libpulse and webkit2gtk at run time; Windows ships
   # WebView2Loader.dll next to the exe, like the desktop UI.
   build:recorder:linux:

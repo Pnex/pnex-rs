@@ -23,7 +23,7 @@ Firmware ESP8266 et ESP32-C3 du projet pnex, convergé dans le monorepo —
 > tout seul ; les inis du monorepo gardent des `lib_deps` explicites (le
 > LDF ne résout pas les deps manifeste d'une lib trouvée via storage).
 >
-> **F1 — transport** (edge-model.md §3/§11) : la mécanique transport
+> **F1 — transport** (edge.md §3.1) : la mécanique transport
 > (décodage config, WiFi, WS, framing ChaCha, bookkeeping PONG) vit dans
 > `lib/pnex/src/pnex_transport.*` ; les mains gardent la policy haut
 > niveau. `pnex_config.h` (ex config.h) n'est inclus que par

@@ -153,7 +153,7 @@ const INLINE_CONTENT_TYPES: &[&str] = &[
     "video/mp4",
     "video/quicktime",
     "video/webm",
-    // Voice clips (voice-id.md), played by an <audio> element.
+    // Voice clips (media.md §3.12), played by an <audio> element.
     "audio/wav",
     "audio/mpeg",
     "audio/ogg",

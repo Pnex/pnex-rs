@@ -965,7 +965,7 @@ cartes réelles : NodeMCU V3 OLED, ESP32-C6-Zero
    rapports) », dépassés par D207–D210.
 3. P2.13, P2.16–P2.19 : « zéro code avant validation » alors que le code est
    sur main ; même contradiction dans la ligne de statut d'`ontology.md` ;
-   `media-ingest.md` et `geo-layers.md` encore « Proposé ».
+   `media.md` et `geo-layers.md` encore « Proposé ».
 4. `security.md` §8 : « rien n'est implémenté » alors que V1 est livré
    (2026-10-09) ; décision #15 « V1 : prochaine passe sécurité » encore ouverte.
 5. Tableau d'état : OTA « OTA sur ESP32 réel » encore à faire ; Organisations
@@ -1633,7 +1633,7 @@ pagination, types, verbes, langue) sont traités par les lots H1–H5 de
 - **Statut** : ✅ résolu (2026-10-17, H1) — 400 `field-invalid`
   (`from`/`to` : `invalid`), test dans `tests/ws_camera.rs`.
 
-## 2026-10-18 — relecture média (media-review.md R0 → R5)
+## 2026-10-18 — relecture média (media.md D271–D280)
 
 ### O81 — Relecture média : chaîne jamais exécutée de bout en bout
 
@@ -1644,7 +1644,7 @@ pagination, types, verbes, langue) sont traités par les lots H1–H5 de
 - **Déjà trouvé ainsi** : O2 refuse les documents datés au-delà de
   `ZO_INGEST_ALLOWED_UPTO` (5 h par défaut) ; la transcription d'un fichier
   ancien aurait échoué en prod — corrigé (538b57a9, datation sur la passe).
-- **À faire sur dev.pnex.io** : la liste de `media-review.md` §12.1 (vieux
+- **À faire sur dev.pnex.io** : la liste de `media.md` §7 (vieux
   fichier, deux voix enrôlées, vraie vidéo + détecteur, flux à rétention,
   sous-titres plateforme).
 - **Statut** : ⏳ à vérifier.

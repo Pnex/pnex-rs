@@ -131,7 +131,7 @@ pub mod storage_reconcile;
 pub mod surface_controls;
 pub mod system_status;
 pub mod telemetry;
-/// Time ranges (media-ingest.md D169): CRUD, upsert, CSV/ICS import.
+/// Time ranges (media.md D169): CRUD, upsert, CSV/ICS import.
 pub mod telemetry_aggregate;
 pub mod time_ranges;
 pub mod tour;

@@ -1,4 +1,4 @@
-//! Create / edit dialog of a media stream (media-ingest.md D159, D161,
+//! Create / edit dialog of a media stream (media.md D159, D161,
 //! D172). The URL never carries a credential: it goes in the vault secret
 //! (typed or picked, owner/admin only).
 

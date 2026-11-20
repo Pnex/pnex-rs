@@ -1,6 +1,6 @@
 #!/bin/sh
 # PNeX edge agent installer (Linux) — served by pnex-server at
-# /api/v1/agent/install.sh (D95, docs/architecture/edge-agent.md).
+# /api/v1/agent/install.sh (D95, docs/architecture/edge.md §3.5).
 #
 # Usage (the UI prints the exact one-liner):
 #   curl -fsSL --cacert pnex-ca.pem https://HOST/api/v1/agent/install.sh \

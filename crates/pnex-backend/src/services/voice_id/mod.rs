@@ -1,6 +1,6 @@
-//! Voice identification by consented enrolment (voice-id.md, cases.md K19
+//! Voice identification by consented enrolment (media.md §3.12, cases.md K19
 //! variant A). Kept apart from the diarization of the streams, which stays
-//! anonymous (`S1..S16`, media-ingest.md §2): nothing here reads a stream,
+//! anonymous (`S1..S16`, media.md §3.14): nothing here reads a stream,
 //! and no stream label is ever named from a profile.
 //!
 //! - [`profiles`]: one profile per Person object, created with its consent;

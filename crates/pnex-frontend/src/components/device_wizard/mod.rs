@@ -297,7 +297,7 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
         }
         _ => Vec::new(),
     };
-    // One section per product family (edge-model.md §2 bis).
+    // One section per product family (edge.md §2.2).
     let family_models = |family: pnex_core::DeviceFamily| -> Vec<pnex_core::PredefinedDevice> {
         visible_models
             .iter()

@@ -1,4 +1,4 @@
-//! `pnex-agent` — PNeX edge agent (D95, docs/architecture/edge-agent.md).
+//! `pnex-agent` — PNeX edge agent (D95, docs/architecture/edge.md §3.5).
 //!
 //! Local scripts push free-form values to a password-less HTTP API
 //! (loopback by default); the agent stores them in a durable disk queue and

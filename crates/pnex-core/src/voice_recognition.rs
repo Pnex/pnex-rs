@@ -1,4 +1,4 @@
-//! Recognition by voice prints first (voice-id.md §1 bis, D978–D985): on a
+//! Recognition by voice prints first (media.md §3.12, D978–D985): on a
 //! stored recording, short pieces of speech are matched against every ready
 //! print of the org, then the pieces nobody claimed are grouped into
 //! anonymous voices. Pure computation: embeddings come from the caller.

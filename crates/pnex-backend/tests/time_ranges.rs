@@ -1,4 +1,4 @@
-//! Time ranges (media-ingest.md D169): CRUD, idempotent upsert by
+//! Time ranges (media.md D169): CRUD, idempotent upsert by
 //! `external_id`, CSV / ICS import, org isolation (R1), viewer read-only
 //! (R2), the flow runtime endpoint `/internal/flow/time-range` (service
 //! token, foreign org refused) and the `range_upsert` deploy gate (engine

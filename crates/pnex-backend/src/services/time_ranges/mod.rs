@@ -1,4 +1,4 @@
-//! Time ranges (media-ingest.md D169, D182): CRUD and idempotent upsert of
+//! Time ranges (media.md D169, D182): CRUD and idempotent upsert of
 //! `time_ranges`. Shared by the HTTP API, the CSV/ICS import and the flow
 //! runtime endpoint (`range_upsert` node): same validation everywhere.
 //!

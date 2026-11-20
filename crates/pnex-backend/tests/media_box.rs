@@ -1,4 +1,4 @@
-//! Capture boxes (media-ingest.md D159, D160, lot 6b): `capture_on =
+//! Capture boxes (media.md D159, D160, lot 6b): `capture_on =
 //! device:<id>` accepted for the org's agents that announced
 //! `media_capture`, stream list and segment upload over `/ws/media` (device
 //! identity, Noise binary link), capture state reports.

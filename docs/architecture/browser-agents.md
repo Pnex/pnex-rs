@@ -1,6 +1,6 @@
 # Agents navigateur (extension Chrome/Firefox)
 
-Décisions D254–D270, D281–D284, D550. Liens : `edge-model.md` §8 (doctrine edge), `security.md` (identité device D153–D158, grille §6, registre §7), `media-ingest.md` (flux, segments), `media-review.md` (passes, relecture), `doc-search.md` (indexation), `account-mapping.md` (profils D333, salariés D779, relations D976–D977), `partner-watch.md` (sites et preuves D307–D310), `agents.md` (règles jouées par l'extension D780–D790), `api.md`, `ai-assistant.md` §9.
+Décisions D254–D270, D281–D284, D550. Liens : `edge.md` §2.3 (doctrine edge), `security.md` (identité device D153–D158, grille §6, registre §7), `media.md` (flux, segments, passes, relecture), `doc-search.md` (indexation), `account-mapping.md` (profils D333, salariés D779, relations D976–D977), `partner-watch.md` (sites et preuves D307–D310), `agents.md` (règles jouées par l'extension D780–D790), `api.md`, `ai-assistant.md` §9.
 
 ## 1. Résumé
 
@@ -200,7 +200,7 @@ Une mission `follow_account` lit les posts récents et remonte tout l'historique
 
 Le registre `social_videos` est unique par org, plateforme et post (D259). Un post déjà connu n'est jamais repris, quel que soit l'agent. États d'un post : `seen` (relevé), `captioned` (sous-titres rangés), `captured` (fichier dans les médias).
 
-Par défaut, l'agent garde les métadonnées, le texte et les sous-titres de la plateforme quand ils existent (D284). Les sous-titres deviennent une passe de transcription d'origine `platform` (`media-review.md`, D281). La case « Forcer la collecte vidéo » (`force_video`) prend aussi le fichier de chaque vidéo, puis lance la transcription PneX.
+Par défaut, l'agent garde les métadonnées, le texte et les sous-titres de la plateforme quand ils existent (D284). Les sous-titres deviennent une passe de transcription d'origine `platform` (`media.md`, D281). La case « Forcer la collecte vidéo » (`force_video`) prend aussi le fichier de chaque vidéo, puis lance la transcription PneX.
 
 ```mermaid
 ---

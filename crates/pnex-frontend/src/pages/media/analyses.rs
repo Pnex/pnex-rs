@@ -1,4 +1,4 @@
-//! "Analyses" card of an asset (media-import-pipeline.md D213): one line
+//! "Analyses" card of an asset (media.md D213): one line
 //! per step proposed for its kind (index, summary...), state, error,
 //! Launch / Relaunch, and "Relaunch all". A step needing an LLM without a
 //! provider is shown greyed with a link to the org detail (P2). Writers

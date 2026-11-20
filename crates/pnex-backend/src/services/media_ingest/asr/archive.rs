@@ -1,4 +1,4 @@
-//! Audio model archives → model directory (media-ingest.md D167).
+//! Audio model archives → model directory (media.md D167).
 //!
 //! An uploaded model is a single GGML/GGUF file, a single ONNX file that
 //! states what it is in its metadata (Silero VAD, pyannote segmentation,

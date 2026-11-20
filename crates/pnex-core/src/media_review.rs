@@ -1,4 +1,4 @@
-//! Review of a media file (media-review.md D271–D280): the runs of its
+//! Review of a media file (media.md D271–D280): the runs of its
 //! transcription, the text on the media clock, and what the review screen
 //! reads. Text lives in O2 (`tx_<slug>` of the asset's batch stream), the
 //! runs are small rows in Postgres.

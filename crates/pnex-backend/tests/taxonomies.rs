@@ -1,4 +1,4 @@
-//! Topic taxonomies API (media-ingest.md D168): CRUD, append-only versions
+//! Topic taxonomies API (media.md D168): CRUD, append-only versions
 //! with optimistic concurrency (409), org isolation (R1), viewer read-only
 //! (R2) and the `topic_classify` deploy gate (engine OFF: a deploy answers
 //! 503 only AFTER the gates, so 503 = "the gates let it through").

@@ -1,4 +1,4 @@
-//! `pnex-asr`: the speech-to-text process of PNEX (media-ingest.md
+//! `pnex-asr`: the speech-to-text process of PNEX (media.md
 //! D166–D167). The server spawns it and talks JSON lines
 //! ([`pnex_asr::protocol`]).
 //!

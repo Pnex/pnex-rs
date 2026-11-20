@@ -1,7 +1,7 @@
 //! Audio side of voice identification: an uploaded or stored clip is
 //! decoded by the confined ffmpeg of the capture chain (16 kHz mono), cut
 //! into windows, and each usable window goes through the org's speaker
-//! embedding model, served by a warm `pnex-asr` process (media-ingest.md
+//! embedding model, served by a warm `pnex-asr` process (media.md
 //! D166–D167). No vector is ever logged (`WireVoice` prints its dimension
 //! only).
 

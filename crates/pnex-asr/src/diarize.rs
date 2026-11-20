@@ -1,4 +1,4 @@
-//! Speaker diarization helpers that need no native runtime (media-ingest.md
+//! Speaker diarization helpers that need no native runtime (media.md
 //! D166, lot 5): labelling words from speaker turns, linking the local
 //! speakers of successive segments into stream-local labels (`S1`, `S2`…),
 //! and the diarization error rate (DER) used to measure it.

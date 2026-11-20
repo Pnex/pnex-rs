@@ -4416,7 +4416,7 @@ err-series-label-value-invalid = Valeur de dimension invalide
 err-asr-profile-not-found = Profil de transcription introuvable.
 err-asr-profile-name-taken = Un profil de transcription porte déjà ce nom.
 
-# Streams page (media-ingest.md P2.13)
+# Streams page (media.md P2.13)
 nav-streams = Flux
 secrets-usage-media-stream = Flux média
 secrets-usage-geo-provider = Fournisseur géo
@@ -4788,7 +4788,7 @@ err-account-trades-too-large = Fichier de transactions trop gros : { $max_kib } 
 err-account-trades-csv-invalid = Fichier de transactions refusé : ligne { $line }, colonne { $column }.
 err-time-range-scope-unknown = L'écriture de plages vise un flux absent de l'organisation : choisissez-le de nouveau dans le nœud.
 
-# Transcription models, profiles and search (media-ingest.md D164–D167)
+# Transcription models, profiles and search (media.md D164–D167)
 streams-tab-streams = Flux
 streams-tab-transcripts = Transcriptions
 streams-tab-models = Modèles et profils
@@ -5708,7 +5708,7 @@ fuzzy-precision-range = Entre deux dates
 fuzzy-precision-approx = Environ
 case-open-from-event = Ouvrir un dossier
 case-from-event-title = Incident
-# Voice identification (voice-id.md)
+# Voice identification (media.md §3.12)
 nav-voice-id = Empreintes vocales
 onto-tab-voice = Voix
 voice-title = Empreinte vocale

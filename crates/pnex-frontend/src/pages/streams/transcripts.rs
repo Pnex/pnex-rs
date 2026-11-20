@@ -1,4 +1,4 @@
-//! "Transcriptions" tab of /streams (media-ingest.md D165): full-text
+//! "Transcriptions" tab of /streams (media.md D165): full-text
 //! search over the timestamped text of the org's streams, newest first.
 
 use dioxus::prelude::*;

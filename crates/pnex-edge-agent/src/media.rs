@@ -1,4 +1,4 @@
-//! Capture box (media-ingest.md D159, D160, lot 6b): the agent captures the
+//! Capture box (media.md D159, D160, lot 6b): the agent captures the
 //! streams the server assigns to it (`capture_on = device:<id>`) with the
 //! server's own chain ([`pnex_media_capture`]: filtered fetcher, confined
 //! ffmpeg, segmenter) and uploads the segments over `/ws/media` (same TLS

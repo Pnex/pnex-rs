@@ -3,7 +3,7 @@ name = "pnex-media-capture"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Media stream capture chain (media-ingest.md D160): filtered fetcher, RTSP client, confined ffmpeg, PCM segmenter — shared by the server and the edge agent"
+description = "Media stream capture chain (media.md D160): filtered fetcher, RTSP client, confined ffmpeg, PCM segmenter — shared by the server and the edge agent"
 
 [dependencies]
 pnex-core = { workspace = true, features = ["egress"] }

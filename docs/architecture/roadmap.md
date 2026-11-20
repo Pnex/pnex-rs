@@ -39,7 +39,7 @@ une même org, des sources hétérogènes et les rend exploitables ensemble.
   la première et la mieux intégrée.
 - **Le socle IoT reste entier, ambition et roadmap inchangées** :
   contrôle/commande (surfaces pilotables D123–D133, « une surface lit, un
-  flow agit »), M2M résilient (M1–M3, `m2m-resilient.md`), firmware et
+  flow agit »), M2M résilient (M1–M3, `edge.md` §3.8), firmware et
   OTA, identité device X.509 (D153–D158), régulation autonome (F3, D20),
   profils de sécurité (D148–D152), banc matériel (P0.1). Aucune entrée de
   ces volets n'est déclassée, reportée ni réduite par ce repositionnement.
@@ -207,8 +207,8 @@ tâche).
 | **Assistant IA** (v1 + v2 D142–D145) | Livré — 35 outils fermés, base de connaissance embarquée + diagnostics, dashboards (D144), conversations privées en base + rétention (D145), LLM apporté par l'org (D119) ; finalisation i18n/audit 2026-10-07 (`ai-assistant.md` §10) | SEC-14 (filtrage d'URL du fournisseur, avec SEC-W3) |
 | **Collection C1a** | http_fetch livré (2026-09-15) | — |
 | **Extension navigateur (C1b)** | **Spec v2 proposée** 2026-10-18 (`browser-agents.md`, D254–D269 : agents de veille) — implémentation = jalon C3 | Validation v2 puis lots L0 → L6 |
-| **Agent local (C2)** | **Livré** (2026-09-30) (`edge-agent.md`, D95–D99) : API locale libre, file disque, enrôlement une commande, Linux musl + Windows | Test Windows réel, macOS, pont WS devices LAN |
-| **M2M résilient (M1–M3)** | PRD posé (`m2m-resilient.md`) | M1 POC zenoh-pico WiFi (zéro achat), M2 6LoWPAN à prototyper avant engagement |
+| **Agent local (C2)** | **Livré** (2026-09-30) (`edge.md` §3.5, D95–D99) : API locale libre, file disque, enrôlement une commande, Linux musl + Windows | Test Windows réel, macOS, pont WS devices LAN |
+| **M2M résilient (M1–M3)** | PRD posé (`edge.md` §3.8) | M1 POC zenoh-pico WiFi (zéro achat), M2 6LoWPAN à prototyper avant engagement |
 | **Android** | Build + login PKCE E2E validé ; storage persistant ; scan LAN ; APK arm64 publié à chaque `main` vert (CI Apps, pré-release `nightly`, signé debug → sideload) ; bouton Flash masqué (`flash::offered()`), package `io.pnex.app` (`[bundle]` Dioxus.toml) | Clé de release à générer et APK release à valider (P1.2) ; libellé de l'app déjà « PNeX » |
 | **Desktop natif** | **Livré 2026-10-01** — Linux x86_64 / aarch64 et Windows x86_64 (cross mingw) : login, flash USB par esptool embarqué ; validé mainteneur sur Linux et Windows ; publié à chaque `main` vert (CI Apps, pré-release `nightly`), smoke test de démarrage sur un runner Windows | Paquets installables (.deb/.msi), signature de code, macOS |
 | **Schéma de base** (D120) | **Livré 2026-10-01** — une migration de base ; **SQLite retiré** le 2026-10-10 (518a069, décision #19), PostgreSQL 18 seul ; migrations 0.2 en `000002`–`000020` | Retrait du stockage `fs` (décision #25) |
@@ -223,14 +223,14 @@ tâche).
 | **Coffre de secrets** (D110–D119) | **Livré 2026-10-01** — S1–S8 (`security.md` §9) : XChaCha20-Poly1305, trousseau en env, références typées, runtime qui résout par id, rôle `member`, rotation + rechiffrement | Clés device et tokens agent hors coffre (chiffrement au repos possible plus tard) |
 | **API publique** | **Rien** — aucune API destinée aux programmes tiers en dehors de l'agent edge (push de valeurs) | Horizon P3 (abonnements live, jetons à portée, REST documentée) |
 | **Mémoire d'org** (Valkey) | Livré — `memory-write`/`memory-read` par org, source « Mémoire » des widgets | — |
-| **Flux média entrants** (D159–D175) | **Code des lots 0 → 6 sur `main`** (2026-10-10, `media-ingest.md` §16–§18) : capture confinée + porteur `worker`, santé et alerte « flux muet », `media_source`, taxonomies + `topic_classify` (mots-clés), plages + import CSV/ICS, agrégats par plage + widget, VAD + diarisation locale, piste vidéo RTSP, boîtier de capture `pnex-media-capture` | Runs 24 h (sorties des lots 1 et 6), image ffmpeg avec décodeurs vidéo, RTSP sur vraie caméra, cross-builds agent, classifieur LLM + reclassement, vérification navigateur — P2.13 |
+| **Flux média entrants** (D159–D175) | **Code des lots 0 → 6 sur `main`** (2026-10-10, `media.md` §3.4–§3.9) : capture confinée + porteur `worker`, santé et alerte « flux muet », `media_source`, taxonomies + `topic_classify` (mots-clés), plages + import CSV/ICS, agrégats par plage + widget, VAD + diarisation locale, piste vidéo RTSP, boîtier de capture `pnex-media-capture` | Runs 24 h (sorties des lots 1 et 6), image ffmpeg avec décodeurs vidéo, RTSP sur vraie caméra, cross-builds agent, classifieur LLM + reclassement, vérification navigateur — P2.13 |
 | **Ontologie / 0.2.0** (D176–D191) | **L0–L5 sur `main`** 2026-10-10 (`ontology.md` §10) : identité universelle, types et liens temporels, séries d'objets, requête et graphe, explorateur, dashboards de type, assistant, pack Maintenance. **Mergé le 2026-10-13** : D183 actions (flow déployé, `propose_action`) et calendrier de maintenance (récurrences, `/calendar`, pack Maintenance 1.2.0, SEC-35) | Éditeur d'actions, préconditions ; côté terrain : compteurs, OT = procédure (Pages L6), équipes, `.ics` ; mesures 100 k objets — P2.14 |
 | **Media & Vision Studio** (D192–D210) | **M1 → M5 sur `main`** (2026-10-12/13, mergé le 13) : suivi et zones, légendes VLM + fusion sourcée, `text_decide` (Laya sur tract), Vision Lab (annotation, vidéos, interpolation, COCO), **entraînement sans Python** (tête YOLOX en Rust), file « à revoir », fichier comme source de flux, **rapports** = pages écrites par des nœuds (`llm_text`, `page_write`, `page_pdf`, pièce jointe e-mail) avec approbation humaine | INT8 après banc Pi 5 ; essais caméra et fournisseur réels — P2.15 |
 | **Couches géographiques** | **Phase F sur `main`** 2026-10-10 (`geo-layers.md`) : fournisseurs géo d'org (fond, géocodage, reverse, routage) en coffre + proxy serveur, aucun fond semé, recherche d'adresse sur /map. **Phase A** 2026-11-14, avancée pour le marché du travail (`labor-market.md`) : PostGIS, `geo_layers`/`geo_features`, tuiles MVT, couches sous les sites sur /map | Image CNPG PostGIS en prod ; itinéraire entre POI, nœuds `geo_geocode`/`geo_route`, outils assistant ; phases B–E (import, cache, upsert, style) après la 0.2.0 — P2.16 |
 | **Marché du travail** | **Premiers lots** 2026-11-15 (`labor-market.md` §11) : pack `labor_market_fr`, pipelines BMO, tension (API France Travail) et offres d'emploi quotidiennes, requêtes nommées ; moteur : xlsx, client credentials, POST JSON, pagination par plage | Identifiants francetravail.io de l'org au coffre ; ISCO/NUTS (LM1), rapprochement offres → sites (LM2), INSEE (LM3), score et zones (LM4, LM5) |
 | **Pages collaboratives** | **L1–L2 sur `main`** 2026-10-10/11 (`pages.md` §15) : yrs serveur + Yjs client, édition live multi-pods, versions nommées, commentaires ancrés, import/export Markdown, éditeur façon Notion. 2026-10-13 : versions écrites par un flow, approbation, **export PDF** (krilla, part de L7) | Indexation des pages, import .docx, test multi-pods réel ; L3+ (mentions, vues de collection, procédures) — P2.17 |
 | **Documents & recherche IA** | **P1 sur `main`** 2026-10-10 (`doc-search.md` §14) : extraction txt/md/docx/pdf/csv/xlsx/ods, `text_chunks` partagé, recherche lexicale, outils de l'assistant cités, **liste blanche stricte des téléversements** | Visionneuse PDF, outils testés avec un vrai LLM ; P2+ (pgvector, tableurs en SQL) après la 0.2.0 — P2.18 |
-| **Dossiers (enquête, RCA)** | **Sur `main`** 2026-10-11/12 (`cases.md`) : dossiers à membres et liens datés, ouverture depuis un événement, pack `investigation`, hypothèses, gel et export, **espace de travail plein écran** frise × carte × graphe (sigma, repli SVG), traces O2 `positions`. **Empreinte vocale** K19 variante A (`voice-id.md`) : profils consentis par Personne | Détecteurs (co-présence, zones, arrêts), enquête média K42–K47, avis juridique K19, ACL par dossier (V2, D188) — P2.19 |
+| **Dossiers (enquête, RCA)** | **Sur `main`** 2026-10-11/12 (`cases.md`) : dossiers à membres et liens datés, ouverture depuis un événement, pack `investigation`, hypothèses, gel et export, **espace de travail plein écran** frise × carte × graphe (sigma, repli SVG), traces O2 `positions`. **Empreinte vocale** K19 variante A (`media.md` §3.12) : profils consentis par Personne | Détecteurs (co-présence, zones, arrêts), enquête média K42–K47, avis juridique K19, ACL par dossier (V2, D188) — P2.19 |
 | **Hub de kits** | **PRD gelé** 2026-10-10 (`hub.md`) — partage communautaire par Git + CI + index statique, slots et requirements | Rien avant la 0.2.0 — P3 |
 
 ## Branches mergées le 2026-10-13
@@ -664,7 +664,7 @@ Jardin. Lots A → E.
 
 ### P2.13 — Ingestion de flux média : transcription, plages (ajout 2026-10-09) — **code des lots 0 → 6 sur `main`** (2026-10-10), runs 24 h et vérifications réelles à faire
 
-PRD `media-ingest.md` (D159–D175) ; code des lots 0 → 6 sur `main`. Capter
+PRD `media.md` (D159–D175) ; code des lots 0 → 6 sur `main`. Capter
 des flux continus (Icecast, HLS, DASH, RTSP, DVB-T via Tvheadend) en
 **audio seul**, les transcrire en quasi temps réel sur un worker GPU
 (job Loco, tag `asr` réglable), ranger le temps en **plages** annoncées/recalées
@@ -743,7 +743,7 @@ bornée à 4 sauts, illimité en interne ; PostgreSQL 18 maintenu
 **Risque de dispersion acté** : pendant la 0.2.0, aucun nouveau pilier
 fonctionnel ne démarre (correctifs et finition seulement) — à arbitrer
 avec P2.13 et P2.1. Décision #17 — **exception P2.13** (2026-10-09) : le
-média démarre avant la 0.2.0 (`media-ingest.md`, en-tête).
+média démarre avant la 0.2.0 (`media.md`).
 
 ### P2.15 — Media & Vision Studio : tracking, zones, Vision Lab, description (ajout 2026-10-10) — **M1 → M5 livrés (2026-10-12/13)**
 
@@ -1014,7 +1014,7 @@ marketing uniquement).
 
 **Écartés** : OmniParse (Python, GPU, couvert par anydoc), Lorien,
 ArtCraft, Zennotes, **Reticulum** (licence non OSI ; le transport M2M
-reste celui de `m2m-resilient.md` : zenoh-pico + OpenThread, tout open
+reste celui de `edge.md` §3.8 : zenoh-pico + OpenThread, tout open
 source — pas de discussion).
 
 ### P2.25 — Gestion des accès (IAM) et comptes de service (ajout 2026-10-18) — **en cours : I0–I3, I6 (lecture seule) et I7 (première version) livrés 2026-10-19**
@@ -1129,7 +1129,7 @@ A0 (passerelle LLM), qui ne dépend que de D212.
 
 ### P2.30 — Enregistrement des appels et visios (ajout 2026-10-24) — **R1.0 codé 2026-10-29** (enregistreur PNeX : connexion, activation, test de transcription), reste en proposition
 
-Doc : `call-recording.md` (lots R1–R4, décisions à numéroter au PRD).
+Doc : `media.md` §3.13 (lots R1–R4, décisions à numéroter au PRD).
 Usages : commerciaux (compte rendu de `meeting`, P2.28), SAV
 (historique d'appels par client et équipement), notes de réunions
 multi-canaux. Capter appels et visios PC et mobile sans outil tiers et les
@@ -1148,7 +1148,7 @@ Annonce de l'enregistrement obligatoire (RGPD), LED REC sur device.
 Bloquants avant R3 : hôte Bluetooth open source (Zephyr retenu, Bluedroid
 en repli ; BTstack écarté, licence non permissive), portage du protocole
 PneX sous Zephyr, politique de consentement et de
-rétention (`call-recording.md` §10).
+rétention (`media.md` §3.13).
 
 ### P2.31 — Suivi commercial et fin de D341 (ajout 2026-10-26) — **lots DP, CRM1, CRM2, CRM4 poussés** ; priorité 2026-11-03 : robustesse et tests avant toute nouvelle fonctionnalité
 
@@ -1310,7 +1310,7 @@ prix (agent navigateur à la demande) est un PRD séparé.
 Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
 « pas de glissement silencieux »).
 
-- ~~**C2 — agent local**~~ : livré 2026-09-30 (`edge-agent.md`, D95–D99).
+- ~~**C2 — agent local**~~ : livré 2026-09-30 (`edge.md` §3.5, D95–D99).
 - **M1 — POC M2M zenoh-pico WiFi** (sans broker, parc ESP existant, zéro
   achat) : coupure hub → la boucle continue. M2 (6LoWPAN) nécessite un
   prototype MTU avant tout engagement. UI de gestion seulement à M3.
@@ -1377,7 +1377,7 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
 | 13 | ~~Jetons device dans l'URL des WebSockets~~ — tranché 2026-10-09 : en-tête `Authorization` partout (lot L2 de D153, `security.md` §8.3), jeton en URL ignoré | ✅ |
 | 14 | ~~Version firmware par rebuild~~ — tranché 2026-10-03 : 1 build = 1 enregistrement = 1 version, OTA en lot manuelle (O22) | ✅ |
 | 15 | Profils de sécurité : ~~date de lancement de V1 (correctifs protocole, SEC-17 à SEC-19)~~ ; socle de V4 (ESP-IDF C++ ou firmware Rust) ; statut CRA de PneX (avis juridique) | V1 : ✅ livrée le 2026-10-09 (D153–D158) ; V4 : après 1 à 2 ans de communauté |
-| 16 | Flux média : runtime ASR (sherpa-onnx, whisper.cpp ou les deux), ~~tags Loco ou queue dédiée~~ (tranché à la relecture du 2026-10-09 : tags, ASR configurable), superviseur de capture in-process (proposé), agrégation « par plage » (primitive D182), ~~plafond des extraits, amendement de D3~~ (sans objet : pas de publication), ordre vis-à-vis de l'ontologie (`media-ingest.md` §14) | Lot 0 (POC ASR) ; ordre à la validation |
+| 16 | Flux média : runtime ASR (sherpa-onnx, whisper.cpp ou les deux), ~~tags Loco ou queue dédiée~~ (tranché à la relecture du 2026-10-09 : tags, ASR configurable), superviseur de capture in-process (proposé), agrégation « par plage » (primitive D182), ~~plafond des extraits, amendement de D3~~ (sans objet : pas de publication), ordre vis-à-vis de l'ontologie (`media.md` §7) | Lot 0 (POC ASR) ; ordre à la validation |
 | 17 | Ontologie 0.2.0 : ~~**actions D183 remontées dans la 0.2.0 ?**~~ (oui : livrées le 2026-10-13) (au moins une action simple tracée : c'est ce qui rend la plateforme « opérationnelle », et le pack Maintenance et les procédures de `pages.md` en dépendent) ; ~~identifiant d'objet global (UUID vs `ResourceRef`)~~ (tranché 2026-10-10 : UUID par table d'identité universelle), moment du bitemporel, format du schéma de propriétés (maison vs JSON Schema), liaison device → objet (lien générique vs table dédiée), packs forkables ou surcouche, langage de requête textuel, spécification publique du noyau ; ordre P2.13 / P2.14 / P2.1 vu le gel des nouveaux piliers (`ontology.md` §9) | À la validation du PRD |
 | 18 | ~~Media & Vision Studio : pose humaine ou poste de travail, tract vs `ort`, entraînement CPU, D174 en usage interne, détection → `device_write`, version cible~~ — **tranché 2026-10-13** (`media-vision-studio.md` §10) : poste de travail, tract seul, entraînement en Rust sans Python, détection → `device_write` régie par D128, pas d'attente de tag | ✅ |
 | 19 | ~~Garder SQLite à côté de PostgreSQL~~ — tranché 2026-10-10 : **PostgreSQL obligatoire, SQLite abandonné**. La parité coûte à chaque migration et chaque requête (`ilike`, FK par reconstruction de table, pas de PostGIS) et pèse de plus en plus lourd à mesure que le produit grandit ; l'argument Raspberry Pi ne tient pas, Postgres reste léger sur un Pi. Les nouveaux développements ne gèrent plus SQLite | ✅ |
@@ -1503,7 +1503,7 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
   tracées, implémentation par vagues ; eFuses gelés jusqu'à 1 à 2 ans de
   validation communautaire du firmware. Registre : SEC-17 à SEC-20.
 - **2026-10-09 (média + ontologie)** — Deux PRD proposés, rien
-  d'implémenté : P2.13 ingestion de flux média (`media-ingest.md`,
+  d'implémenté : P2.13 ingestion de flux média (`media.md`,
   D159–D175, décision #16) et P2.14 noyau ontologique de la 0.2.0
   (`ontology.md`, D176–D191, décision #17). Numérotation décalée de +11 à
   l'intégration (D148–D158 déjà pris par `security.md` §8).
@@ -1635,7 +1635,7 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
   runtime assainis (O72), défauts visuels de l'éditeur (O73), recherche
   globale dans le contenu des documents (O54), `word_timestamps` appliqué
   (O56), suite des listes CRUD (O64). Docs d'architecture alignées
-  (`flow-engine.md` §3.6, `edge-model.md` §3, `design-system.md` règle 8).
+  (`flow-engine.md` §3.6, `edge.md` §3.1, `design-system.md` règle 8).
 - **2026-10-17 (positionnement)** — Ajout de P2.23 : observabilité IT
   (OTLP logs/traces/métriques, Prometheus scrape + `remote_write`, syslog,
   Loki, InfluxDB, StatsD). PneX = toute donnée, pas seulement le physique ;
@@ -1666,7 +1666,7 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
   (contrat pack + couche d'org, priorité 2), D369 (identité externe et
   frontière des transactions, principe) et D370 (clé d'énumération stable)
   inscrites dans `ontology.md` §11.
-- **2026-10-24 (appels et visios)** — Ajout de P2.30 (`call-recording.md`,
+- **2026-10-24 (appels et visios)** — Ajout de P2.30 (`media.md` §3.13,
   lots R1–R4) : enregistrement des appels et visios pour les commerciaux,
   le SAV et les réunions multi-canaux ; desktop d'abord (loopback + micro,
   détection automatique), puis devices filaire et Bluetooth HFP, proxy

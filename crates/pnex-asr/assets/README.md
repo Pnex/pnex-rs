@@ -9,5 +9,5 @@ from 32-bit float to 16-bit PCM; nothing else was changed.
 Conneau et al., "FLEURS: Few-shot Learning Evaluation of Universal
 Representations of Speech", 2022.
 
-The model check (media-ingest.md D167) transcribes it to measure the load
+The model check (media.md D167) transcribes it to measure the load
 time, the real-time factor and the word error rate of an imported model.

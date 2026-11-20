@@ -5,7 +5,7 @@
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
-/// Topic taxonomy of an org (media-ingest.md D168). Its topics live in the
+/// Topic taxonomy of an org (media.md D168). Its topics live in the
 /// append-only `taxonomy_versions`; `current_version` = 0 before the first.
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "taxonomies")]

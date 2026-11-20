@@ -1,4 +1,4 @@
-//! Audio models of the registry (media-ingest.md D167): `ml_models` rows of
+//! Audio models of the registry (media.md D167): `ml_models` rows of
 //! tasks `asr`, `vad`, `diarization_segmentation` and `speaker_embedding`,
 //! next to the vision ones. What the files dictate (family,
 //! runtime) is read, never typed; the check measures load time, real-time

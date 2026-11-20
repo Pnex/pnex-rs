@@ -32,7 +32,7 @@ pub mod ns {
     pub const OTA_SIGNING_KEY: i32 = 0x504e_0007;
     /// First-use creation of the device CA of one org (key = org id).
     pub const DEVICE_CA: i32 = 0x504e_0008;
-    /// Media stream quota (count + insert) of one org (media-ingest.md D159).
+    /// Media stream quota (count + insert) of one org (media.md D159).
     pub const MEDIA_STREAM_QUOTA: i32 = 0x504e_0009;
     /// Ontology pack install of one org (check installed + write types).
     pub const ONTOLOGY_PACK: i32 = 0x504e_000a;

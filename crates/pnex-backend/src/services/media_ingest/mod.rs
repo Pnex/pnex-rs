@@ -1,4 +1,4 @@
-//! Media ingest (media-ingest.md P2.13): declared streams captured into
+//! Media ingest (media.md P2.13): declared streams captured into
 //! audio segments, transcribed by the queue, text stored in O2.
 //!
 //! - [`capture`]: supervisor of `server` / `worker` captures (fetcher,

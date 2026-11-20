@@ -1,4 +1,4 @@
-//! Time ranges (media-ingest.md D169, D182): named intervals of a scope —
+//! Time ranges (media.md D169, D182): named intervals of a scope —
 //! a show, a shift, a production batch — announced (`planned_*`) and/or
 //! realigned (`actual_*`). Pure, wasm-safe.
 //!

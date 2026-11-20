@@ -1,4 +1,4 @@
-//! Media ingest contract (media-ingest.md P2.13, D159–D166) — streams
+//! Media ingest contract (media.md P2.13, D159–D166) — streams
 //! captured into transcribed audio segments. Pure, wasm-safe.
 //!
 //! - [`MediaStreamKind`], [`CaptureOn`], [`AudioRetention`]: stream config;
@@ -957,7 +957,7 @@ pub struct MediaCaptureDevice {
 
 /// One stream a box captures, pushed over `/ws/media` (D160). `auth_secret`
 /// is the stream's own access credential, sent to that box only over its
-/// authenticated link (media-ingest.md §21, SEC-27); never a storage secret.
+/// authenticated link (media.md §3.10, SEC-27); never a storage secret.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DeviceStream {
     pub id: String,

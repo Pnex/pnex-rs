@@ -13,13 +13,13 @@
 # `owns`, `employs`, `member_of` carry their provenance (source, retrieval
 # date, note): a fact that cannot be sourced is a claim, not a link.
 # Since 1.8.0 `published_by` says who published a piece or a media file
-# (media-review.md D278): any publisher type, so the `media` type of the
+# (media.md D278): any publisher type, so the `media` type of the
 # media coverage pack fits without this pack knowing it.
 # Since 1.9.0 `about` may name the very link a claim bears on (`link`, the
 # link id): a second source or a diverging date for a fact already linked.
 # Since 1.10.0 a statement is quoted word for word from a media, said by a
 # person (cases.md K43), and a person appears in a media file
-# (`appears_in`, cases.md K17, media-review.md D278): present, speaking or
+# (`appears_in`, cases.md K17, media.md D278): present, speaking or
 # mentioned, with the origin of the finding. The programme grain stays
 # `appears_on` of the media coverage pack.
 # Since 1.11.0 personal data is classified (crm.md D442): a person's name,

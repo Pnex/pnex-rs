@@ -443,7 +443,7 @@ pub(super) async fn create(
     // Custom firmware chosen at provisioning (D94): project of the org whose
     // chip family matches the frozen board SoC.
     if let Some(pid) = params.firmware_project_id {
-        // Predefined boards and agents keep their firmware (edge-model.md §2 bis).
+        // Predefined boards and agents keep their firmware (edge.md §2.2).
         if !pnex_core::DeviceFamily::of(&predefined.name).accepts_custom_firmware() {
             return Err(Error::CustomError(
                 StatusCode::BAD_REQUEST,

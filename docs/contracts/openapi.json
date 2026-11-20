@@ -8558,7 +8558,7 @@
             ]
           },
           "fw_version": {
-            "description": "Firmware version announced by the device (\"who runs where\",\nedge-model.md §9) — None until the first announce of a stamped build.",
+            "description": "Firmware version announced by the device (\"who runs where\",\nedge.md §3.7) — None until the first announce of a stamped build.",
             "type": [
               "string",
               "null"
@@ -31492,7 +31492,7 @@
             "type": "object"
           }
         ],
-        "description": "Body of a batch start: the same steps and options on many media, as one\nrequest each (voice-id.md D983, D985: regenerate the recognition of a\nselection with the profiles of the moment)."
+        "description": "Body of a batch start: the same steps and options on many media, as one\nrequest each (media.md D983, D985: regenerate the recognition of a\nselection with the profiles of the moment)."
       },
       "StateInput": {
         "description": "`POST /mailboxes/{id}/state`.",
@@ -34830,7 +34830,7 @@
         "type": "object"
       },
       "VoiceScope": {
-        "description": "Profiles a voice identification compares with (media-review.md D274).",
+        "description": "Profiles a voice identification compares with (media.md D274).",
         "enum": [
           "expected",
           "all"

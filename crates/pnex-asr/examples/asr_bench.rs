@@ -1,4 +1,4 @@
-//! Lot 0 benchmark (media-ingest.md §12): WER, proper-noun recall and real
+//! Lot 0 benchmark (media.md §3.6): WER, proper-noun recall and real
 //! time factor of every model given on the command line.
 //!
 //! ```text

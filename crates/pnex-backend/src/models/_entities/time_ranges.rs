@@ -5,7 +5,7 @@
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
-/// Named interval of a scope (media-ingest.md D169, D182): announced
+/// Named interval of a scope (media.md D169, D182): announced
 /// (`planned_*`) and/or realigned (`actual_*`). At least one complete pair.
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "time_ranges")]

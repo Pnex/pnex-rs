@@ -1,4 +1,4 @@
-//! Spans of a media attributed to persons of the ontology (media-review.md
+//! Spans of a media attributed to persons of the ontology (media.md
 //! D272): small rows edited by people, the text stays in O2.
 
 use sea_orm_migration::prelude::*;

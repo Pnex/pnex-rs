@@ -4,7 +4,7 @@
 |---|---|
 | Statut | **Proposé — 2026-10-12**, zéro code. Emplacement du composant **ouvert** (§5) |
 | Contexte | Prolongement de l'enquête média (`cases.md` K42–K47) : repérer les formules qui reviennent d'un locuteur et d'un média à l'autre, mesurer la diversité des voix et des sources, documenter des indices de coordination |
-| Repose sur | Captation et transcription (`media-ingest.md` D159–D175, lots 0–6 codés), déclarations et détecteurs (`cases.md` K43–K45), apparitions (K17), ontologie (liens temporels D179, packs D190), recherche documentaire (`doc-search.md` : Postgres + `pg_trgm` + `pgvector`), assistant (`ai-assistant.md` §9, D123) |
+| Repose sur | Captation et transcription (`media.md` D159–D175, lots 0–6 codés), déclarations et détecteurs (`cases.md` K43–K45), apparitions (K17), ontologie (liens temporels D179, packs D190), recherche documentaire (`doc-search.md` : Postgres + `pg_trgm` + `pgvector`), assistant (`ai-assistant.md` §9, D123) |
 | Numérotation | **DA1…DA10** |
 
 ## 1. Le besoin
@@ -128,7 +128,7 @@ qui ne s'excluent pas :
 |---|---|---|---|
 | **A — À la demande, par l'assistant depuis une note** | Dans une page de l'enquête, on écrit une consigne : « cherche les formules récurrentes sur ce sujet entre le 3 et le 10 mars, sur ces 4 chaînes ». L'assistant appelle un **outil de lecture** `find_repeated_phrases` (calcul DA2 déterministe, en Rust, sur les transcriptions O2 de la fenêtre et des flux demandés), puis place ses propositions dans la file de revue | Aucune infrastructure permanente ; démarre avec la captation actuelle ; calcul borné par la demande ; résultat déjà rattaché à l'enquête | Calcul à chaque demande (relecture d'O2) ; une formule n'apparaît que si on la cherche |
 | **B — Au fil de l'eau, dans le worker de transcription** | Chaque segment transcrit produit ses empreintes (DA2), stockées dans Postgres (`phrase_fingerprints` : empreinte, flux, instant, segment ; index B-tree, fenêtre glissante) | « Où d'autre cette phrase a-t-elle été dite ? » devient instantané ; une formule émergente peut être signalée | Volume à tenir (≈ 20 000 lignes par jour et par flux, ordre de grandeur à mesurer) ; il faut choisir les flux indexés |
-| **C — Un flow de veille** | Un nœud `phrase_watch` dans un flow déployé par l'humain (D123), qui suit des formules ou des intervenants et alerte | S'intègre aux notifications existantes | Le runtime de flows n'a pas encore d'accès au LLM de l'org (`media-ingest.md`, lot 2) ; veille seulement, pas de découverte |
+| **C — Un flow de veille** | Un nœud `phrase_watch` dans un flow déployé par l'humain (D123), qui suit des formules ou des intervenants et alerte | S'intègre aux notifications existantes | Le runtime de flows n'a pas encore d'accès au LLM de l'org (`media.md` D168) ; veille seulement, pas de découverte |
 
 **Proposition** : commencer par **A**, qui démarre sans infrastructure et
 valide l'usage. Le calcul DA2 vit dans `pnex-core` (fonction pure,
@@ -197,7 +197,7 @@ L'outil est limité :
 
 Les seuils (k, w, n, m, T) et le taux de faux positifs se mesurent sur
 un corpus réel avant toute mise en avant. La captation de 24 h prévue
-comme critère de sortie du lot 1 de `media-ingest.md` sert de banc :
+comme critère de sortie du critère de capture de 24 h de `media.md` §3.4 sert de banc :
 - volume d'empreintes par jour et par flux ;
 - part des formules candidates jugées pertinentes par un humain ;
 - temps de calcul de l'option A sur Pi 5 pour 7 jours × 4 flux.

@@ -55,7 +55,7 @@ pub enum FlowNodeKind {
     /// PNEX custom node: multi-channel notification (`websocket`/`webhook`
     /// v1) rendered from an org minijinja template (D49–D54).
     PnexNotify { config: NotifyNodeConfig },
-    /// PNEX custom node: configurable HTTP client request (C1a, edge-model
+    /// PNEX custom node: configurable HTTP client request (C1a, D48 edge.md §2.3
     /// amendment 2026-09-15) — the response replaces the payload, configurable
     /// proxy (direct or scraping provider).
     HttpFetch { config: HttpFetchNodeConfig },
@@ -289,17 +289,17 @@ pub enum FlowNodeKind {
         #[serde(default)]
         config: crate::site_crawl::SiteCrawlConfig,
     },
-    /// Event source of transcribed media segments (media-ingest.md D163):
+    /// Event source of transcribed media segments (media.md D163):
     /// one message per segment (or sentence) of the listed streams.
     MediaSource {
         config: crate::media_ingest::MediaSourceConfig,
     },
-    /// Topic classifier (media-ingest.md D168): tags the text of each
+    /// Topic classifier (media.md D168): tags the text of each
     /// message with the topics of one pinned taxonomy version.
     TopicClassify {
         config: crate::taxonomy::TopicClassifyConfig,
     },
-    /// Time range writer (media-ingest.md D169): upserts `msg.payload` as a
+    /// Time range writer (media.md D169): upserts `msg.payload` as a
     /// range of the configured scope, keyed by `external_id`.
     RangeUpsert {
         config: crate::time_range::RangeUpsertConfig,

@@ -4417,7 +4417,7 @@ err-series-label-value-invalid = Invalid dimension value
 err-asr-profile-not-found = Transcription profile not found.
 err-asr-profile-name-taken = A transcription profile with this name already exists.
 
-# Streams page (media-ingest.md P2.13)
+# Streams page (media.md P2.13)
 nav-streams = Streams
 secrets-usage-media-stream = Media stream
 secrets-usage-geo-provider = Geo provider
@@ -4789,7 +4789,7 @@ err-account-trades-too-large = Trades file too large: { $max_kib } KiB and { $ma
 err-account-trades-csv-invalid = Trades file refused: line { $line }, column { $column }.
 err-time-range-scope-unknown = The time range writer targets a stream that does not exist (anymore) in the organization: pick it again in the node.
 
-# Transcription models, profiles and search (media-ingest.md D164–D167)
+# Transcription models, profiles and search (media.md D164–D167)
 streams-tab-streams = Streams
 streams-tab-transcripts = Transcriptions
 streams-tab-models = Models and profiles
@@ -5709,7 +5709,7 @@ fuzzy-precision-range = Between two dates
 fuzzy-precision-approx = About
 case-open-from-event = Open a case
 case-from-event-title = Incident
-# Voice identification (voice-id.md)
+# Voice identification (media.md §3.12)
 nav-voice-id = Voice profiles
 onto-tab-voice = Voice
 voice-title = Voice profile

@@ -1,4 +1,4 @@
-//! CSV / iCalendar import of time ranges (media-ingest.md D169): small
+//! CSV / iCalendar import of time ranges (media.md D169): small
 //! parsers written here (no new dependency), then the shared upsert keyed
 //! by `external_id` (CSV column, ICS `UID`) — re-importing a schedule
 //! updates it. Rows are checked one by one; a faulty row is counted with

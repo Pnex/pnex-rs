@@ -107,7 +107,7 @@ pub struct PinDecl {
     pub safe_state: Option<SafeState>,
 }
 
-/// Description of a manifest capability (D47, edge-model.md §2/§7).
+/// Description of a manifest capability (D47, edge.md §2.1/§3.4).
 /// Canonical D16 ids (`[a-z0-9_:]`), D44 families (`measurement` | `state` |
 /// `actuator`). The manifest is **additive only** (never a rename,
 /// CONTRACT school).

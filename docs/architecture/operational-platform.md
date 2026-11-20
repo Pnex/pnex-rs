@@ -403,7 +403,7 @@ fonction LLM passe des évaluations avant sa promotion en production (étend D39
 
 PneX pousse des modèles signés aux sites et devices capables, avec retour arrière. Les décisions
 locales suivent les mêmes enveloppes (D564). Hors ligne, le site applique une politique déjà signée
-et n'en reçoit pas de nouvelle. Le M2M résilient (`m2m-resilient.md`) reste le socle.
+et n'en reçoit pas de nouvelle. Le M2M résilient (`edge.md` §3.8) reste le socle.
 
 ### D567 — Partage entre orgs : explicite, jamais implicite
 

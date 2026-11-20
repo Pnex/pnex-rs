@@ -1,4 +1,4 @@
-//! Call recording (call-recording.md R1.1): while recording is enabled, a
+//! Call recording (media.md §3.13): while recording is enabled, a
 //! call app holding the microphone starts a capture, which stops
 //! [`RELEASE`] after the app lets the microphone go. A recording can also
 //! be started and stopped by hand. Closed recordings are sent to the org's

@@ -1,4 +1,4 @@
-//! Transcription runs of a media asset (media-review.md D276): a run is a
+//! Transcription runs of a media asset (media.md D276): a run is a
 //! small row here (origin, version, language), its text lives in O2 in the
 //! `tx_<slug>` stream of the asset's hidden batch stream, each document
 //! tagged with `run`, `origin` and `offset_ms` (position in the media).

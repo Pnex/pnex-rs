@@ -1,4 +1,4 @@
-//! Capture health (media-ingest.md D160 supervision, D171 technical
+//! Capture health (media.md D160 supervision, D171 technical
 //! series). Every [`HEALTH_EVERY`] one pod (lease `media-health`) samples
 //! each enabled stream from its segment rows, writes
 //! `media_capture_up`, `media_capture_gap_seconds`,

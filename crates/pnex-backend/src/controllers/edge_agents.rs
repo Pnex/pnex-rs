@@ -1,4 +1,4 @@
-//! Edge agent management (D95, docs/architecture/edge-agent.md).
+//! Edge agent management (D95, docs/architecture/edge.md §3.5).
 //!
 //! Org-scoped (owner/admin/member for writes):
 //! - `GET|PATCH /api/v1/devices/{id}/agent` — overview + distinct keys quota;

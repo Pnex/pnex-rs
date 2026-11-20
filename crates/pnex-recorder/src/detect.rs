@@ -1,4 +1,4 @@
-//! Call detection (call-recording.md R1.1): a call app holding the
+//! Call detection (media.md §3.13): a call app holding the
 //! microphone. Linux: the PulseAudio record streams (source outputs) and the
 //! app behind each one. Windows: the microphone entries of the privacy
 //! registry that are in use.

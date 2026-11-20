@@ -1,4 +1,4 @@
-//! Runs of a media file's transcription (media-review.md D276): the hidden
+//! Runs of a media file's transcription (media.md D276): the hidden
 //! batch stream belongs to the asset (a post of a platform has its
 //! subtitles before any video file), each run says where its text comes
 //! from (`pnex` ASR on a version, or the `platform` subtitles).

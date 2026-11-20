@@ -1,5 +1,5 @@
 //! Page `/media/:id/review` — review of an audio or video file
-//! (media-review.md D271): the media in the centre (nothing for an audio
+//! (media.md D271): the media in the centre (nothing for an audio
 //! but the shared transport), the transcript on the right, the speakers on
 //! the shared timeline below, one cursor across the three. A click on a
 //! word, on the timeline or on the player moves all of them.

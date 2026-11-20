@@ -1,5 +1,5 @@
 //! `SeaORM` Entity (hand-written on the generated shape).
-//! Voice profiles (voice-id.md, cases.md K19).
+//! Voice profiles (media.md §3.12, cases.md K19).
 
 use sea_orm::entity::prelude::*;
 

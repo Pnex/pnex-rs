@@ -1,4 +1,4 @@
-//! ASR profiles (media-ingest.md D164): which registry models a stream
+//! ASR profiles (media.md D164): which registry models a stream
 //! transcribes with. Changing a profile only affects new segments.
 
 use pnex_asr::protocol::{TASK_ASR, TASK_EMBEDDING, TASK_SEGMENTATION, TASK_VAD};

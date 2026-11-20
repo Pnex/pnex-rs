@@ -1,4 +1,4 @@
-//! Streams page (media-ingest.md P2.13, §7): the org's captured audio
+//! Streams page (media.md §3.4, P2.13): the org's captured audio
 //! streams — D14 list with capture state, create / edit (URL, vault
 //! secret, transcription profile, retention, TDM check), enable, delete.
 //! The server enforces roles; the UI hides writes from viewers.

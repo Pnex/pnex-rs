@@ -1,4 +1,4 @@
-//! ICY in-band metadata (media-ingest.md D170): with `Icy-MetaData: 1`,
+//! ICY in-band metadata (media.md D170): with `Icy-MetaData: 1`,
 //! an Icecast/Shoutcast server interleaves a metadata block every
 //! `icy-metaint` audio bytes (one length byte × 16, then the block). The
 //! demuxer strips the blocks so only audio reaches the decoder, and

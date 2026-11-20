@@ -1,4 +1,4 @@
-//! Time ranges API (media-ingest.md D169): `/api/v1/time-ranges` (D14
+//! Time ranges API (media.md D169): `/api/v1/time-ranges` (D14
 //! list by scope and window, create, update, delete, CSV/ICS import).
 
 use pnex_core::time_range::{RangeImportResult, TimeRange, TimeRangeInput};

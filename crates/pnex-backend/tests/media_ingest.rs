@@ -1,4 +1,4 @@
-//! Media ingest API (media-ingest.md D159, D164): stream CRUD, frozen
+//! Media ingest API (media.md D159, D164): stream CRUD, frozen
 //! slug, quota, URL rules, secret bound to the URL origin (R9), org
 //! isolation (R1) and viewer read-only (R2). Egress refusals are unit
 //! tested in `services::media_ingest::streams` (tests run with `open`).

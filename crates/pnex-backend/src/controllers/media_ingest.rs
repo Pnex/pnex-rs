@@ -1,4 +1,4 @@
-//! Media ingest API (media-ingest.md §6, P2.13): streams, their segments
+//! Media ingest API (media.md §6, P2.13): streams, their segments
 //! and ASR profiles. Org from the principal (R1), `can_write` at the head
 //! of every write handler (R2), no secret value in any DTO (R4, R16).
 

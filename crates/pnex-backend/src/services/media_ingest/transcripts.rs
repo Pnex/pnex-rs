@@ -1,4 +1,4 @@
-//! Transcriptions in O2 logs (media-ingest.md D165): one document per
+//! Transcriptions in O2 logs (media.md D165): one document per
 //! segment in `tx_<slug>`, never in Postgres. Stream names are built here
 //! from the slug of a stream row of the org; the search text is an escaped
 //! literal (`match_all`), bounded.

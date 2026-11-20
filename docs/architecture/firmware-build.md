@@ -129,7 +129,7 @@ du sous-process `pio run`**, pas en argv. Valeurs consommées par
 | `DEVICE_ID` | **base64** | `cHN5Y2hvbG9naWNhbC10ZQo=` = `psychological-te` |
 | ~~`WS_SSL`~~ | — | **supprimée le 2026-10-09** (D154) : le firmware ne parle que `wss://`/`https://`, sans `setInsecure` ; il n'existe plus de build en clair |
 | `ENCRYPTION_KEY` | **base64** | `device_tokens.encryption_key` (32 octets) = clé partagée du lien Noise (D156) ; vide ou invalide → le device ne se connecte jamais (plus de mode en clair, SEC-19). Consommée par `lib/pnex/src/pnex_crypto.cpp` |
-| `PNEX_FW_VERSION` | clair (id de build) | version stampée dans le binaire, annoncée à l'announce, sert de clé à l'artefact OTA versionné (2026-09-22, OTA — cf. ota.md) |
+| `PNEX_FW_VERSION` | clair (id de build) | version stampée dans le binaire, annoncée à l'announce, sert de clé à l'artefact OTA versionné (2026-09-22, OTA — cf. edge.md §3.7) |
 | `PNEX_CA_CERT` | **base64** (PEM) | racine épinglée WS+OTA (`pnex_tls`), **injectée automatiquement depuis D70** : le worker lit `PNEX_CA_CERT_FILE` (= `deploy/edge/pki-data/device-ca.pem` : CA locale, ou ISRG Root X1 en cloud) à chaque build ; toujours posée. **Obligatoire depuis le 2026-10-09** : vide = aucune poignée de main TLS n'aboutit (plus de `setInsecure`), le serveur refuse un tel build hors tests (`build_no_ca`) |
 | `PNEX_CLIENT_CERT` / `PNEX_CLIENT_KEY` | **base64** (PEM) | identité TLS client du device (D153), émise par la CA de l'org à chaque build ; sans elle le serveur ferme en 4014 |
 | `PNEX_OTA_PUBKEY` | hex (64) | clé publique Ed25519 de l'instance (SEC-18) : toute image OTA non signée par elle est refusée |
@@ -230,7 +230,7 @@ le modal affiche l'avertissement et renvoie vers le téléchargement + esptool).
 > `custom-firmware.md`)** : le wizard ne propose plus `custom_device` ni les
 > snippets à compiler en local. Ce qui reste valable : l'admission par
 > manifeste `Announce.pins` (utilisée par les firmwares de l'IDE) et la lib
-> PneX commune. Familles de devices : `edge-model.md` §2 bis.
+> PneX commune. Familles de devices : `edge.md` §2.2.
 > **2026-10-02** : code Tier 2 purgé — l'admission par manifeste ne vaut
 > que pour un device à `firmware_project_id`, toujours en chip-caps strictes
 > (plus de mode permissif) ; la suite de cette section est historique.

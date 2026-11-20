@@ -1,4 +1,4 @@
-//! Voice profiles (voice-id.md, cases.md K19 variant A): one consented
+//! Voice profiles (media.md §3.12, cases.md K19 variant A): one consented
 //! profile per person object, its enrolment clips kept as audio media
 //! assets, the centroid sealed with the secrets keyring (never in clear).
 //! Deleting the person, or revoking the consent, deletes the profile.

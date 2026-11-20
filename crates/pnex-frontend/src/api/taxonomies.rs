@@ -1,4 +1,4 @@
-//! Topic taxonomies API (media-ingest.md D168): `/api/v1/taxonomies`.
+//! Topic taxonomies API (media.md D168): `/api/v1/taxonomies`.
 
 use pnex_core::taxonomy::{Taxonomy, TaxonomyInput, TaxonomyVersion, TaxonomyVersionInput};
 

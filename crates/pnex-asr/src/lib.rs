@@ -1,4 +1,4 @@
-//! Speech-to-text for media ingestion (`docs/architecture/media-ingest.md`,
+//! Speech-to-text for media ingestion (`docs/architecture/media.md`,
 //! D166–D167). One [`Transcriber`] trait, one adapter per runtime:
 //!
 //! - [`sherpa`] (feature `sherpa`): sherpa-onnx, ONNX models (Parakeet,
@@ -89,7 +89,7 @@ const UTTERANCE_GAP: usize = 2 * SAMPLE_RATE as usize;
 /// nothing the VAD missed is dropped. Without a long silence it is one
 /// plain transcription. A window holding utterances separated by silence
 /// otherwise loses one of them: measured on Canary and Parakeet
-/// (call-recording.md, R1.1). Word times stay on the segment clock.
+/// (media.md §3.13). Word times stay on the segment clock.
 pub fn transcribe_spans(
     asr: &mut dyn Transcriber,
     samples: &[f32],

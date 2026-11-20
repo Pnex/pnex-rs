@@ -1,4 +1,4 @@
-//! Process protocol between the server and `pnex-asr serve` (media-ingest.md
+//! Process protocol between the server and `pnex-asr serve` (media.md
 //! D166–D167). The runtime lives in its own process: a native crash never
 //! takes the server down, the model stays loaded between segments, and the
 //! server build links no native library.

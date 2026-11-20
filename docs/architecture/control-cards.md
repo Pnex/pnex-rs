@@ -171,7 +171,7 @@ consomme et jette (anti-engorgement si un producteur est câblé).
 
 - Firmware de la carte mixte **non écrit** — le contrat ci-dessus est
   testé côté serveur par un device WS mocké (`tests/regulator.rs`) ;
-- `RegState` routé vers O2 depuis le 2026-09-13 (F2, edge-model.md §11) :
+- `RegState` routé vers O2 depuis le 2026-09-13 (F2, edge.md §3.4) :
   séries `<node>_sensor/_out/_cycles`, `source_type=reg_state` — mesure NaN
   = pas de point (trou, jamais d'invention) ;
 - conflit cross-flows = warn + skip (pas de blocage du deploy) ;

@@ -1,4 +1,4 @@
-//! Filtered fetcher (media-ingest.md D160): the only component that talks
+//! Filtered fetcher (media.md D160): the only component that talks
 //! to the stream's host. Redirects are followed by hand so each hop is
 //! re-checked (R8) and the credential only ever goes to the stream's exact
 //! origin; HLS playlists are read here, never by ffmpeg. Icecast streams

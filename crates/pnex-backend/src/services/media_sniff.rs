@@ -52,7 +52,7 @@ pub enum Format {
     /// Model archives only (sherpa-onnx publishes some as zip).
     ModelZip,
     Doc(DocFormat),
-    /// Audio clips (voice-id.md: enrolment of a voice profile).
+    /// Audio clips (media.md §3.12: enrolment of a voice profile).
     Wav,
     Mp3,
     Ogg,

@@ -1,4 +1,4 @@
-//! Live measures of lot 5 (media-ingest.md §20), ignored by default: they
+//! Live measures of lot 5 (media.md §3.7), ignored by default: they
 //! need the sherpa runtime and models cached in `~/.cache/pnex-asr-test`
 //! (`PNEX_ASR_TEST_DIR`):
 //! - `models/silero_vad.onnx` (MIT);
@@ -880,7 +880,7 @@ fn slice(audio: &[f32], s: u32, e: u32) -> &[f32] {
     &audio[a..b]
 }
 
-/// Recognition by voice prints first (voice-id.md D978–D984) on AMI: each
+/// Recognition by voice prints first (media.md D978–D984) on AMI: each
 /// participant's print is trained on the other meetings of the series, the
 /// test meeting is cut in production windows, its turns in short pieces,
 /// each piece matched against every print, the rest grouped anonymously.

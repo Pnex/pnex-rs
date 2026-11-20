@@ -1,4 +1,4 @@
-//! "Ranges" tab of /streams (media-ingest.md D169): time ranges of a stream
+//! "Ranges" tab of /streams (media.md D169): time ranges of a stream
 //! (or of the org) for one local day — planned vs actual, origin, source
 //! link — with create / edit / delete and CSV / ICS import for writers.
 //! A planned-vs-actual timeline of the day sits above the table (lot 4).

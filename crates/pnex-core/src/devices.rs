@@ -32,7 +32,7 @@ pub const GENERIC_IO_PREDEFS: &[&str] = &[
     "generic_esp32c6",
 ];
 
-/// Product family of a catalogue model (edge-model.md §2 bis).
+/// Product family of a catalogue model (edge.md §2.2).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DeviceFamily {
     /// Generic PneX firmware (I/O from the UI), or a custom IDE project
@@ -216,7 +216,7 @@ pub struct Device {
     #[serde(default)]
     pub latest_build: Option<LatestBuild>,
     /// Firmware version announced by the device ("who runs where",
-    /// edge-model.md §9) — None until the first announce of a stamped build.
+    /// edge.md §3.7) — None until the first announce of a stamped build.
     #[serde(default)]
     pub fw_version: Option<String>,
     /// OTA admission: the announced caps manifest contains the `ota` cap.

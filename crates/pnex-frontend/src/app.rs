@@ -81,7 +81,7 @@ pub enum Route {
         #[route("/media?:label")]
         Media { label: String },
 
-        // Review of an audio or video file: media, transcript, speakers (media-review.md D271).
+        // Review of an audio or video file: media, transcript, speakers (media.md D271).
         #[route("/media/:id/review")]
         MediaReview { id: String },
 
@@ -97,15 +97,15 @@ pub enum Route {
         #[route("/models")]
         Models {},
 
-        // Captured audio streams, transcribed by the queue (media-ingest.md P2.13).
+        // Captured audio streams, transcribed by the queue (media.md P2.13).
         #[route("/streams")]
         Streams {},
 
-        // Review of a window of a stream: text, speakers, kept audio (media-review.md D271).
+        // Review of a window of a stream: text, speakers, kept audio (media.md D271).
         #[route("/streams/:id/review")]
         StreamReview { id: String },
 
-        // Consented voice profiles of persons (voice-id.md).
+        // Consented voice profiles of persons (media.md §3.12).
         #[route("/voice-id")]
         VoiceId {},
 

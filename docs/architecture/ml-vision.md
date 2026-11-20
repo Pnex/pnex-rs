@@ -4,7 +4,7 @@
 > (tout-Rust, pas de Python côté plateforme), à valider par le POC étape 1.
 > **Périmètre :** reconnaissance d'objets sur vidéo, machine learning
 > classique, prédiction sur télémétrie IoT.
-> Renvois : `roadmap.md` (axe C, phasing), `edge-model.md` (nœuds flow),
+> Renvois : `roadmap.md` (axe C, phasing), `edge.md` (nœuds flow),
 > `notifications.md` (alertes, N1–N4), `media.md` (média D21).
 
 ## Objectif

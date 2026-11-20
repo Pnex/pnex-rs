@@ -187,7 +187,7 @@ Sévérité : HIGH = compromission inter-org, plateforme ou prise de compte. MED
 | SEC-15 | LOW | **Image `pnex-builder-rs` : paquets Python vulnérables (7 HIGH, 0 CRITICAL)** | R20 | corrigé pour 0.1.0-beta.4 (11 sur 12) ; `ecdsa` accepté (pas de correctif amont) |
 | SEC-16 | LOW | **Firmware : CA épinglée décodée dans un buffer fixe avant le contrôle de taille** | D70 | corrigé 2026-10-08 |
 | SEC-17 | HIGH | **Frames device non authentifiées et sans anti-rejeu** (ChaCha20 seul, D8) | D8 | corrigé 2026-10-08 : lien Noise NNpsk0 (D156) serveur, agent et firmware, D8 supprimé ; TLS mutuel livré ensuite (D153, §8.3) |
-| SEC-18 | MEDIUM | **OTA non authentifiée, pas d'anti-downgrade sur ESP32** | — | corrigé 2026-10-09 : image signée Ed25519 liée au device et à la version, clé publique compilée, anti-downgrade sur toutes les puces (`ota.md` §4) ; banc 8266 + C6 : OTA signée acceptée, downgrade refusé ; signature invalide testée sur hôte seulement ; signature hors builder = EX-B7 (V2) |
+| SEC-18 | MEDIUM | **OTA non authentifiée, pas d'anti-downgrade sur ESP32** | — | corrigé 2026-10-09 : image signée Ed25519 liée au device et à la version, clé publique compilée, anti-downgrade sur toutes les puces (`edge.md` §3.7) ; banc 8266 + C6 : OTA signée acceptée, downgrade refusé ; signature invalide testée sur hôte seulement ; signature hors builder = EX-B7 (V2) |
 | SEC-19 | MEDIUM | **Firmware : clé de chiffrement vide = trafic en clair** | R16 | corrigé 2026-10-08 : sans clé valide le device ne se connecte pas (`pnex_crypto.cpp`, `pnex_transport.cpp`) |
 | SEC-20 | LOW | **Secrets du device en clair dans le flash** (PSK WiFi, jeton, clé) | R16 | accepté jusqu'à V4 (EX-C1, EX-C3) : exige des eFuses, gelés avant la validation communautaire du firmware |
 | SEC-21 | HIGH | **En-têtes de l'edge crus sans preuve d'origine** (`X-Forwarded-Proto`, `X-Client-Cert`) : le port du backend est joignable sans nginx, un client pouvait les forger | R7 | corrigé 2026-10-09 : secret partagé edge ↔ backend (`PNEX_EDGE_SECRET`, en-tête `X-Pnex-Edge`, temps constant) ; sans lui les en-têtes de l'edge sont ignorés ; vérifié en direct (close 4013) |
@@ -460,7 +460,7 @@ Impact : **L** = logiciel réversible, **E** = eFuse irréversible, **P** = proc
 
 | ID | Exigence | Profil | Impact | Vague | État |
 |---|---|---|---|---|---|
-| EX-B1 | Image signée Ed25519, clé publique embarquée, vérifiée avant bascule | O | L | V1 | Fait (SEC-18, `ota.md` §4) |
+| EX-B1 | Image signée Ed25519, clé publique embarquée, vérifiée avant bascule | O | L | V1 | Fait (SEC-18, `edge.md` §3.7) |
 | EX-B2 | Anti-downgrade logiciel sur toutes les puces | O | L | V1 | Fait sans NVS : version signée comparée à l'image en cours |
 | EX-B3 | Fenêtres de maintenance et approbation avant OTA | I | L | V2 | OTA immédiate |
 | EX-B4 | Déploiement progressif, arrêt sur échec | I | L | V2 | OTA en lot manuelle |

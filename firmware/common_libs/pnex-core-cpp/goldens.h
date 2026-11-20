@@ -2,7 +2,7 @@
 // (crates/pnex-core/src/control.rs). Regen:
 //   PNEX_REGEN_GOLDENS=1 cargo test -p pnex-core --test golden_vectors
 // Replayed by firmware/core-cpp-tests (Unity, host) — golden vectors
-// Rust = C++ tests (D20 §6, edge-model.md §3 rule 2).
+// Rust = C++ tests (D20 §6, edge.md §3.1 rule 2).
 #pragma once
 
 #include <cstddef>

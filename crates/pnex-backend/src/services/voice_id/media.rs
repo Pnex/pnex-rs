@@ -1,5 +1,5 @@
 //! Voices of a media file matched against the consented voice profiles
-//! (media-review.md D275), prints first (voice-id.md D978–D985): every turn
+//! (media.md D275), prints first (media.md D978–D985): every turn
 //! of a transcription run is cut in short pieces, each piece is matched
 //! against all the ready profiles of the org's embedding model, so several
 //! people merged under one diarization label are still told apart (AMI:

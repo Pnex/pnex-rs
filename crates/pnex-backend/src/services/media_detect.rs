@@ -1,5 +1,5 @@
-//! Objects detected on a video of the library (media-import-pipeline.md
-//! D215, media-review.md R5): pictures decoded by the confined decoder
+//! Objects detected on a video of the library (media.md
+//! D215, media.md D215): pictures decoded by the confined decoder
 //! (D203) one every [`EVERY_SECS`], run through a detection model of the
 //! org, boxes written to O2 `camera_detections` like the camera layers
 //! (D105) under the source key `media:<asset>`. Boxes only, never pixels.

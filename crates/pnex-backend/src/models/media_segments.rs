@@ -1,4 +1,4 @@
-//! Media ingest (media-ingest.md P2.13) — model wrapper.
+//! Media ingest (media.md P2.13) — model wrapper.
 
 pub use super::_entities::media_segments::{ActiveModel, Column, Entity, Model};
 use sea_orm::entity::prelude::*;

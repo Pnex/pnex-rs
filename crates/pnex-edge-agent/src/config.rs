@@ -31,7 +31,7 @@ pub struct Config {
     /// Points older than this are dropped from the queue (seconds).
     #[serde(default = "default_max_age_secs")]
     pub max_age_secs: u64,
-    /// Capture box (media-ingest.md D159, lot 6b): announce `media_capture`
+    /// Capture box (media.md D159, lot 6b): announce `media_capture`
     /// and capture the streams the server assigns to this agent. Linux
     /// only, needs ffmpeg (`PNEX_FFMPEG` or `ffmpeg` in `PATH`).
     #[serde(default)]

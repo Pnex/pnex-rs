@@ -1,4 +1,4 @@
-//! Voice identification by consented enrolment (`docs/architecture/voice-id.md`,
+//! Voice identification by consented enrolment (`docs/architecture/media.md §3.12`,
 //! cases.md K19): DTOs shared by the server and the UI, and the pure maths
 //! of a voice profile — windowing, energy speech gate, centroid, calibrated
 //! threshold and the verdict of a test. No native runtime: the embeddings

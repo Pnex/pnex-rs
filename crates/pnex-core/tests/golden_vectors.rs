@@ -1,4 +1,4 @@
-//! Golden vectors Rust = C++ (D20 §6, edge-model.md §3 rule 2).
+//! Golden vectors Rust = C++ (D20 §6, edge.md §3.1 rule 2).
 //!
 //! `pnex_core::control` is the **reference** (executable specification of the
 //! control cards); this test replays frozen scenarios and checks
@@ -349,7 +349,7 @@ fn render_cpp_header() -> String {
          // (crates/pnex-core/src/control.rs). Regen:\n\
          //   PNEX_REGEN_GOLDENS=1 cargo test -p pnex-core --test golden_vectors\n\
          // Replayed by firmware/core-cpp-tests (Unity, host) — golden vectors\n\
-         // Rust = C++ tests (D20 §6, edge-model.md §3 rule 2).\n\
+         // Rust = C++ tests (D20 §6, edge.md §3.1 rule 2).\n\
          #pragma once\n\n\
          #include <cstddef>\n\n\
          namespace pnex_goldens {\n\n",

@@ -4,7 +4,7 @@
 > reste à faire. S'applique au firmware générique « type Firmata »
 > (`firmware/lib/pnex`, Tier 1/2, `generic_esp8266` / `generic_esp32*`).
 > Docs liés : `brick0.md` (§8 safe-states, §9 DoD point 9, D121 catalogue
-> en code), `firmware-build.md`, `edge-model.md` (F2 StateReport).
+> en code), `firmware-build.md`, `edge.md` §3.4 (StateReport).
 
 ## 0. Décision
 

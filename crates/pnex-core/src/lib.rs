@@ -150,13 +150,13 @@ pub mod weather;
 pub mod vision;
 pub mod vision_ai;
 
-/// Media ingest (media-ingest.md P2.13): streams, segments, ASR profiles,
+/// Media ingest (media.md P2.13): streams, segments, ASR profiles,
 /// transcript records, server-built names.
 pub mod media_analysis;
 pub mod media_ingest;
 pub mod media_review;
 
-/// Voice identification by consented enrolment (voice-id.md, cases.md
+/// Voice identification by consented enrolment (media.md §3.12, cases.md
 /// K19): profile DTOs, windowing, centroid, calibrated threshold, verdict.
 pub mod voice_id;
 pub mod voice_recognition;
@@ -191,11 +191,11 @@ pub mod pipeline;
 /// Pipeline documents and DTOs (pipelines.md D571).
 pub mod pipelines;
 pub mod rules;
-/// Topic taxonomies (media-ingest.md D168): versioned topics, keyword
+/// Topic taxonomies (media.md D168): versioned topics, keyword
 /// classifier, `topic_classify` node config.
 pub mod taxonomy;
 
-/// Time ranges (media-ingest.md D169, D182): named intervals, announced and
+/// Time ranges (media.md D169, D182): named intervals, announced and
 /// realigned; `range_upsert` node config.
 pub mod time_range;
 

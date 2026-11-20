@@ -37,7 +37,7 @@ pub mod fluid_mixtures;
 pub mod functions;
 pub mod gate;
 pub mod hosted_agents;
-/// Consented voice profiles (voice-id.md).
+/// Consented voice profiles (media.md §3.12).
 pub mod lab;
 pub mod lan_scan;
 pub mod login;

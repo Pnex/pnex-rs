@@ -49,7 +49,7 @@ pub mod image_registries;
 pub mod internal_flow;
 /// Internal websocket delivery endpoint (flow runtime / loopback).
 pub mod internal_notify;
-/// Time ranges (media-ingest.md D169).
+/// Time ranges (media.md D169).
 pub mod lab;
 pub mod mailboxes;
 pub mod market_decisions;
@@ -88,7 +88,7 @@ pub mod site_recipes;
 pub mod stitch_jobs;
 /// System: O2 retention/cleanup + platform status (D72).
 pub mod system;
-/// Topic taxonomies (media-ingest.md D168).
+/// Topic taxonomies (media.md D168).
 pub mod taxonomies;
 pub mod thermo;
 pub mod time_ranges;
@@ -104,7 +104,7 @@ pub mod ws_device;
 pub mod ws_doc;
 /// Browser agent link `/ws/extension` (D262).
 pub mod ws_extension;
-/// Media link of capture boxes (media-ingest.md D160, lot 6b).
+/// Media link of capture boxes (media.md D160, lot 6b).
 pub mod ws_media;
 /// Notifications WS bus (`websocket` channel, D51).
 pub mod ws_notify;

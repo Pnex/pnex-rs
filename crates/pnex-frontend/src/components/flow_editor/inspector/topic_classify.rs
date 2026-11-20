@@ -4,7 +4,7 @@ use super::*;
 use crate::components::ui::FIELD_LABEL;
 use pnex_core::taxonomy::TopicClassifyConfig;
 
-// ─────────────── topic-classify (media-ingest.md D168) ───────────────
+// ─────────────── topic-classify (media.md D168) ───────────────
 
 /// Topic classifier inspector: taxonomy of the org, its version pinned at
 /// pick time (a newer one is offered, never followed silently), text path.

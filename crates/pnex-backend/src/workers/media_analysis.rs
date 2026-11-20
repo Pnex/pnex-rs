@@ -1,4 +1,4 @@
-//! One file analysis step (media-import-pipeline.md D213). The work lives
+//! One file analysis step (media.md D213). The work lives
 //! in [`crate::services::media_analyses::run`]; a failure is recorded on
 //! the `media_analyses` row (state + machine code), never replayed.
 

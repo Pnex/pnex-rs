@@ -134,7 +134,7 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-  # PNeX recorder (call-recording.md R1): tray utility, plain cargo (no dx,
+  # PNeX recorder (media.md §3.13): tray utility, plain cargo (no dx,
   # no asset!). Linux built on 24.04 (system webkit2gtk and libpulse),
   # Windows cross-built with WebView2Loader.dll.
   recorder:

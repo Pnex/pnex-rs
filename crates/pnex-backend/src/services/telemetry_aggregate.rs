@@ -1,4 +1,4 @@
-//! Aggregation by bucket (ontology.md D182, media-ingest.md D171) behind
+//! Aggregation by bucket (ontology.md D182, media.md D171) behind
 //! `POST /api/v1/telemetry/aggregate/query`: one value of a series per time range
 //! of a scope, or per time-of-day slice repeated over the days of a window.
 //! Generic read primitive: a show, a shift, a production batch.

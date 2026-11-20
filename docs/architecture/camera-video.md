@@ -9,7 +9,7 @@
 > `ml-vision.md`.
 > Renvois : `ml-vision.md` (pilier, stack tout-Rust), `media.md` (D21,
 > MediaStore fs/S3), `flow-engine.md`, `notifications.md`,
-> `firmware-build.md`, `edge-model.md`.
+> `firmware-build.md`, `edge.md`.
 
 ## 1. Le besoin
 
@@ -381,7 +381,7 @@ l'uplink ouvert (recalcul au boot, à chaque deploy/stop/suppression).
 - Reste : la rétention du stream `camera_detections` suit la rétention O2
   de l'org (D72), pas celle des segments.
 
-### Note 2026-10-10 — sources « flux » (D175, `media-ingest.md` §21)
+### Note 2026-10-10 — sources « flux » (D175, `media.md` §3.4)
 
 Une caméra IP (RTSP, ou tout flux HLS / MPEG-TS / MP4 avec vidéo) n'est
 pas un device : c'est un `media_streams` dont `tracks` contient `video`.

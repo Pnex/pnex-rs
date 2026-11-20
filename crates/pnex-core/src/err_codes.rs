@@ -220,7 +220,7 @@ pub const EDGE_HOST_LOCKED: &str = "edge-host-locked";
 pub const EDGE_SSID_TAKEN: &str = "edge-ssid-taken";
 /// Another host entry of the org already uses this host (409).
 pub const EDGE_HOST_TAKEN: &str = "edge-host-taken";
-/// OTA deployment (ota.md): an assignment is already active on the device.
+/// OTA deployment (edge.md §3.7): an assignment is already active on the device.
 pub const OTA_IN_PROGRESS: &str = "ota-in-progress";
 /// Device firmware predates OTA support (no `ota` cap announced).
 pub const OTA_NOT_READY: &str = "ota-not-ready";
@@ -521,7 +521,7 @@ pub const BUILD_SUBMIT_FAILED: &str = "build-submit-failed";
 /// Function saved against a stale version.
 pub const FUNCTION_VERSION_CONFLICT: &str = "function-version-conflict";
 
-// ── Media ingest (media-ingest.md P2.13) ─────────────────────────────────
+// ── Media ingest (media.md P2.13) ─────────────────────────────────
 
 /// Media stream not found (or not in the org).
 pub const MEDIA_STREAM_NOT_FOUND: &str = "media-stream-not-found";

@@ -137,7 +137,7 @@ pub fn app_routes() -> AppRoutes {
         .add_route(controllers::ws_device::routes())
         // Camera & video (D73–D80): uplink + live WS, settings/segments API.
         .add_route(controllers::ws_camera::routes())
-        // Capture boxes (media-ingest.md D160, lot 6b).
+        // Capture boxes (media.md D160, lot 6b).
         .add_route(controllers::ws_media::routes())
         .add_route(controllers::cameras::routes())
         .add_route(controllers::camera_recordings::routes())
@@ -389,7 +389,7 @@ impl Hooks for App {
         queue
             .register(crate::workers::stitch_panorama::StitchPanoramaWorker::build(ctx))
             .await?;
-        // Media ingest transcription (media-ingest.md D166): every process
+        // Media ingest transcription (media.md D166): every process
         // that drives the queue registers it, whatever its tags, so no job
         // waits for the reaper.
         queue
@@ -406,7 +406,7 @@ impl Hooks for App {
                 ctx,
             ))
             .await?;
-        // File analyses (media-import-pipeline.md D213).
+        // File analyses (media.md D213).
         queue
             .register(crate::workers::media_analysis::MediaAnalysisWorker::build(
                 ctx,

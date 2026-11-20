@@ -1,4 +1,4 @@
-//! Video frames of a stream (media-ingest.md D175): [`publish`] puts each
+//! Video frames of a stream (media.md D175): [`publish`] puts each
 //! frame cut by [`JpegSplitter`] on the camera bus of the stream (`SET`
 //! with the frame TTL + `PUBLISH` of a `BusFrameMeta`), in the stream key
 //! space — never a device key.

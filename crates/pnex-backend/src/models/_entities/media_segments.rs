@@ -5,7 +5,7 @@
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
-/// State of one captured audio segment (media-ingest.md D162). Bytes live
+/// State of one captured audio segment (media.md D162). Bytes live
 /// in the MediaStore under `storage_key` until transcribed, never here.
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "media_segments")]

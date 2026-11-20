@@ -1,4 +1,4 @@
-//! Stream test (media-ingest.md §7): a first 10 s extract captured by the
+//! Stream test (media.md §3.4): a first 10 s extract captured by the
 //! server and transcribed with the stream's profile, nothing stored.
 
 use dioxus::prelude::*;

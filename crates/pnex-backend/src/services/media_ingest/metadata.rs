@@ -1,4 +1,4 @@
-//! In-band metadata in O2 logs (media-ingest.md D170): one document per
+//! In-band metadata in O2 logs (media.md D170): one document per
 //! ICY title change in `mx_<slug>`, never in Postgres. Events, not ranges:
 //! a flow decides what becomes a time range. Stream names are built here
 //! from the slug of a stream row of the org.

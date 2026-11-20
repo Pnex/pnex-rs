@@ -1,4 +1,4 @@
-//! Speech-to-text on the server side (media-ingest.md D166–D167): audio
+//! Speech-to-text on the server side (media.md D166–D167): audio
 //! models of the registry are extracted once to a local cache, then served
 //! by warm `pnex-asr` processes ([`process`]).
 //!

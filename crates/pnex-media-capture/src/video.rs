@@ -1,4 +1,4 @@
-//! Video track of a stream (media-ingest.md D175): the confined video
+//! Video track of a stream (media.md D175): the confined video
 //! decoder writes concatenated JPEGs on its stdout; [`JpegSplitter`] cuts
 //! them. Publishing them is the carrier's job (server: camera bus).
 

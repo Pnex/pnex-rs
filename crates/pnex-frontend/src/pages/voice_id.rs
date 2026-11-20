@@ -1,4 +1,4 @@
-//! `/voice-id` — voice profiles of the org (voice-id.md): which persons are
+//! `/voice-id` — voice profiles of the org (media.md §3.12): which persons are
 //! enrolled, their state, and identification of a clip among every ready
 //! profile of an embedding model. Enrolment itself lives on the Person
 //! object page ("Voice" tab), next to the consent.

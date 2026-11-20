@@ -1,4 +1,4 @@
-//! Media link of a capture box (media-ingest.md D159, D160, lot 6b).
+//! Media link of a capture box (media.md D159, D160, lot 6b).
 //!
 //! `GET /ws/media` + `Authorization: Bearer <token>`: same admission as
 //! `/ws/camera` (TLS edge, client certificate of the device, binary Noise

@@ -1,5 +1,5 @@
 #!/bin/sh
-# Minimal ffmpeg for the media ingest decoder (media-ingest.md D160):
+# Minimal ffmpeg for the media ingest decoder (media.md D160):
 # pipe:0 in, 16 kHz mono s16le out on pipe:1. Only the demuxers and audio
 # decoders listed by capture/decoder.rs are built: no network protocol, no
 # file protocol, no external library. No x86 assembly (no nasm needed).

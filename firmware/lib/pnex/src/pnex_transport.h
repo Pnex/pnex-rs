@@ -1,5 +1,5 @@
 //
-// pnex-transport — transport layer shared by the firmwares (edge-model.md §3,
+// pnex-transport — transport layer shared by the firmwares (edge.md §3.1,
 // roadmap F1): WiFi + WebSocket + ChaCha framing + PONG bookkeeping.
 //
 // The lib holds the shared MECHANICS; the POLICY stays in the main of

@@ -143,7 +143,7 @@ pub fn OntologyObject(id: String) -> Element {
     if o.type_key == "paper_position" {
         tabs.insert(4, ("position", t!("onto-tab-position")));
     }
-    // Consented voice profile of a person (voice-id.md).
+    // Consented voice profile of a person (media.md §3.12).
     if o.type_key == pnex_core::voice_id::PERSON_TYPE {
         tabs.push(("voice", t!("onto-tab-voice")));
     }

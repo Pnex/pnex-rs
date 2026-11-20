@@ -1,5 +1,5 @@
 //! `SeaORM` Entity (hand-written on the generated shape).
-//! Enrolment clips of a voice profile (voice-id.md).
+//! Enrolment clips of a voice profile (media.md §3.12).
 
 use sea_orm::entity::prelude::*;
 

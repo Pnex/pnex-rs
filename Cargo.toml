@@ -25,7 +25,7 @@ members = [
     "crates/pnex-notify",
     "crates/pnex-node-notify",
     # Configurable HTTP client request (C1a) — everyday web collection is
-    # a plain flow block (edge-model amendment 2026-09-15).
+    # a plain flow block (D48 amendment, edge.md §2.3, 2026-09-15).
     "crates/pnex-node-http-fetch",
     # Camera frame source + MJPEG-AVI recorder (camera-video.md D78).
     "crates/pnex-node-camera",
@@ -35,7 +35,7 @@ members = [
     "crates/pnex-vision",
     "crates/pnex-decide",
     "crates/pnex-node-vision",
-    # Speech-to-text (media-ingest.md D167): Transcriber trait, lot 0 POC.
+    # Speech-to-text (media.md D167): Transcriber trait, lot 0 POC.
     "crates/pnex-asr",
     # Media stream capture chain (D160), shared by the backend and the edge
     # agent's capture boxes (lot 6b).
@@ -54,7 +54,7 @@ members = [
     "crates/pnex-cli",
     "crates/pnex-extension",
     "crates/pnex-mirror",
-    # Tray audio recorder (call-recording.md R1).
+    # Tray audio recorder (media.md §3.13).
     "crates/pnex-recorder",
     # SQL transforms of data pipelines, apart from the server (D573).
     "crates/pnex-pipeline-worker",

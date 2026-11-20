@@ -1,4 +1,4 @@
-//! Capture boxes (media-ingest.md D159, D160, lot 6b): edge agents that
+//! Capture boxes (media.md D159, D160, lot 6b): edge agents that
 //! announced `media_capture` and capture the `capture_on = device:<id>`
 //! streams. The box gets its stream list and uploads its segments over
 //! `/ws/media` (controller `ws_media`); org and device always come from the

@@ -1,4 +1,4 @@
-//! Edge agent ingestion (D95, docs/architecture/edge-agent.md).
+//! Edge agent ingestion (D95, docs/architecture/edge.md §3.5).
 //!
 //! An edge agent is a device (`predefined_device = edge_agent`) speaking the
 //! `/ws/device` tunnel. Its uplink is `DeviceMsg::Batch`: free-form points

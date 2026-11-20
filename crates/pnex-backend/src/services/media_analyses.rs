@@ -1,4 +1,4 @@
-//! File analyses (media-import-pipeline.md D213, D214): an orchestrator
+//! File analyses (media.md D213, D214): an orchestrator
 //! and a visible state per (media version, step). Every step delegates to
 //! existing machinery: `index` is the doc-search job (its state stays in
 //! `media_text_index`), `summarize` reads the indexed chunks, calls the

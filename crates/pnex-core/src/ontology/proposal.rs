@@ -23,7 +23,7 @@ pub enum ProposalKind {
     /// An event of an investigation case, from a detector on the members'
     /// tracks (P3): `target_id` is the case, `values.key` the detection.
     CaseEvent,
-    /// A voice recognized on a media (media-review.md D275), listed in the
+    /// A voice recognized on a media (media.md D275), listed in the
     /// inbox but decided on the media review, where it can be heard and its
     /// span moved: never written to the proposals table.
     VoiceSpan,

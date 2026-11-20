@@ -1,4 +1,4 @@
-//! Voice identification (voice-id.md): consented profiles of Person
+//! Voice identification (media.md §3.12): consented profiles of Person
 //! objects, their enrolment clips, generation and tests. Never a vector.
 
 use pnex_core::voice_id::{
@@ -90,7 +90,7 @@ pub async fn remove_sample(id: &str, sample_id: &str) -> Result<Option<()>, ApiE
 }
 
 /// `POST /api/v1/voice-id/profiles/{id}/samples/from-media` — the confirmed
-/// passages of the person in a media (media-review.md D277).
+/// passages of the person in a media (media.md D277).
 pub async fn add_from_media(id: &str, asset_id: &str) -> Result<VoiceProfileView, ApiError> {
     client::request(
         reqwest::Method::POST,

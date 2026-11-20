@@ -1,4 +1,4 @@
-//! Voice identification API (voice-id.md, cases.md K19 variant A). Org
+//! Voice identification API (media.md §3.12, cases.md K19 variant A). Org
 //! from the principal (R1); profiles, clips and generation are owner/admin
 //! (consent and biometric data), a test needs write access, reads any
 //! member (R2). No vector and no audio in any response (R4, R16).

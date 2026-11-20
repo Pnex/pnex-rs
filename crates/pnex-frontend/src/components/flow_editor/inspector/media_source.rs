@@ -4,7 +4,7 @@ use super::*;
 use crate::components::ui::FIELD_LABEL;
 use pnex_core::media_ingest::{MediaSourceConfig, MediaSourceEmit};
 
-// ─────────────── media-source (media-ingest.md D163) ───────────────
+// ─────────────── media-source (media.md D163) ───────────────
 
 /// Media source inspector: the org's streams as checkboxes, emission mode
 /// (segment | sentence) and an optional minimum confidence.

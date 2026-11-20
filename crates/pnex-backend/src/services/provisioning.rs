@@ -227,7 +227,7 @@ pub(crate) struct AdmissionManifest<'a> {
 
 /// Admission at `Announce` (policy Validated, B0.3): derive → validate →
 /// persist → return the `ProvisionAck` pin map. The device family decides
-/// who owns the pins (edge-model.md §2 bis):
+/// who owns the pins (edge.md §2.2):
 ///
 /// - **Custom firmware** (`firmware_project_id` set): the sketch is the
 ///   source — the declared pins are validated against the board's

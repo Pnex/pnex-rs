@@ -1,5 +1,5 @@
 //! `pnex-media-source` — event source of transcribed media segments
-//! (media-ingest.md D163). Subscribes to the segment channel of each
+//! (media.md D163). Subscribes to the segment channel of each
 //! listed stream (`pnex:media:v1:{org}:{slug}:tx`, published by the
 //! backend transcription worker) and emits one message per segment, or per
 //! sentence with `emit = sentence`. Only text reaches the flow, never audio.

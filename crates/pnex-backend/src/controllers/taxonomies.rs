@@ -1,4 +1,4 @@
-//! Topic taxonomies API (media-ingest.md D168, §6): taxonomies and their
+//! Topic taxonomies API (media.md D168, §6): taxonomies and their
 //! append-only versions. Org from the principal (R1), `can_write` at the
 //! head of every write handler (R2).
 

@@ -86,7 +86,7 @@ pub static ALL: &[CatalogProduct] = &[
         "AI-Thinker ESP32-CAM (OV2640, PSRAM) on the generic firmware: live video to the server (resolution, quality, fps from the UI), flash LED (GPIO4) and red LED (GPIO33) driven from the UI. Flash with an ESP32-CAM-MB carrier or an FTDI adapter (GPIO0 to GND).",
         "device-predef-generic-esp32cam-desc",
     ),
-    // Edge agent (D95, edge-agent.md): a Rust daemon on a PC / server / Pi,
+    // Edge agent (D95, edge.md §3.5): a Rust daemon on a PC / server / Pi,
     // not a microcontroller. No firmware, no pins, no OTA.
     CatalogProduct {
         name: crate::devices::EDGE_AGENT_PREDEF,

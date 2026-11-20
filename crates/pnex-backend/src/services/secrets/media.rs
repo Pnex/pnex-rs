@@ -1,4 +1,4 @@
-//! Media streams as vault consumers (media-ingest.md D159).
+//! Media streams as vault consumers (media.md D159).
 //!
 //! The credential of a `media_streams` row (HTTP header or basic auth)
 //! lives in the vault (`secret_id`); a typed value goes to the dedicated

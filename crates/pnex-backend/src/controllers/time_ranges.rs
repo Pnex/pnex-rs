@@ -1,4 +1,4 @@
-//! Time ranges API (media-ingest.md D169, §6): list by scope and time
+//! Time ranges API (media.md D169, §6): list by scope and time
 //! window (D14), create, update, delete, CSV/ICS import. Org from the
 //! principal (R1), `time-ranges:write` checked by the IAM extractor (R2);
 //! a scope that is not the org's answers a `scope_id` field error.

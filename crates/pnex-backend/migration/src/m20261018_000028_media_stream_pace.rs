@@ -1,5 +1,5 @@
 //! Batch analysis of a library file (media-vision-studio.md D211,
-//! media-review.md D276): a stream reads its file as fast as the ASR keeps
+//! media.md D276): a stream reads its file as fast as the ASR keeps
 //! up (`pace = batch`), on the analysed version, and each launch is a run.
 
 use sea_orm_migration::prelude::*;

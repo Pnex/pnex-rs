@@ -1,5 +1,5 @@
 # PNeX edge agent installer (Windows) — served by pnex-server at
-# /api/v1/agent/install.ps1 (D95, docs/architecture/edge-agent.md).
+# /api/v1/agent/install.ps1 (D95, docs/architecture/edge.md §3.5).
 #
 # Run from an elevated PowerShell (5.1 or 7). The UI prints a one-liner that
 # first pins the server CA by its SHA-256, then invokes this script with

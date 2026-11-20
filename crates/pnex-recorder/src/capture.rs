@@ -1,4 +1,4 @@
-//! Call capture (call-recording.md R1.1): the microphone and what the
+//! Call capture (media.md §3.13): the microphone and what the
 //! computer plays, as one stereo WAV on disk (left = this user, right = the
 //! other party). The file is the source of truth until the server has it.
 //!

@@ -1,4 +1,4 @@
-//! RTSP capture of IP cameras (media-ingest.md D160, D175).
+//! RTSP capture of IP cameras (media.md D160, D175).
 //!
 //! The host is resolved here under the egress policy and the session is
 //! opened on that address (the URL handed to the RTSP client carries the

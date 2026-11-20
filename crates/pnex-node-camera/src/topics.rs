@@ -1,5 +1,5 @@
 //! `pnex-topic-classify` — tags the text of each message with the topics
-//! of one pinned taxonomy version (media-ingest.md D168). Keyword matching
+//! of one pinned taxonomy version (media.md D168). Keyword matching
 //! only. The topics and the `<name>@<version>` label are stamped into the
 //! artifact by the backend at projection: the runtime reads no database.
 //!

@@ -1,5 +1,5 @@
 //! `pnex-range-upsert` — writes `msg.payload` as a time range of the
-//! node's scope (media-ingest.md D169) through the backend internal route
+//! node's scope (media.md D169) through the backend internal route
 //! `/internal/flow/time-range`: the runtime has no database access, the
 //! backend re-checks the scope against the stamped org and the fields.
 //!

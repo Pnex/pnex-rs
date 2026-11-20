@@ -1,4 +1,4 @@
-//! Voice identification UI (voice-id.md): the "Voice" tab of a Person
+//! Voice identification UI (media.md §3.12): the "Voice" tab of a Person
 //! object (consent → clips → generate → test, revoke) and the test box
 //! shared with the `/voice-id` page. A match is shown as a proposal, the
 //! human decides.

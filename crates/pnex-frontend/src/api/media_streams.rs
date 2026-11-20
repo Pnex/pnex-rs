@@ -1,4 +1,4 @@
-//! Media ingest API (media-ingest.md P2.13) — client of
+//! Media ingest API (media.md P2.13) — client of
 //! `/api/v1/media/streams` (D14 list, create, update, delete),
 //! `/api/v1/media/transcripts`, `/api/v1/asr/models` and `/api/v1/asr/profiles`.
 
@@ -243,7 +243,7 @@ pub async fn test_stream(id: &str) -> Result<pnex_core::media_ingest::StreamTest
 }
 
 /// `GET /api/v1/media/streams/{id}/review` — a window of the stream
-/// (media-review.md D271 V2), times in ms from `from`.
+/// (media.md D271, stream review), times in ms from `from`.
 pub async fn review(
     id: &str,
     from: &str,

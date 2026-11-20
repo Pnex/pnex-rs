@@ -99,6 +99,6 @@ pub mod tour_viewer;
 pub mod transport;
 pub mod ui;
 pub mod versions_drawer;
-/// Consented voice profiles of persons (voice-id.md).
+/// Consented voice profiles of persons (media.md §3.12).
 pub mod voice_id;
 pub mod web_search_providers;

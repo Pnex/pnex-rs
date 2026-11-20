@@ -50,7 +50,7 @@ pub const DEBUG_STROKE: &str = "var(--color-violet-500, #8b5cf6)";
 /// Notify node (soft violet) — notification bus (D49).
 pub const NOTIFY_FILL: &str = "var(--color-purple-50, #faf5ff)";
 pub const NOTIFY_STROKE: &str = "var(--color-purple-500, #a855f7)";
-/// http-fetch node (sky) — C1a web collection (edge-model amendment
+/// http-fetch node (sky) — C1a web collection (D48 edge.md §2.3 amendment
 /// 2026-09-15); cyan already taken by display.
 pub const HTTP_FETCH_FILL: &str = "var(--color-sky-50, #f0f9ff)";
 pub const HTTP_FETCH_STROKE: &str = "var(--color-sky-500, #0ea5e9)";

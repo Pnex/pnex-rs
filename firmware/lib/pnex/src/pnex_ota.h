@@ -3,7 +3,7 @@
 // image, sha256-verified, written to the inactive slot (ESP32 app0/app1)
 // or the eboot staging area (ESP8266), then reboot.
 //
-// Contract (edge-model.md §9, docs/architecture/ota.md):
+// Contract (docs/architecture/edge.md §3.7):
 // - the URL is a PATH — scheme + host come from the compiled config
 //   (plain http = LAN/on-prem reference path);
 // - the download is streamed in ~1 KB chunks into Update.h, digest

@@ -1,5 +1,5 @@
 //! Page `/streams/:id/review` — review of a window of a live stream
-//! (media-review.md D271 V2): the text and the speakers of the window, the
+//! (media.md D271, stream review): the text and the speakers of the window, the
 //! audio still kept by the retention played piece by piece. Same panels as
 //! the review of a media file; no attribution here (they live on a media).
 

@@ -1,6 +1,6 @@
 //
 // pnex-tls — single TLS trust configuration point, shared by the WS
-// transport and the OTA download client (docs/architecture/ota.md).
+// transport and the OTA download client (docs/architecture/edge.md §3.7).
 //
 // Posture: PNEX_CA_CERT (-D, base64 PEM — same injection school as the
 // other config vars) pins the server chain. It is required: there is no
@@ -9,7 +9,7 @@
 // no device update.
 //
 // CA rotation needs one rebuild+OTA (or USB for the first hop) — same
-// chicken-and-egg as any pinning; documented in ota.md.
+// chicken-and-egg as any pinning; documented in edge.md §3.7.
 //
 
 #ifndef PNEX_TLS_H

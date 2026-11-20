@@ -5,7 +5,7 @@
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
-/// Check of an audio model on one carrier (media-ingest.md D167): a model
+/// Check of an audio model on one carrier (media.md D167): a model
 /// valid on the GPU worker can be too slow on the server.
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "ml_model_checks")]

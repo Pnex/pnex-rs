@@ -1,4 +1,4 @@
-//! Time ranges (media-ingest.md D169) — model wrapper.
+//! Time ranges (media.md D169) — model wrapper.
 
 pub use super::_entities::time_ranges::{ActiveModel, Column, Entity, Model};
 use sea_orm::entity::prelude::*;

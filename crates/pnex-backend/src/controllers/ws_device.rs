@@ -750,7 +750,7 @@ async fn handle_announce(
     if device.soc.is_none() {
         provisioning::persist_observed_soc(&ctx.db, device.id, chip).await;
     }
-    // OTA inventory ("who runs where", edge-model §9): persist the announced
+    // OTA inventory ("who runs where", edge.md §3.7): persist the announced
     // fw version and the `ota` admission cap (best-effort — a DB hiccup must
     // not break provisioning). The comparison skips a no-op write.
     let ota_cap = caps.is_some_and(|cs| cs.iter().any(|c| c.id == "ota"));
@@ -854,7 +854,7 @@ async fn handle_announce(
                     }
                 }
             }
-            // OTA pickup (edge-model §9): every announce resolves or
+            // OTA pickup (edge.md §3.7): every announce resolves or
             // delivers the desired update — same re-push school as the
             // Subscribe/ControlConfig blocks above. A post-reboot announce
             // with fw >= target flips the row to succeeded (also rescues a

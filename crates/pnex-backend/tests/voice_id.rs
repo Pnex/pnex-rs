@@ -1,4 +1,4 @@
-//! Voice identification (voice-id.md, cases.md K19 variant A) with the
+//! Voice identification (media.md §3.12, cases.md K19 variant A) with the
 //! fake `pnex-asr` (every clip gives the same embedding): consent and
 //! person checks, roles (R2), clips kept as audio media, generation with
 //! too little then enough speech, verification and identification, and

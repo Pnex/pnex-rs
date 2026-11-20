@@ -238,7 +238,7 @@ The Lab turns pictures into a detection model without leaving PNeX
 ### Voice: recordings, transcripts, notes and speakers
 
 - **Recorder**: `pnex-recorder` is a tray utility of the desktop app
-  ([`call-recording.md`](docs/architecture/call-recording.md)) that records calls and video
+  ([`media.md` §3.13](docs/architecture/media.md)) that records calls and video
   meetings with one channel per side ("me" / "the other"), shows a visible recording
   notice, sends segments with a checksum and resumes after a cut. Linux validated, Windows
   built, wired and hardware recorders (ESP32) planned.
@@ -247,8 +247,8 @@ The Lab turns pictures into a detection model without leaving PNeX
   classification by versioned taxonomies; transcripts are indexed for full-text search.
 - **Review and notes**: one shared player and timeline for audio and video, with time-coded
   notes, annotations and version history
-  ([`media-review.md`](docs/architecture/media-review.md)).
-- **Voice ID** ([`voice-id.md`](docs/architecture/voice-id.md)): a voice profile per person,
+  ([`media.md` §3.11](docs/architecture/media.md)).
+- **Voice ID** ([`media.md` §3.12](docs/architecture/media.md)): a voice profile per person,
   only with recorded consent; the template is sealed (XChaCha20-Poly1305), the threshold
   calibrated per profile, a match is proposed to a human, and withdrawing consent erases the
   profile and its audio. "My voice" lets a user check their own enrollment score.
@@ -324,7 +324,7 @@ through Fluent (`fr-FR` / `en-US`), and server errors are machine codes translat
 Design records (in French): [`docs/architecture/`](docs/architecture) — start with
 [`roadmap.md`](docs/architecture/roadmap.md), [`ontology.md`](docs/architecture/ontology.md),
 [`flow-engine.md`](docs/architecture/flow-engine.md),
-[`media-ingest.md`](docs/architecture/media-ingest.md),
+[`media.md`](docs/architecture/media.md),
 [`pipelines.md`](docs/architecture/pipelines.md),
 [`agents.md`](docs/architecture/agents.md) and
 [`runtime.md`](docs/architecture/runtime.md).

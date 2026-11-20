@@ -5,7 +5,7 @@
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
-/// Declared media stream (media-ingest.md D159). The URL never carries a
+/// Declared media stream (media.md D159). The URL never carries a
 /// credential; `secret_id` points at the vault (D113).
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "media_streams")]

@@ -3,7 +3,7 @@ name = "pnex-asr"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "PNeX speech-to-text — Transcriber trait, runtime adapters and the pnex-asr process (media-ingest.md D166–D167)"
+description = "PNeX speech-to-text — Transcriber trait, runtime adapters and the pnex-asr process (media.md D166–D167)"
 
 # Both runtimes link native code (prebuilt sherpa-onnx, whisper.cpp built by
 # cmake): opt-in features, so a plain workspace build stays pure Rust.

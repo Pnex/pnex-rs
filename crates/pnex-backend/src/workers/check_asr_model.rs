@@ -1,4 +1,4 @@
-//! `check_asr_model` (media-ingest.md D167): the check of an audio model
+//! `check_asr_model` (media.md D167): the check of an audio model
 //! run on a dedicated transcription worker (`PNEX_ASR_QUEUE_TAG`), where
 //! the model will actually serve. A model valid on the GPU worker can be
 //! too slow on the server: each carrier keeps its own row in

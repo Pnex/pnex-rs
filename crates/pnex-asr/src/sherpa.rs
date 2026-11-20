@@ -32,7 +32,7 @@ pub enum SherpaFamily {
 /// Clustering threshold, best on real meetings: AMI (4 speakers, human
 /// references), 30 s windows and production linking with WeSpeaker
 /// ResNet34 give 28.8 % DER at 0.5, against 46.0 % at 0.25, 33.3 % at 0.6
-/// and 31.7 % at 0.7 (`ami_compare`, `ami_threshold_sweep`, media-ingest.md).
+/// and 31.7 % at 0.7 (`ami_compare`, `ami_threshold_sweep`, media.md).
 /// Synthetic FLEURS conversations pointed to 0.25 and were wrong.
 pub const DEFAULT_CLUSTER_THRESHOLD: f32 = 0.5;
 

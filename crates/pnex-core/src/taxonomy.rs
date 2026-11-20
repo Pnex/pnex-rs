@@ -1,4 +1,4 @@
-//! Topic taxonomies (media-ingest.md D168): versioned lists of topics an
+//! Topic taxonomies (media.md D168): versioned lists of topics an
 //! org classifies texts into, and the `topic_classify` flow node config.
 //! Pure, wasm-safe.
 //!

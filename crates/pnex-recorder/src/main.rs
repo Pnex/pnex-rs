@@ -1,4 +1,4 @@
-//! PNeX recorder (call-recording.md R1): a tray utility that signs in to a
+//! PNeX recorder (media.md §3.13): a tray utility that signs in to a
 //! PNeX server, records calls while recording is enabled, sends them to the
 //! org's media library for transcription, and checks with a 5 s
 //! transcription test that the server transcribes.

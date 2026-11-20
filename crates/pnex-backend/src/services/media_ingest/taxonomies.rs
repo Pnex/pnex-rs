@@ -1,4 +1,4 @@
-//! Topic taxonomies (media-ingest.md D168): CRUD of `taxonomies` and the
+//! Topic taxonomies (media.md D168): CRUD of `taxonomies` and the
 //! append-only `taxonomy_versions` (`flow_versions` school). Shared by the
 //! HTTP controller and the assistant tools (same validations, same 409).
 

@@ -1,4 +1,4 @@
-//! Capture of `capture_on = server | worker` streams (media-ingest.md D160).
+//! Capture of `capture_on = server | worker` streams (media.md D160).
 //!
 //! One supervisor per process scans the enabled streams of its carrier
 //! every [`SCAN_EVERY`]; each stream gets one capture task, guarded by the

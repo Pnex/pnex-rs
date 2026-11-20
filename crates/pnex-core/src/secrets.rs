@@ -140,7 +140,7 @@ pub enum SecretConsumerKind {
     Flow,
     Wifi,
     LlmProvider,
-    /// Credential of a captured media stream (media-ingest.md D159).
+    /// Credential of a captured media stream (media.md D159).
     MediaStream,
     /// Credential of an org geo provider (geo-layers.md L19).
     GeoProvider,

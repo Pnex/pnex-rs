@@ -1,4 +1,4 @@
-//! File analyses (media-import-pipeline.md D213): steps proposed on an
+//! File analyses (media.md D213): steps proposed on an
 //! uploaded file, their visible state, and the start request.
 
 use serde::{Deserialize, Serialize};
@@ -17,7 +17,7 @@ pub enum AnalysisStep {
     /// a hidden batch stream on the version, transcripts in O2.
     Transcribe,
     /// Speakers of the transcription matched against the consented voice
-    /// profiles (media-review.md D275): proposals only, a person confirms.
+    /// profiles (media.md D275): proposals only, a person confirms.
     Identify,
     /// Objects detected on the pictures of a video, one every 2 s, by a
     /// detection model of the org (D215): boxes only, never pixels.
@@ -169,7 +169,7 @@ pub const FOCUS_MAX: usize = 2000;
 pub const BATCH_MAX: usize = 200;
 
 /// Body of a batch start: the same steps and options on many media, as one
-/// request each (voice-id.md D983, D985: regenerate the recognition of a
+/// request each (media.md D983, D985: regenerate the recognition of a
 /// selection with the profiles of the moment).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -200,7 +200,7 @@ pub struct BatchStartResult {
     pub results: Vec<BatchStartItem>,
 }
 
-/// Profiles a voice identification compares with (media-review.md D274).
+/// Profiles a voice identification compares with (media.md D274).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]

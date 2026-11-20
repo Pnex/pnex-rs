@@ -3,7 +3,7 @@ name = "pnex-recorder"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "PNeX audio recorder (call-recording.md R1): tray utility, sign-in, capture on/off, 5 s speech-to-text check against the server"
+description = "PNeX audio recorder (media.md §3.13): tray utility, sign-in, capture on/off, 5 s speech-to-text check against the server"
 
 [lib]
 name = "pnex_recorder"

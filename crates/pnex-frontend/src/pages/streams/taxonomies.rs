@@ -1,4 +1,4 @@
-//! "Taxonomies" tab of /streams (media-ingest.md D168): versioned topic
+//! "Taxonomies" tab of /streams (media.md D168): versioned topic
 //! lists. Editing writes a NEW version on top of the one shown (409 when
 //! someone saved in between); old versions stay in the history.
 

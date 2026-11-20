@@ -1,7 +1,7 @@
 use super::*;
 use crate::services::{doc_search, media_analyses};
 
-// ─────────── File analyses (media-import-pipeline.md D213) ───────────
+// ─────────── File analyses (media.md D213) ───────────
 
 /// Analysis offers, step states and index state of an asset's current version.
 #[derive(serde::Serialize, utoipa::ToSchema)]
@@ -126,7 +126,7 @@ pub(super) async fn start_analyses(
 }
 
 /// `POST /api/v1/media/analyses` — the same steps on many media at once
-/// (voice-id.md D983, D985): each media goes through the very start of
+/// (media.md D983, D985): each media goes through the very start of
 /// `POST /media/{id}/analyses`, with its checks; one refusal never stops
 /// the others.
 #[utoipa::path(

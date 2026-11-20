@@ -5,7 +5,7 @@ use crate::components::ui::FIELD_LABEL;
 use crate::pages::streams::origin_label;
 use pnex_core::time_range::{RangeOrigin, RangeUpsertConfig, ScopeKind};
 
-// ─────────────── range-upsert (media-ingest.md D169) ───────────────
+// ─────────────── range-upsert (media.md D169) ───────────────
 
 /// Time range writer inspector: scope (a stream of the org, or the org)
 /// and the origin written on each range.

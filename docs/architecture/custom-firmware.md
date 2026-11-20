@@ -2,8 +2,8 @@
 
 **Statut :** Livré, désactivé par défaut — L1, L3, L4, L5 livrés ; L2 partiel (sandbox bwrap optionnelle) ; offline livré le 2026-10-05 (§8) ; commandes custom pilotables par Device (write) (D146, 2026-10-06)
 **Portée :** firmware ESP (lib PneX), build serveur, front (éditeur), protocole device
-**Renvois :** `firmware-build.md` (pipeline de build par device), `edge-model.md`
-(D44–D48 : manifeste de capacités, golden vectors), `ota.md`, `agents.md`
+**Renvois :** `firmware-build.md` (pipeline de build par device), `edge.md`
+(D44–D48 : manifeste de capacités, golden vectors), `edge.md` §3.7, `agents.md`
 (isolation des workers), `design-system.md` §8 (coquille d'éditeur), `runtime.md`
 
 ---
@@ -24,7 +24,7 @@ Aujourd'hui un device PneX tourne l'un de deux firmwares :
 
 > **Mise à jour 2026-10-01** : le Tier 2 local est retiré de l'assistant ;
 > l'IDE le remplace. Les trois familles de devices (générique PneX, IDE
-> custom, cartes prêtes à l'emploi) sont posées dans `edge-model.md` §2 bis.
+> custom, cartes prêtes à l'emploi) sont posées dans `edge.md` §2.2.
 
 Conséquences :
 
@@ -364,7 +364,7 @@ seulement si la V1 montre un usage réel.
 - Un firmware custom qui plante en boucle ne doit pas rendre le device
   irrécupérable : rollback OTA vers la révision précédente, et au pire
   flash USB. Le rollback automatique (partition précédente si pas
-  d'announce après N s) est une suite souhaitable, liée à `ota.md`.
+  d'announce après N s) est une suite souhaitable, liée à `edge.md` §3.7.
 
 ## 11. Découpage
 

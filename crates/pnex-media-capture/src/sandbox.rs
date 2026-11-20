@@ -1,4 +1,4 @@
-//! Confinement of the media decoder (media-ingest.md D160, R10).
+//! Confinement of the media decoder (media.md D160, R10).
 //!
 //! ffmpeg decodes untrusted bytes. It gets them on stdin and writes PCM on
 //! stdout; it needs no network and no file write. Bubblewrap needs user

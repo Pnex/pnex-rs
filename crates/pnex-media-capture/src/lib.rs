@@ -1,4 +1,4 @@
-//! Capture chain of a media stream (media-ingest.md D160), shared by the
+//! Capture chain of a media stream (media.md D160), shared by the
 //! server carriers (`server`, `worker`) and the capture boxes (edge agent,
 //! `capture_on = device:<id>`, lot 6b):
 //!

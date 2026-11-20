@@ -1,4 +1,4 @@
-//! `pnex-asr serve` processes (media-ingest.md D166): one per loaded model,
+//! `pnex-asr serve` processes (media.md D166): one per loaded model,
 //! kept warm between segments, confined like the decoder (no network,
 //! read-only filesystem), restarted on demand after a crash.
 

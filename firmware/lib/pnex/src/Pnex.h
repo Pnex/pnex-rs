@@ -6,7 +6,7 @@
 // (announces/proto: pin map pushed in the ProvisionAck, RPCs
 // SetMode/Write/Subscribe + Ack, timed reads as StateReport).
 //
-// Sketch policy (custom firmware, edge-model.md §2 bis): the sketch owns
+// Sketch policy (custom firmware, edge.md §2.2): the sketch owns
 // its pins — the ones declared here (`addInput`/`addOutput`/
 // `addAnalogInput`) travel in `Announce.pins`, the server validates them
 // (chip-caps: flash/strapping/ADC/input-only), persists and drives them;

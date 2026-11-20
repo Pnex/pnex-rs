@@ -23,7 +23,7 @@ pub enum MediaKind {
     Document,
     /// Spreadsheet (csv, xlsx, ods) indexed for search (doc-search.md).
     Table,
-    /// Voice clip (voice-id.md: enrolment of a voice profile).
+    /// Voice clip (media.md §3.12: enrolment of a voice profile).
     Audio,
     /// MP4 / MOV clip (Vision Lab: frames of a video).
     Video,
@@ -244,7 +244,7 @@ pub struct IndexState {
 }
 
 /// Offers, step states and index state of an asset's current version
-/// (media-import-pipeline.md D213).
+/// (media.md D213).
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct AnalysesState {
     pub offers: Vec<pnex_core::media_analysis::StepOffer>,
@@ -263,7 +263,7 @@ pub async fn analyses(id: &str) -> Result<AnalysesState, ApiError> {
 }
 
 /// `GET /api/v1/media/{id}/transcript` — runs and the segments of one run
-/// (the default one without `run`), media-review.md D276.
+/// (the default one without `run`), media.md D276.
 pub async fn transcript(
     id: &str,
     run: Option<&str>,

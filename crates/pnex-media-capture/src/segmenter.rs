@@ -1,4 +1,4 @@
-//! PCM → segments (media-ingest.md D160): the decoder writes 16 kHz mono
+//! PCM → segments (media.md D160): the decoder writes 16 kHz mono
 //! s16le on stdout; the segmenter cuts it into pieces of at most
 //! `segment_secs` that carry `overlap_secs` more audio (the next segment
 //! starts at the cut, the ASR glues overlapping words, D166). The cut falls

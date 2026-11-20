@@ -112,7 +112,7 @@ pnex-media-capture = { workspace = true }
 # PDF rendering of pages (D209).
 pnex-pdf = { workspace = true }
 # Speech-to-text protocol, family detection and WER (pure Rust: the runtime
-# runs in the separate pnex-asr process, media-ingest.md D166).
+# runs in the separate pnex-asr process, media.md D166).
 pnex-asr = { workspace = true }
 # Audio model archives (sherpa-onnx releases are .tar.bz2; .tar.gz / .zip
 # accepted), extracted to the model cache (D167).

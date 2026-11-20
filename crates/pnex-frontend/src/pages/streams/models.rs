@@ -1,4 +1,4 @@
-//! "Models and profiles" tab of /streams (media-ingest.md D164, D167):
+//! "Models and profiles" tab of /streams (media.md D164, D167):
 //! audio models of the org (speech-to-text, VAD, diarization: import,
 //! check, delete) and the transcription profiles that streams point at.
 

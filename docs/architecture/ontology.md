@@ -4,7 +4,7 @@
 |---|---|
 | Statut | Noyau livré en 0.2.0 (lots L0–L5, 2026-10-10). Actions D183 livrées le 2026-10-13. D367 et D368 livrés, D369 acté sans code |
 | Numérotation | **D176…D191**, **D367…D370**, **D589**. Décision « étiquettes et ontologie » sans numéro (§4) |
-| Repose sur | `inventory.md` D42 (couche Resource), D43 (placements), D69 (recherche), `media-ingest.md` (D159–D175), `viz-bases.md`, `ai-assistant.md` (D123, D142–D145), `security.md` (R1–R23) |
+| Repose sur | `inventory.md` D42 (couche Resource), D43 (placements), D69 (recherche), `media.md` (D159–D175), `viz-bases.md`, `ai-assistant.md` (D123, D142–D145), `security.md` (R1–R23) |
 | Sécurité | Chaque changement passe `security.md` §6 |
 
 ## Résumé
@@ -225,7 +225,7 @@ segment à la validité de son lien. L'objet survit donc à ses capteurs.
 
 ### D182 — Les plages s'appliquent à n'importe quel objet
 
-`time_ranges` (`media-ingest.md` D169) accepte `scope_kind = object`. Une plage peut être une
+`time_ranges` (`media.md` D169) accepte `scope_kind = object`. Une plage peut être une
 émission, un poste d'équipe, un lot ou un mandat. `POST /api/v1/telemetry/aggregate` agrège une
 série O2 (`sum`, `avg`, `max`, `min`, `increase`) par plage d'une portée (D171). Le widget
 `range_bars` lit cette route. Une écriture de plage sur un objet exige le `write_role` du type de
@@ -309,7 +309,7 @@ Une liaison de lecture (`SourceRef`, D129) peut viser `object_property` : un obj
 temporelle. Un **dashboard de type** porte `layout.object_type`. Il s'affiche pour n'importe quel
 objet du type, avec un sélecteur d'objet. Le serveur résout la propriété au capteur courant
 (`/objects/{id}/bindings`), puis le pipeline `series-batch` lit la série. Les rapports
-(`media-ingest.md` D173) utilisent la même requête D185.
+(`media.md` D173) utilisent la même requête D185.
 
 ### D188 — Permissions : l'org reste la frontière
 

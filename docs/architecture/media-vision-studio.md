@@ -13,9 +13,9 @@
 > **Numérotation :** D192 et suivants, attribués au fil des lots (§12).
 > **Renvois :** `camera-video.md` (D73–D86 bus caméra, D81 registre de
 > modèles, D82 `pnex-vision`/tract, D83 `vision_detect`, D84 événements
-> O2, D100–D104 fiabilité, D105 calques de détection), `media-ingest.md`
+> O2, D100–D104 fiabilité, D105 calques de détection), `media.md`
 > (D159–D175 : flux, capture, ASR, `media_source`, D173/D174 rapports et
-> synthèses reportés, D175 caméras IP sur le bus), `media-asr-bench.md`
+> synthèses reportés, D175 caméras IP sur le bus), `media.md` §3.6
 > (lot 0 ASR), `ml-vision.md` (pilier ML, stack tout-Rust),
 > `agents.md` (P2.7, workers GPU), `media.md` (D21 bibliothèque
 > média, versioning), `ontology.md` (D176–D191, provenance D184, rapports
@@ -50,7 +50,7 @@ L'objectif est de transformer n'importe quel flux média en **événements
 horodatés, structurés et interrogeables**, au même rang que la
 télémétrie IoT. Les sources de ces événements sont :
 
-- ce qui est dit (transcription, **déjà couvert** par `media-ingest.md`) ;
+- ce qui est dit (transcription, **déjà couvert** par `media.md`) ;
 - ce qui est vu (description visuelle) ;
 - ce qui est détecté (objets custom, éventuellement postures).
 
@@ -124,7 +124,7 @@ PNEX génère, évalue et déploie le modèle.
 
 ### 4.1bis Analyse d'un fichier de la médiathèque (D211, **codé en partie le 2026-10-18**, voir le registre)
 
-> Branche audio du **pipeline d'import** (`media-import-pipeline.md`,
+> Branche audio du **pipeline d'import** (`media.md`,
 > D212–D217) : l'analyse y est lancée par `media_analyses` (D213), qui
 > tranche Q-A (proposé, jamais automatique) et Q-D (flux interne caché,
 > lié à l'analyse).
@@ -230,7 +230,7 @@ horloge déterministe, exemption `max_lag`, 409 seconde analyse, lecteur
 
 ### 4.2 Branche audio → transcription horodatée
 
-**Entièrement couverte par `media-ingest.md`** (D162–D167) : VAD +
+**Entièrement couverte par `media.md`** (D162–D167) : VAD +
 ASR via `pnex-asr` (sherpa-onnx par défaut, whisper.cpp en option de
 build ; pas de faster-whisper, qui est une stack Python), segments
 `{t0, t1, texte, langue, confiance}` dans O2 `tx_<slug>`, diarisation au
@@ -484,7 +484,7 @@ On **réutilise** le registre existant au lieu de créer des tables
   les rapports planifiés passent par OpenObserve) et l'ontologie prévoit
   des rapports liés aux objets (D187). M5 exige donc une décision
   explicite qui rouvre D173/D174 et précise D3, avec les garde-fous de
-  `media-ingest.md` §15 (échappement, rendu PDF sans réseau, aucune
+  `media.md` §3.14 (échappement, rendu PDF sans réseau, aucune
   publication automatique d'une synthèse IA, relecture humaine).
 - L'utilisateur reste dans PNEX (P1).
 - Sources du rapport : descriptions et résumés vidéo, transcriptions,
@@ -622,7 +622,7 @@ flowchart LR
 
 ## 7. Phasage proposé
 
-Les lots audio sont ceux de `media-ingest.md` ; ce PRD ne les duplique pas.
+Les lots audio sont ceux de `media.md` ; ce PRD ne les duplique pas.
 
 | Phase | Contenu | Livrable |
 |---|---|---|
@@ -664,7 +664,7 @@ Python confinée que `train_detector` (§11, point 10).
   notification restent possibles ; le câblage d'une détection vers
   `device_write` par un flow humain reste régi par D128 (voir Q9).
 - Reconnaissance faciale, identification de personnes, identification
-  vocale (cohérent avec `media-ingest.md` §2).
+  vocale (cohérent avec `media.md` §3.14).
 - Segmentation d'instances ; entraînement autre que la détection YOLOX ;
   entraînement de modèles ASR.
 - Annotation collaborative multi-utilisateur temps réel.
@@ -680,7 +680,7 @@ Python confinée que `train_detector` (§11, point 10).
 | Q2 | **Tranchée (2026-10-13)** : tract reste le seul runtime (confirmé par D197) ; `ort` seulement si un bench chiffré le justifie, derrière une feature de build, pour le nœud concerné. ~~Inférence : tract (en production) suffit-il pour YOLOX-s/m et l'INT8, ou faut-il ajouter `ort` ? Burn reste à benchmarker (`ml-vision.md` étape 1).~~ |
 | Q3 | **Tranchée (2026-10-13)** : interpolation linéaire entre keyframes en V1 ; propagation par `vision_track` en M4 ; pas de tracker visuel sans détecteur. ~~Propagation des boîtes dans le Lab avant tout modèle : interpolation seule (V1) ou suivi visuel dédié (tracker sans détecteur) ?~~ |
 | Q4 | **Tranchée (2026-10-13, révisée par D204)** : l'entraînement est un ré-apprentissage de la tête en Rust, sur CPU, Pi compris ; plus de presets ni d'image GPU. ~~Entraînement sans GPU (CPU, Pi) : interdit, ou autorisé en mode « petit dataset / nano » avec avertissement ?~~ |
-| Q5 | **Tranchée (2026-10-13)** : aucun VLM livré ni imposé (D119) ; la doc cite des modèles à licence relue à la rédaction, SPDX affiché à la configuration. ~~VLM par défaut : aucun (D119, l'org choisit) — quels modèles recommander dans la doc, licence vérifiée ? ASR : tranché au lot 0 (`media-asr-bench.md`).~~ |
+| Q5 | **Tranchée (2026-10-13)** : aucun VLM livré ni imposé (D119) ; la doc cite des modèles à licence relue à la rédaction, SPDX affiché à la configuration. ~~VLM par défaut : aucun (D119, l'org choisit) — quels modèles recommander dans la doc, licence vérifiée ? ASR : tranché au lot 0 (`media.md` §3.6).~~ |
 | Q6 | **Tranchée (2026-10-13)** : `media_stream` = type système par adaptateur (D177) ; zones (config du nœud), projets et jeux du Lab restent dans leurs tables en V1. ~~Place des sources, modèles, datasets et zones dans l'ontologie 0.2.0 (types système D177, plages D182).~~ |
 | Q7 | **Tranchée (2026-10-13)** : images et jeux du Lab comptent dans le stockage média de l'org ; quota = réglage plateforme, aucun plafond codé en self-hosted ; rétention séparée brut / événements (§4.1). ~~Rétention et stockage des médias bruts et datasets en SaaS : coût et quotas par tenant.~~ |
 | Q8 | ~~Diarisation dès M0 ?~~ — **déjà planifiée** : lot 5 de P2.13 (D166), labels locaux. |
@@ -706,7 +706,7 @@ Corrections apportées à la v0.1 après lecture de la doc existante :
    existants (`camera_source`, `media_source`, `vision_detect`,
    snake_case) ; seuls `vision_track`, `vision_zone`, `vision_caption`,
    `media_fuse` sont nouveaux.
-4. **Sources média et ASR** : déjà spécifiés par `media-ingest.md`
+4. **Sources média et ASR** : déjà spécifiés par `media.md`
    (D159–D175) ; faster-whisper (stack Python) remplacé par `pnex-asr`
    (sherpa-onnx / whisper.cpp, lot 0 mesuré).
 5. **Registre de modèles** : pas de nouvelles tables `model` /
@@ -768,7 +768,7 @@ Corrections apportées à la v0.1 après lecture de la doc existante :
 | **D208** | **`llm_text`** : nœud générique, gabarit de consigne + données entrantes passées au LLM de l'org (D119) comme **données délimitées**, jamais comme instructions, aucun outil ; pas d'option « phrases sourcées » (des phrases sourcées s'obtiennent en amont avec `media_fuse`, dont la sortie peut nourrir `llm_text`) ; plafond quotidien d'appels IA commun (D196) ; sortie `{text, model, took_ms, data_truncated, ai_generated: true}` ; données ≤ 60 000 caractères (tronquées au-delà, signalé), consigne ≤ 4000, réponse 100–20 000 caractères. Route `/internal/flow/ai/text` (jeton + fencing). **Livré** le 2026-10-13. | 2026-10-13 |
 | **D209** | **`page_write` et `page_pdf`** : `page_write` écrit du Markdown dans une page de l'org (nouvelle page depuis un titre à gabarit, ou remplacement d'une section nommée), par le convertisseur serveur existant (`services/pages/seed.rs`), puis crée une **version nommée** ; auteur « flow #id ». `page_pdf` rend une version de page en PDF (en-tête org + titre + version, pied « page N / M » et date, bandeau « généré par IA » si la version contient du texte IA) et le range dans la médiathèque (`kind=document`). Moteur PDF : **krilla** (MIT/Apache, ~24 crates, polices sous-ensemblées, mise en forme du texte) + mise en page PneX (titres, paragraphes, listes, tableaux, images) ; **Typst écarté** (128 crates dont `yaml-rust` non maintenu et un interpréteur WASM inutile). Police : **DejaVu Sans** (licence Bitstream Vera, permissive ; DejaVu au domaine public), notice jointe, pas d'OFL. Le même rendu sert le bouton « Exporter en PDF » de Pages (lot L7). **`page_write` livré** le 2026-10-13 : route `/internal/flow/page-write` (jeton + fencing, page cherchée dans l'org), ajout validé comme une édition (schéma, tailles) et relayé en direct aux éditeurs ouverts, convertisseur Markdown enrichi (gras, italique, code, liens sûrs, citations, filets, blocs de code, titres 1–6 ; tableau → paragraphes), versions `doc_versions.ai_generated / flow_id / approved_by / approved_at` (migration `000019`), `POST /api/v1/docs/{id}/versions/{n}/approve` (éditeurs, idempotent) et badges dans Pages. **`page_pdf` livré** le 2026-10-13 : crate `pnex-pdf` (krilla 0.8 sans ses features par défaut ; mise en forme du texte par **harfrust 0.14**, rustybuzz/ttf-parser étant signalés non maintenus — RUSTSEC-2026-0206/0192), A4 en deux passes (numérotation « Page n / m »), titres, paragraphes, listes, citations, filets, code ; **tableaux et images non rendus** (le schéma des pages n'a pas de tableau ; images = lot ultérieur). Bouton **PDF** par version dans Pages (`GET /api/v1/docs/{id}/versions/{n}/pdf?lang=fr|en`). Nœud `page_pdf` : source « version du message » ou « dernière version envoyable, une fois » (table `doc_version_exports`, migration `000020`, unicité par nœud) ; sortie 0 prêt / sortie 1 à approuver. **Pièce jointe de `pnex_notify` livrée** : champ `attach_field` (chemin de l'id média), seul SMTP joint le fichier (`multipart/mixed`), fichier illisible = envoi en échec ; le runtime lit le PDF par `/internal/flow/media/{id}` (jeton + fencing), qui ne sert **que** les exports `page_pdf` de l'org. | 2026-10-13 |
 | **D210** | **Sortie d'un rapport IA : versions approuvées par défaut**. `page_pdf` et la pièce jointe de `pnex_notify` ont un mode : **« versions approuvées seulement »** (défaut : le flow crée la page et prévient un humain ; l'envoi n'a lieu qu'une fois la version approuvée dans Pages) ou **« automatique »** (envoi immédiat, bandeau « généré par IA, non relu » dans le PDF et le courriel). Raison : texte non fiable (transcriptions, légendes) → risque d'injection dans un document qui quitte PneX. **Livré** le 2026-10-13 : la porte est tenue par `page_pdf` (case « Approbation requise pour le texte IA », cochée par défaut) ; `pnex_notify` joint ce que `page_pdf` a laissé passer, il ne décide rien. Le PDF porte « relu et approuvé par X le … » ou « non relu ». | 2026-10-13 |
-| **D211** | **Analyse d'un fichier de la médiathèque (proposé, à relire)** : bouton « Analyser » sur un asset audio / vidéo = flux `media_asset` (D206) à cadence `batch` : décodage sans `-re`, audio seulement, contre-pression (≤ 4 segments en attente), horloge fichier déterministe (`base` = date de la version média + `offset_ms`), file ASR derrière le direct et exemptée de `max_lag`, fin = port `finished` de `media_source`. Une analyse à la fois par org, ≤ 4 h. Détail et questions Q-A à Q-D : §4.1bis. **Codé 2026-10-18 (lot R0 de `media-review.md`)** : étape `transcribe` de D213 (Q-A bouton seul, Q-D flux caché `pace = batch` lié à la version, hors liste et hors quota), `ClockSource::File`, contre-pression 4, file non live, exemption `max_lag`, `offset_ms` + `run` dans O2 (Q-B : passes distinguées par `run`), fin = ligne d'analyse `done` / `failed` une fois. Écarts : profil ASR = premier profil valide de l'org (pas de sélecteur), pas de borne 4 h (512 Mo seulement), pas encore de port `finished` ni de progression en %. **Amendé le 2026-10-18** : la base de l'horloge est la **date de la passe** (`media_runs.created_at`), pas celle de la version — O2 refuse d'ingérer des documents datés au-delà de `ZO_INGEST_ALLOWED_UPTO` (5 h par défaut) ; la position dans le fichier reste `offset_ms`, seule à faire foi. | 2026-10-18 (codé, partiel) |
+| **D211** | **Analyse d'un fichier de la médiathèque (proposé, à relire)** : bouton « Analyser » sur un asset audio / vidéo = flux `media_asset` (D206) à cadence `batch` : décodage sans `-re`, audio seulement, contre-pression (≤ 4 segments en attente), horloge fichier déterministe (`base` = date de la version média + `offset_ms`), file ASR derrière le direct et exemptée de `max_lag`, fin = port `finished` de `media_source`. Une analyse à la fois par org, ≤ 4 h. Détail et questions Q-A à Q-D : §4.1bis. **Codé 2026-10-18 (`media.md` D271)** : étape `transcribe` de D213 (Q-A bouton seul, Q-D flux caché `pace = batch` lié à la version, hors liste et hors quota), `ClockSource::File`, contre-pression 4, file non live, exemption `max_lag`, `offset_ms` + `run` dans O2 (Q-B : passes distinguées par `run`), fin = ligne d'analyse `done` / `failed` une fois. Écarts : profil ASR = premier profil valide de l'org (pas de sélecteur), pas de borne 4 h (512 Mo seulement), pas encore de port `finished` ni de progression en %. **Amendé le 2026-10-18** : la base de l'horloge est la **date de la passe** (`media_runs.created_at`), pas celle de la version — O2 refuse d'ingérer des documents datés au-delà de `ZO_INGEST_ALLOWED_UPTO` (5 h par défaut) ; la position dans le fichier reste `offset_ms`, seule à faire foi. | 2026-10-18 (codé, partiel) |
 
 ### État des lots
 

@@ -1,4 +1,4 @@
-//! `transcribe_segment` (media-ingest.md D166): one captured segment →
+//! `transcribe_segment` (media.md D166): one captured segment →
 //! text in O2 `tx_<slug>` → event on the stream's Valkey channel → audio
 //! purged per the stream retention (D161).
 //!

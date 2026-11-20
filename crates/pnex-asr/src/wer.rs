@@ -1,4 +1,4 @@
-//! Word error rate for model evaluation (media-ingest.md §9, D167 check).
+//! Word error rate for model evaluation (media.md §3.6, D167 check).
 
 /// Lowercases, unifies apostrophes and keeps letters, digits and
 /// in-word apostrophes; everything else separates words. Hyphens split

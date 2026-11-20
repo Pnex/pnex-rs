@@ -1,4 +1,4 @@
-//! Segments of a stream (media-ingest.md D162, §9): every captured slice
+//! Segments of a stream (media.md D162, §3.5): every captured slice
 //! with its state, newest first. Gaps are data: failed and skipped
 //! segments stay listed. Writers can re-queue failed segments whose audio
 //! is still kept (D161).

@@ -23,7 +23,7 @@ ARG BUN_VERSION=1.4
 ARG DIOXUS_CLI_VERSION=0.7.10
 ARG PLATFORMIO_VERSION=6.2.0
 ARG ESPTOOL_VERSION=5.4.0
-# Media ingest (media-ingest.md D160, D166). Pinned by sha256 (R20): the
+# Media ingest (media.md D160, D166). Pinned by sha256 (R20): the
 # ffmpeg tarball is checked against the FFmpeg release signing key when the
 # pin moves; the sherpa-onnx digests are the ones GitHub publishes for the
 # release assets.

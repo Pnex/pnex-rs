@@ -53,7 +53,7 @@ pub(super) enum MediaKind {
     Document,
     /// Indexed for search (doc-search.md P1).
     Table,
-    /// Voice clips (voice-id.md: enrolment of a voice profile).
+    /// Voice clips (media.md §3.12: enrolment of a voice profile).
     Audio,
     /// MP4 / MOV clips (Vision Lab frames, media-vision-studio.md).
     Video,

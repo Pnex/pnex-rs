@@ -1,4 +1,4 @@
-//! ffmpeg as a confined decoder (media-ingest.md D160): bytes in on
+//! ffmpeg as a confined decoder (media.md D160): bytes in on
 //! `pipe:0`, 16 kHz mono s16le out on `pipe:1`. No network protocol, no
 //! file, the demuxer imposed by what the fetcher saw (never probed), and
 //! only audio decoders. The video track (D175) runs a second, equally

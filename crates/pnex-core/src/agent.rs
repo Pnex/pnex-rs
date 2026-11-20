@@ -1,4 +1,4 @@
-//! Edge agent contract (D95, docs/architecture/edge-agent.md) — DTOs shared
+//! Edge agent contract (D95, docs/architecture/edge.md §3.5) — DTOs shared
 //! by the backend, the frontend (wasm) and the `pnex-agent` binary.
 //!
 //! Dates are RFC 3339 strings (no chrono in the core, wasm32).

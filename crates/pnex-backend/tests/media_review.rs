@@ -1,4 +1,4 @@
-//! Review of a media file (media-review.md D272, D273): spans attributed to
+//! Review of a media file (media.md D272, D273): spans attributed to
 //! persons of the ontology without any voice recognition — a person only,
 //! merged spans of one person, optimistic concurrency, viewer refused (R2),
 //! org isolation (R1), attributions shown by the transcript read.

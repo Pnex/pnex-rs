@@ -1,4 +1,4 @@
-//! Captured audio segments (media-ingest.md D161, D162): bytes in the
+//! Captured audio segments (media.md D161, D162): bytes in the
 //! MediaStore under a server-built key (R18), state in `media_segments`.
 
 use std::sync::Arc;

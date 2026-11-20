@@ -4,7 +4,7 @@
 |---|---|
 | Statut | **P0, P1, P2 et P4 livrés le 2026-10-22, P3 le 2026-10-23** |
 | Décision mère | D367 (`ontology.md` §11) : la proposition est un objet du noyau, priorité 1 |
-| Repose sur | ontologie (D176–D191), propositions des dossiers (`cases.md` K30, K33), attributions vocales (`media-review.md` D275), packs (D190, D368) |
+| Repose sur | ontologie (D176–D191), propositions des dossiers (`cases.md` K30, K33), attributions vocales (`media.md` D275), packs (D190, D368) |
 | Numérotation | **D371…D377**, lots **P0…P4** |
 | Couche | Un lien **déduit** passe par une proposition, posée par un flow ou un humain, jamais figée dans un pipeline de collecte (D998, `operational-platform.md`) |
 

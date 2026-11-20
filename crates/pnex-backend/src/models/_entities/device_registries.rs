@@ -30,7 +30,7 @@ pub struct Model {
     #[sea_orm(column_type = "JsonBinary", nullable)]
     pub peripherals: Option<Json>,
     /// Firmware version announced by the device ("who runs where",
-    /// edge-model.md §9) — stamped `PNEX_FW_VERSION` = build record id.
+    /// edge.md §3.7) — stamped `PNEX_FW_VERSION` = build record id.
     #[sea_orm(column_type = "Text", nullable)]
     pub fw_version: Option<String>,
     /// OTA admission attested by the announce caps manifest (cap id `ota`).

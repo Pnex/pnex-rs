@@ -1,5 +1,5 @@
 //! Custom EdgeLinkd node `pnex-http-fetch` (C1a) — configurable "curl-like"
-//! HTTP client request (edge-model amendment 2026-09-15: everyday
+//! HTTP client request (D48 amendment, edge.md §2.3, 2026-09-15: everyday
 //! web collection is a simple flow block, not a domain).
 //!
 //! Semantics: the response **replaces** the payload (`payload` = body auto-

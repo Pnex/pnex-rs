@@ -113,7 +113,7 @@ async fn add_checked(
 }
 
 /// Enrols the passages of a media file confirmed for the profile's person
-/// (media-review.md D277): the longest first, [`CLIP_MAX_SECS`] in all,
+/// (media.md D277): the longest first, [`CLIP_MAX_SECS`] in all,
 /// each decoded from the original file and stored like an uploaded clip.
 /// The profile exists (its consent was recorded at creation, V3).
 pub async fn add_from_media(

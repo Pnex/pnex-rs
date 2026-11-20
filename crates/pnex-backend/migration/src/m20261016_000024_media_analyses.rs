@@ -1,4 +1,4 @@
-//! File analyses (media-import-pipeline.md D213): one row per (media
+//! File analyses (media.md D213): one row per (media
 //! version, step). The row is the visible state of a step; the work is
 //! delegated to the existing machinery (index job, LLM provider, ...).
 

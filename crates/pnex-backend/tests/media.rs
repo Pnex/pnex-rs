@@ -935,7 +935,7 @@ async fn a_lost_join_starts_again_and_a_left_upload_is_swept() {
     .await;
 }
 
-/// Batch start of analyses (voice-id.md D985): one result per asset, a
+/// Batch start of analyses (media.md D985): one result per asset, a
 /// refusal never stops the others, the list is bounded.
 #[tokio::test]
 #[serial]

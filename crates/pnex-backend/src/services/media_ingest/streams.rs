@@ -1,4 +1,4 @@
-//! Media streams (media-ingest.md D159): CRUD service shared by the HTTP
+//! Media streams (media.md D159): CRUD service shared by the HTTP
 //! controller. The capture supervisor reads the rows, it is never driven
 //! by a request.
 

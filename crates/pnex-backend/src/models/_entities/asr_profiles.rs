@@ -5,7 +5,7 @@
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
-/// Transcription profile (media-ingest.md D164): which registry models
+/// Transcription profile (media.md D164): which registry models
 /// a stream uses for VAD, ASR and diarization.
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "asr_profiles")]
