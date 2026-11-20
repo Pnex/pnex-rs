@@ -1,224 +1,255 @@
 # Applications construites dans PneX : écrans métier sur l'ontologie (D506–D513)
 
-> **Statut : PRD validé par Shan le 2026-10-29, lots AB0–AB5 codés le
-> 2026-11-02** (§11). Questions Q-B1 à Q-B6 tranchées : les
-> défauts (§10).
->
-> Demande de Shan (2026-10-29) : faire évoluer la partie supervision
-> (dashboards, surfaces, contrôles), pensée pour l'IoT, vers un builder
-> d'applications métier générique, sans code, dans l'esprit d'Appsmith.
-> L'état des lieux conclut : oui, mais **sur l'ontologie** (écrans liés aux
-> objets), pas sur des bases externes. Arbitrage de Shan sur le mot :
-> « dashboard » fait outil de BI ; la notion est l'**application**.
->
-> C'est le prolongement de D432–D441 (`external-apps.md`) : l'application
-> D433 (périmètre, ensembles d'objets, actions permises) gagne une
-> interface construite dans PneX, à côté de l'interface externe par le
-> SDK. Une notion, un mot (lexique D218).
->
-> Liens : `external-apps.md` (D432–D441), `viz.md` (D24, D31, D40,
-> D41, D123–D133), `ontology.md` (D183 actions,
-> D185 requête, D187 dashboards de type, D188 droits), `iam.md`,
-> `design-system.md` §8 (coquille d'éditeur) et §7 (lexique), `security.md`
-> (R1–R23), `ai-assistant.md` §9, `api.md`.
+**Statut : codé, en pause.** Les lots AB0–AB5 sont livrés (commit `546904b9`). Shan a mis le chantier en pause le 2026-11-02. Aucun nouveau lot ne démarre sans son accord. Le code livré reste en place et reçoit des correctifs.
 
-## 1. Constat (relevé du 2026-10-29)
+Liens : `external-apps.md` (D432–D441, D560), `viz.md` (D24, D40, D123–D133, D579–D588), `ontology.md` (D183, D185, D187, D188), `iam.md`, `design-system.md` §7 (lexique) et §8 (coquille d'éditeur), `security.md` (R1–R23), `ai-assistant.md`, `api.md`, `crm.md` (D726).
 
-| Brique d'un builder | Existant | Manque |
+## 1. Résumé
+
+Une application (D433) peut avoir une interface construite dans PneX, sans code. Cette interface est un ensemble d'écrans qui lisent et écrivent des objets de l'ontologie. Elle sert aux membres d'une org qui travaillent sur des objets : chercher, consulter, saisir, déclencher une action. Un tableau de bord sert à regarder des séries. Une application sert à travailler sur des objets. Une application ne donne aucun droit : elle réduit les droits du lecteur à son périmètre.
+
+## 2. Concepts
+
+- **Application** : objet D433 de l'org. Elle a une clé, un périmètre (types d'objets), des ensembles d'objets, des actions permises, et en option un compte de service.
+- **Écran** : document de mise en page versionné, rattaché à une application. Techniquement, c'est un tableau de bord avec `app_id`.
+- **Écran d'accueil** (`home`) : écran ouvert par défaut.
+- **Ensemble d'objets** (D434) : requête nommée de l'application (type, filtres, tri). Un filtre peut porter un paramètre `$nom`.
+- **Variable** : valeur nommée, partagée entre les écrans d'une application, pour une session.
+- **Action permise** (D440) : action `type.action` que les écrans peuvent déclencher.
+- **Widget de données** : widget qui lit ou écrit des objets. Il existe seulement dans un écran d'application.
+- **Constructeur** : rôle qui édite les écrans, les variables et les ensembles (permission `apps:build`).
+
+```mermaid
+classDiagram
+  class Application {
+    clé
+    périmètre
+    home
+  }
+  Application "1" *-- "*" Ecran : screens
+  Application "1" *-- "*" Variable : variables
+  Application "1" *-- "*" EnsembleObjets : object sets
+  Application "1" *-- "*" ActionPermise : actions
+  Application "1" o-- "0..1" CompteService : SDK
+  Ecran "1" *-- "*" Widget
+  Widget ..> EnsembleObjets : lit
+  Widget ..> Variable : lit / écrit
+  Widget ..> ActionPermise : déclenche
+  EnsembleObjets ..> Variable : paramètre $nom
+```
+
+Une application peut avoir des écrans seulement, un compte de service seulement (SDK, `external-apps.md`), ou les deux.
+
+| | Tableau de bord | Application |
 |---|---|---|
-| Notion d'application | `apps` (D433) : clé, nom, périmètre, ensembles d'objets nommés (D434) ; compte de service **optionnel** ; un pack peut livrer une application | Des écrans, une navigation, un lanceur |
-| Éditeur d'écran | `EditorShell`, canvas libre (D40), formats PC et mobile, palette, inspecteur, versions (dashboards) | — |
-| Requête d'objets | `POST /ontology/query` (D185) ; `pnex_core::apps::bind` substitue les paramètres `$nom` ; `services::apps::run_set` exécute un ensemble dans le périmètre | Exécution d'un ensemble par un **humain** (aujourd'hui `/apps/me/…`, compte de service seulement) |
-| Fiche d'un objet | Dashboard de type (D187) : `DashboardLayout.object_type` + sélecteur | Ouverture depuis une ligne de tableau |
-| Écriture | `ontology_objects_create` / `update` (validation du type, `expected_version`, erreurs codées) ; `POST /ontology/objects/{id}/actions/{key}` (D183) | Widgets qui les appellent ; liste d'actions permises (D440) |
-| Widgets | 17 types orientés métriques et contrôles (`dashboard_editor/library.rs`) | Tableau, fiche, compteur, saisie, formulaire, bouton d'action |
+| Usage | Regarder : supervision, métriques, contrôles | Travailler : chercher, consulter, saisir, agir |
+| Données | Séries (`SourceRef`), mémoire, contrôles | Ensembles d'objets de l'application, dans son périmètre |
+| Où | Menu Dashboards | Lanceur Applications (`/apps`) |
 
-## 2. Principe (D506)
+Les deux partagent le moteur de rendu, l'éditeur (`EditorShell`) et les widgets de métriques. Un écran peut donc afficher une jauge.
+
+## 3. Fonctionnement
+
+### 3.1 Qui fait quoi
+
+```mermaid
+---
+config:
+  layout: elk
+---
+flowchart LR
+  A[Admin<br/>apps:write] -->|déclare| P[Application :<br/>périmètre, actions]
+  B[Membre<br/>apps:build] -->|construit| E[Écrans, variables,<br/>ensembles]
+  B -->|publie| V[Version publiée]
+  L[Tout membre<br/>apps:read] -->|ouvre| V
+  E --> P
+```
+
+L'admin déclare l'application dans la page Accès, onglet Applications. Le constructeur édite le reste dans `/apps/{app}/build`. Tout membre de l'org voit dans le lanceur les applications qui ont un écran publié.
+
+### 3.2 Cycle de vie d'un écran
+
+```mermaid
+stateDiagram-v2
+  [*] --> Brouillon : PUT /apps/{id}/build (nouvelle clé)
+  Brouillon --> Brouillon : édition (routes dashboards)
+  Brouillon --> Publié : POST /apps/{id}/publish
+  Publié --> Brouillon : nouvelle édition
+  Brouillon --> [*] : clé retirée du build
+  Publié --> [*] : clé retirée du build
+```
+
+Le lecteur voit toujours la version publiée de l'écran. Le constructeur édite la version courante sans casser ce que les autres utilisent. La publication vérifie chaque écran contre l'application telle qu'elle est. Avant sa première publication, un écran répond 404 au lecteur.
+
+Un écran n'apparaît pas dans la liste des tableaux de bord, ni dans la recherche globale, ni dans les outils de l'assistant. `DELETE /dashboards/{id}` sur un écran répond 404 : un écran se supprime avec sa clé, par le build.
+
+### 3.3 Lire des objets
+
+```mermaid
+sequenceDiagram
+  participant W as Widget
+  participant S as Serveur
+  participant O as Ontologie
+  W->>W: variables du paramètre remplies ?
+  alt variable vide
+    W-->>W: « filtre à renseigner », aucune requête
+  else valeurs présentes
+    W->>S: GET /apps/{id}/object-sets/{name}?$params
+    S->>S: org depuis le principal (R1), ontology:read
+    S->>O: run_set : droits du lecteur ∩ périmètre
+    O-->>S: page d'objets (500 au plus)
+    S-->>W: objets, types verrouillés masqués (D188, D443)
+  end
+```
+
+Un paramètre porte une valeur seulement (`bind`). Il ne porte jamais une clé, un opérateur ni une traversée. Le serveur réserve les paramètres `limit`, `offset`, `sort` et `desc`. Le front ne reçoit jamais une liste complète.
+
+### 3.4 Variables
+
+```mermaid
+---
+config:
+  layout: elk
+---
+flowchart LR
+  I[Champ input] --> V((Variable))
+  T[Ligne de object_table] --> V
+  G[Barre d'un graphique<br/>d'agrégat] --> V
+  U["URL ?v.nom=…"] --> V
+  V --> P[Paramètre $nom<br/>d'un ensemble]
+  V --> F[object_fields]
+  V --> O[object_form]
+  V --> A[action_button]
+```
+
+Une variable a un `name` (`[a-z][a-z0-9_]*`), un `kind` (`text`, `number`, `date`, `object`, `enum`) et un `default`. Les genres `object` et `enum` exigent un `type_key`. Le genre `enum` exige aussi une `property`. Un second clic sur la même barre vide la variable (`crm.md` D726). L'état reste local à la session : il n'est jamais écrit en base.
+
+### 3.5 Écrire des objets
+
+```mermaid
+sequenceDiagram
+  participant W as object_form / action_button
+  participant S as Serveur
+  W->>S: création, modification ou action, ?app=id
+  S->>S: droits ordinaires (can_write, write_role)
+  S->>S: type dans le périmètre ? action permise ?
+  alt hors périmètre
+    S-->>W: 403 app-out-of-scope
+  else conflit de version
+    S-->>W: 409, « modifié entre-temps »
+  else action
+    S-->>W: 202, envoyé aux flows
+  else objet
+    S-->>W: 200 ou 201
+  end
+```
+
+Les écrans utilisent les routes d'écriture existantes, avec les mêmes services et les mêmes 409. Un client qui omet `?app=` garde ses droits ordinaires. Une action déclenchée ne renvoie pas de résultat : l'écran affiche « envoyé », puis recharge.
+
+### 3.6 Application livrée par un pack
+
+```mermaid
+---
+config:
+  layout: elk
+---
+flowchart LR
+  P[Pack avec apps:] --> I{Clé libre ?}
+  I -->|oui| C[Créer l'application<br/>et ses écrans publiés]
+  I -->|non| N[Ne rien réécrire]
+```
+
+Une montée de version du pack ne réécrit jamais l'application. Exemple : le pack `crm` (depuis 3.2.0) livre « Suivi commercial » (clé `sales_follow_up`).
+
+## 4. Exigences
+
+1. Une application ne doit donner aucun droit. Elle doit seulement réduire les droits du lecteur à son périmètre.
+2. Le serveur doit prendre l'org depuis le principal (R1), jamais depuis la requête.
+3. Le serveur doit vérifier le périmètre et les actions permises, pas seulement l'interface.
+4. Un widget doit afficher les valeurs en texte, jamais en HTML (R11–R13).
+5. Un paramètre d'ensemble doit être une valeur, jamais une expression.
+6. Le save du build doit refuser un ensemble, une variable ou une propriété inconnue.
+7. Le moteur ne doit contenir aucun métier (D441). Les exemples et tests utilisent une ontologie inventée (`article`, `auteur`).
+8. Un libellé visible doit passer par les deux `.ftl` et le lexique D218 (« Écran », « Variable » dans `lexicon_guard`).
+9. Sur un écran étroit, un écran doit empiler ses widgets par ordre de lecture.
+
+## 5. Décisions
 
 ### D506 — Une application a une interface construite, externe, ou les deux
 
-L'application reste l'objet D433 de l'org. Elle gagne :
-
-- des **écrans** ordonnés (`screens`), chacun avec une clé, un nom, une
-  icône et son document de mise en page ;
-- un **écran d'accueil** (`home`) ;
-- ses requêtes restent ses **ensembles d'objets** (D434), ses écritures
-  ses **actions permises** (D440).
-
-Une application peut n'avoir que des écrans (aucun compte de service),
-que le SDK (compte de service, pas d'écran, cas de Vigie), ou les deux.
-
-**Dashboard et application ne se confondent pas** :
-
-| | Dashboard | Application |
-|---|---|---|
-| Usage | Regarder : supervision, métriques, séries, contrôles d'org | Travailler : chercher, consulter, saisir des objets, déclencher des actions |
-| Données | Séries (`SourceRef`), mémoire, contrôles | Ensembles d'objets de l'application, dans son périmètre |
-| Où | Menu Dashboards, chrome PneX | Lanceur Applications, plein écran avec sa propre navigation |
-
-Les deux partagent le moteur de rendu, l'éditeur (`EditorShell`) et les
-widgets de métriques : un écran d'application peut afficher une jauge.
-Les widgets de données (D510, D511) n'existent que dans les écrans
-d'application, parce qu'ils lisent les ensembles d'objets.
-
-Généricité (D441) : aucun métier dans le moteur ; exemples, modèles et
-tests sur l'ontologie inventée (`article`, `auteur`, lien `ecrit_par`).
-
-## 3. Écrans (D507)
+L'application D433 gagne des écrans, un écran d'accueil et des variables. Ses requêtes restent ses ensembles d'objets (D434), ses écritures ses actions permises (D440).
 
 ### D507 — Un écran est un document de mise en page versionné, rattaché à son application
 
-- Stockage : l'écran réutilise `dashboards` / `dashboard_versions` avec
-  une colonne `app_id` (nullable, `ON DELETE CASCADE`) : versions,
-  conflits 409, éditeur et validation sont ceux des dashboards. Un écran
-  n'apparaît pas dans la liste des dashboards.
-- L'application porte l'ordre et le nom des écrans (`screens`), sa
-  version change quand on ajoute, retire ou réordonne un écran.
-- Publication : Q-B2.
-
-## 4. Lire des objets (D508)
+Un écran est une ligne de `dashboards` avec `app_id` (`ON DELETE CASCADE`). Il réutilise les versions, les 409, l'éditeur et la validation des tableaux de bord.
 
 ### D508 — Un widget de données lit un ensemble d'objets de son application, avec les droits du lecteur
 
-- `WidgetOptions.object_set: Option<String>` (nom d'un ensemble de
-  l'application) + `params` (variable D509 par paramètre `$nom`).
-- Nouvelle route `GET /api/v1/apps/{id}/object-sets/{name}?limit&offset&<paramètres>`
-  pour un humain : même `run_set`, droits du lecteur (org depuis le
-  principal, R1 ; types verrouillés masqués, D188), **intersectés** avec
-  le périmètre de l'application. Une application ne donne aucun droit ;
-  elle en retire.
-- Paramètres : valeurs seulement (`bind`), jamais une clé, un opérateur ni
-  une traversée ; variable vide → le widget affiche « filtre à
-  renseigner » et n'envoie rien.
-- Pagination du moteur (500 au plus) ; jamais de liste complète au front.
-- Les ensembles d'objets deviennent éditables dans le builder (choix du
-  type, filtres, tri), plus seulement en JSON dans la page Accès.
-- Validation au save : ensemble, variables et propriétés citées existent.
-
-## 5. Variables (D509)
+`WidgetOptions.object_set` nomme l'ensemble. La lecture passe par `GET /apps/{id}/object-sets/{name}`, droits du lecteur ∩ périmètre.
 
 ### D509 — Les widgets d'une application communiquent par des variables déclarées
 
-- `variables: Vec<Variable>` au niveau de l'**application** (partagées
-  entre écrans) : `name` (`[a-z][a-z0-9_]*`), `kind` (`text`, `number`,
-  `date`, `object`, `enum`), `type_key` pour `object`, `default`.
-- Écrites par : un champ de saisie, la sélection d'une ligne de tableau
-  (variable `object`), le clic sur une barre d'un graphique d'agrégat
-  (variable `enum` de la propriété qu'il groupe, second clic = vide ;
-  `crm.md` D726), le paramètre d'URL `?v.<nom>=…` (deep-link).
-- Lues par : les paramètres des ensembles d'objets, les fiches, les
-  formulaires, les boutons d'action.
-- État local à la session de l'utilisateur, jamais en base. Une variable
-  est une valeur, jamais une expression (D512).
-
-## 6. Widgets de données (D510, D511)
+Les variables sont déclarées au niveau de l'application et partagées entre ses écrans. Une variable est une valeur, jamais une expression.
 
 ### D510 — Trois widgets de lecture et de saisie
 
-| Widget | Rôle |
-|---|---|
-| `object_table` | Colonnes = titre + propriétés choisies, tri, pages ; un clic sur une ligne écrit la variable `object` et peut ouvrir un autre écran |
-| `object_fields` | Fiche : propriétés choisies d'un objet (variable `object`), lien vers la page objet |
-| `input` | Champ typé (texte, nombre, date, enum du type) qui écrit une variable |
-
-Valeurs affichées en texte, jamais en HTML (R11–R13).
+`object_table` (lignes, tri, pages, clic → variable et écran cible), `object_fields` (fiche d'un objet), `input` (champ typé qui écrit une variable).
 
 ### D511 — Deux widgets d'écriture, par les routes existantes et la liste d'actions permises
 
-| Widget | Appelle | Garde |
-|---|---|---|
-| `object_form` | `ontology_objects_create` ou `update` sur `expected_version` | Type dans le périmètre ; validation du type ; erreurs de champ sous le champ ; 409 → « modifié entre-temps, recharger » |
-| `action_button` | `POST /ontology/objects/{id}/actions/{key}` (D183) sur la variable `object` | Action dans la liste permise de l'application (D440) ; dialogue D183 existant ; 202 = « envoyé à N flows » |
-
-- Pas de nouvelle route d'écriture pour l'humain : mêmes services, mêmes
-  droits (`can_write`, `write_role` du type), mêmes 409. Le périmètre et
-  la liste d'actions de l'application sont vérifiés côté serveur (en-tête
-  ou paramètre `app` sur ces routes, détail au lot AB3), pas seulement
-  par l'interface.
-- **Précision de D123** : « une surface lit, un flow agit » vise l'action
-  physique. Écrire une donnée de l'ontologie depuis une application est
-  permis, comme depuis la page objet ; agir sur un device reste réservé
-  aux flows déployés (un `action_button` publie vers un flow).
-
-## 7. Ce qui n'entre pas (D512)
+`object_form` crée ou modifie un objet sur `expected_version`. `action_button` déclenche une action D183 permise. Précision de D123 : écrire une donnée est permis, agir sur un device reste réservé aux flows déployés.
 
 ### D512 — Ni source externe, ni code, ni HTML dans une application
 
-> **Amendé le 2026-11-03 (D560, `operational-platform.md`)** : le builder reste
-> sans code ; une application en code est admise sur une origine isolée.
-
-- **Pas de connecteur SQL, REST ou GraphQL** : les données externes
-  entrent par l'ingestion et les flows (D317), avec leur provenance
-  (D184). C'est ce qui distingue une application PneX d'Appsmith.
-- **Pas de JS, de Starlark ni d'expression `{{ }}`** dans un widget : la
-  logique vit dans les flows et les fonctions, versionnés et débogables.
-- **Pas de HTML ni de CSS libre** (R11–R13).
-- Pas de synchronisation git, pas de partage hors de l'org (Q-B4).
-
-## 8. Exécution, contrat, droits, assistant (D513)
+Pas de connecteur SQL, REST ni GraphQL : les données externes entrent par l'ingestion (D317), avec leur provenance (D184). Pas de JS, de Starlark ni d'expression `{{ }}`. Pas de HTML ni de CSS libre. Amendée par D560 : une application en code est admise sur une origine isolée (`external-apps.md`).
 
 ### D513 — Le lanceur, la vue plein écran et les gardes habituelles
 
-- **Lanceur** : entrée de menu « Applications » (lexique : le mot existe
-  déjà, même notion) qui liste les applications ayant au moins un écran.
-- **Vue** `/apps/{key}/{screen}` : plein écran, navigation entre écrans
-  (barre latérale PC, onglets en bas en mobile), retour à PneX.
-- **Routes** : `GET /apps/{id}/object-sets/{name}` et l'édition des
-  écrans entrent au spec (`#[utoipa::path]`, `task openapi`), à
-  `exposure.rs` (lecture exposée au MCP, écriture de structure exclue,
-  motif accès) et à `iam.rs` (Q-B1 : qui construit).
-- **Assistant** : fiche `assistant-kb` « applications » (écrans,
-  variables, widgets, exemple sur l'ontologie inventée) ; l'assistant
-  peut proposer un écran en brouillon, jamais publier ; un
-  `action_button` reste une proposition (D183, D144).
-- **Packs** : un pack qui livre une application (`apps:`, D433) peut
-  livrer ses écrans : une application métier arrive prête à l'emploi.
-- Lexique : « Écran », « Variable » et chaque libellé visible ajoutés au
-  lexique et à `lexicon_guard` ; clés dans les deux `.ftl`.
+Lanceur « Applications », vue `/apps/{app}/{screen}`, routes au spec, à `exposure.rs` et à `iam.rs`, fiche de l'assistant, écrans livrés par pack.
 
-## 9. Lots
+### Questions tranchées (Shan, 2026-10-29)
 
-| Lot | Contenu | Tests |
-|---|---|---|
-| **AB0** | `pnex-core` : `screens`, `home`, `variables` sur l'application ; `dashboards.app_id` ; `WidgetOptions.object_set` ; route humaine d'ensemble d'objets ; IAM, exposition, spec | intersection périmètre × droits ; 403 sans permission ; variable inconnue refusée |
-| **AB1** | Builder : écrans d'une application dans `EditorShell`, éditeur d'ensembles d'objets ; lanceur et vue plein écran, deep-link | e2e : créer une application, deux écrans, naviguer |
-| **AB2** | `object_table`, `input`, `object_count`, `object_fields` ; ligne → variable et écran cible | e2e : saisie → tableau filtré → fiche ; type verrouillé masqué |
-| **AB3** | `object_form` + contrôle serveur du périmètre sur l'écriture | e2e : création, conflit 409, viewer → widget désactivé, type hors périmètre → 403 |
-| **AB4** | D440 liste d'actions permises + `action_button` | e2e : 202 ; action non permise refusée ; 409 `ontology-action-no-flow` affiché |
-| **AB5** | Fiche assistant, lexique, application modèle (liste + fiche + formulaire) sur l'ontologie inventée, écrans livrés par pack, mobile | gardes kb/lexique ; `engine_genericity` |
+| # | Décision |
+|---|---|
+| Q-B1 | Qui construit : permission `apps:build` (niveau Membre, comme `dashboards:write`). Le périmètre et les actions restent `apps:write` (Admin) |
+| Q-B2 | Le lecteur voit la version publiée (pointeur, comme les flows et les visites) |
+| Q-B3 | Tout membre de l'org voit le lanceur. Une restriction par rôle viendra plus tard |
+| Q-B4 | Pas de partage hors de l'org |
+| Q-B5 | Pas de retour d'un flow vers l'écran : « envoyé », puis rechargement |
+| Q-B6 | Pas de mode d'édition mobile : l'écran s'empile sur écran étroit |
 
-Premier lot de valeur : AB0 → AB2 (application de consultation, sans
-écriture).
+## 6. Interfaces
 
-## 10. Questions tranchées (Shan, 2026-10-29 : les défauts)
+| Route | Opération | Permission | MCP |
+|---|---|---|---|
+| `PUT /api/v1/apps/{id}/build` | `apps_build` : écrans, accueil, variables, ensembles, sur `expected_version` | `apps:build` | exclu |
+| `POST /api/v1/apps/{id}/publish` | `apps_publish` | `apps:build` | exclu |
+| `GET /api/v1/apps/{id}/screens/{key}` | `apps_screens_get` : version publiée | `apps:read` | exposé |
+| `GET /api/v1/apps/{id}/object-sets/{name}` | `apps_object_sets_run` | `ontology:read` | exposé |
+| `POST /api/v1/apps/{id}/object-sets/{name}/aggregate/query` | `apps_object_sets_aggregate_query` : agrégats d'un ensemble (`viz.md` D579–D588) | `ontology:read` | exposé |
+| `?app=<id>` sur création, modification et action d'objet | contrôle du périmètre (D511) | celle de la route | — |
 
-| # | Question | Décision |
-|---|---|---|
-| Q-B1 | Qui construit une application ? Aujourd'hui `apps:write` = Admin. | Nouvelle permission `apps:build` (Editor) pour les écrans et ensembles ; périmètre et actions permises restent Admin (`apps:write`) |
-| Q-B2 | Publication : les utilisateurs voient-ils la dernière version enregistrée ou une version publiée ? | Version publiée (pointeur, école flows/tours) : on construit sans casser ce que les autres utilisent |
-| Q-B3 | Qui voit une application dans le lanceur ? | Tout membre de l'org en V1 ; restriction par rôle plus tard |
-| Q-B4 | Partager une application hors de l'org (lien public) ? | Non en V1 |
-| Q-B5 | Résultat d'une action : D183 est sans retour. Un retour du flow pour l'écran ? | Non en V1 : « envoyé », puis rechargement |
-| Q-B6 | Mobile ? | PC d'abord (AB1–AB4), mobile en AB5 |
+Le contenu d'un écran s'édite par les routes `/dashboards`, sous la garde `apps:build`. Code d'erreur : `app-out-of-scope` (403).
 
-## 11. État d'implémentation (2026-11-02)
+| Widget (`pnex_core::viz`) | Rôle |
+|---|---|
+| `object_table` | Tableau d'objets, clic sur une ligne → variable `object` |
+| `object_fields` | Fiche d'un objet |
+| `input` | Champ typé qui écrit une variable |
+| `object_form` | Formulaire de création ou de modification |
+| `action_button` | Bouton d'action D183 |
 
-Choix pris en codant, sans demande à Shan (réversibles) :
+Pages du front : `/apps` (lanceur), `/apps/{app}/build` (constructeur), `/apps/{app}/{screen}?v.<nom>=…` (vue). Code : `crates/pnex-core/src/apps.rs`, `crates/pnex-backend/src/controllers/apps.rs`, `crates/pnex-frontend/src/pages/apps/`, `crates/pnex-frontend/src/components/app_widgets.rs`. Fiche de l'assistant : `crates/pnex-backend/assistant-kb/applications.md`.
 
-- **Routes** : `PUT /apps/{id}/build` (écrans, accueil, variables, ensembles ; une seule écriture, `apps:build`), `POST /apps/{id}/publish`, `GET /apps/{id}/screens/{key}` (version publiée, `apps:read`), `GET /apps/{id}/object-sets/{name}` (`ontology:read`, masquage D443, paramètres réservés `limit`, `offset`, `sort`, `desc`). `apps:build` = niveau Membre, comme `dashboards:write`.
-- **Écran** : un dashboard avec `app_id`. Son contenu s'édite par les routes dashboards (garde `apps:build`, contrôle de ce que nomment ses widgets, D508) ; il n'apparaît ni dans la liste, ni dans la recherche globale, ni dans les outils de l'assistant ; `DELETE /dashboards/{id}` répond 404.
-- **Écriture** (D511) : `?app=<id>` sur la création, la modification et l'action d'un objet ; 403 `app-out-of-scope`. Un client qui omet le paramètre garde ses droits ordinaires : une application ne donne aucun droit, elle en retire pour ses écrans.
-- **Pack** : `apps:` dans un pack (`PackApp`), créée à l'installation si la clé est libre, écrans publiés, jamais réécrite à la montée. Le pack `crm` 3.2.0 livre « Suivi commercial » (pipeline, opportunité, pistes, activités, devis et factures).
-- **Mobile** (Q-B6) : un écran desktop s'empile par ordre de lecture sur écran étroit, sans mode d'édition mobile dédié.
+Tests : `crates/pnex-backend/tests/apps.rs` (`a_screen_reads_and_writes_inside_its_application`), `tests/crm.rs` (`the_pack_ships_its_screens`), `e2e/tests/crm.spec.ts` (écrans de « Suivi commercial »).
 
-Tests : `tests/apps.rs` (`a_screen_reads_and_writes_inside_its_application`), `tests/crm.rs` (`the_pack_ships_its_screens`), unitaires `pnex-core` et `pages/apps/run.rs`.
+## 7. Reste à faire
 
-Limites :
+Le chantier est en pause. Chaque point attend l'accord de Shan.
 
-- **Pas de spec e2e au dépôt** (§9 en demande une par lot) : essai navigateur scripté le 2026-11-02 hors dépôt, Chromium sans interface sur un serveur isolé (lanceur, pipeline, ligne → écran, fiche, formulaire, création de piste, dialogue d'action, builder, éditeur, publication, écran étroit). Trois défauts corrigés en route : écran qui ne se rechargeait pas au changement de route, requêtes en double, formulaire « Modifier » sans objet. Non essayés en réel : le lien profond `?v.` (test unitaire seulement), une action reçue par un flow déployé (202), le 409 d'un formulaire, un rôle masqué, le mode sombre.
-- La vue reste dans la coquille PneX (barre latérale visible), pas en plein écran.
-- Pas d'aperçu d'un écran non publié : publier pour le voir.
-- Pas de brouillon d'écran proposé par l'assistant (§8).
-- `object_count` retiré le 2026-11-04 : les nombres passent par les widgets `stat`, `gauge`, `indicator`, `line`, `symbol` et `range_bars`, avec une source d'objets (`viz.md`, D579–D588).
-- Le tri d'un tableau ne porte pas sur le titre (ordre par défaut de la requête).
-
+- La vue reste dans la coquille PneX (barre latérale visible), pas en plein écran comme D513 le prévoit.
+- Pas d'aperçu d'un écran non publié : il faut publier pour le voir.
+- L'assistant ne propose pas de brouillon d'écran (prévu par D513).
+- Le tri d'un tableau ne porte pas sur le titre.
+- Pas de spec e2e par lot (AB1–AB4). Seul `crm.spec.ts` ouvre des écrans. Non essayés en réel : le lien profond `?v.`, une action reçue par un flow déployé (202), le 409 d'un formulaire, un rôle masqué, le mode sombre.
+- Restriction du lanceur par rôle (Q-B3) : à décider.
