@@ -738,8 +738,6 @@ tests:
 | `write.table.key` | Colonnes qui nomment une ligne : une ligne déjà vue est écartée |
 | `sql.columns` | Colonnes d'une table absente, lue vide |
 
-**Attention :** `include_dir!` embarque `crates/pnex-backend/packs`, mais `build.rs` ne surveille que `assistant-kb`. Un nouveau fichier YAML de pack n'entre pas dans le binaire sans une recompilation de `pnex-backend` forcée.
-
 ### 6.2 Routes
 
 | Route | Effet |
@@ -773,7 +771,6 @@ tests:
 - D946 : les pipelines des packs restent hors des exécutions enchaînées. `after` d'un pipeline du moteur n'est pas appliqué.
 - D941 : cible `series` non codée.
 - D944 : la sonde n'a pas de route.
-- `build.rs` : surveiller `packs` comme `assistant-kb` (§6.1).
 
 **Écarts connus du moteur :**
 
