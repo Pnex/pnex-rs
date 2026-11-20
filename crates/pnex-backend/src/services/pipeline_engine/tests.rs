@@ -670,6 +670,29 @@ fn every_profile_network_has_a_capture_pipeline() {
     }
 }
 
+/// D976: the step the server reads as "list hidden" is the connections
+/// check, and the click targets the full list (the profile also links the
+/// mutual connections, network F only).
+#[test]
+fn contact_connections_hidden_step_is_the_connections_check() {
+    let sp = shipped()
+        .iter()
+        .find(|p| p.id() == "prospecting_b2b/connections_capture_linkedin")
+        .expect("shipped");
+    let Some(pnex_core::pipeline::doc::Step::Browse(b)) = sp.doc.steps.get(1) else {
+        panic!("browse second")
+    };
+    assert!(!b.keep, "the raw cards never stay");
+    let hidden = &b.steps[crate::services::network_connections::HIDDEN_STEP as usize];
+    assert_eq!(hidden.action(), "assert");
+    assert!(format!("{hidden:?}").contains("connectionOf"), "{hidden:?}");
+    let click = format!("{:?}", b.steps[3]);
+    assert!(
+        click.contains(r#"connectionOf'][href*='\"S\"']"#),
+        "{click}"
+    );
+}
+
 /// D995: `browse` only right after a tracked enumeration, on its rows.
 #[test]
 fn browse_only_follows_a_tracked_enumeration() {

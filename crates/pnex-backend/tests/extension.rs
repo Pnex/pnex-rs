@@ -2201,7 +2201,7 @@ async fn a_contacts_connections_keep_only_people_at_the_chosen_organizations() {
         assert!(matches!(recv(&mut ws).await, ServerMsg::Missions { .. }));
         let ServerMsg::Runs { runs } = recv(&mut ws).await else { panic!("second exploration") };
         send(&mut ws, &AgentMsg::RunDone { run_id: runs[0].run_id.clone(), ok: false,
-            failed_step: Some(pnex_core::default_rules::CONNECTIONS_HIDDEN_STEP), reason: Some("assert-failed".into()) }).await;
+            failed_step: Some(5), reason: Some("assert-failed".into()) }).await;
         assert!(matches!(recv(&mut ws).await, ServerMsg::Runs { .. }));
         sync(&mut ws).await;
         let (_, listed) = call(&server, "GET", &explore, &env.alice, org, None).await;

@@ -1,0 +1,78 @@
+# A contact's connections on LinkedIn (D976, D977, PE5.4): the contact's
+# profile opened in the asking member's session, its connections link followed
+# (offered only for one's own connections, and only when they share it), then
+# three result pages read at a reader's pace. Only the people whose card names
+# an organization of the org's selection (`keep`, given by the route) are
+# written: a person, `knows` from the contact, and `employs` proposed. Everyone
+# else is never written, and the raw cards are erased once read (`keep: false`).
+# Step 5 (the connections link) failing means a hidden list
+# (`ext-connections-hidden`). Selectors checked on the live site on 2026-11-17.
+key: connections_capture_linkedin
+name: Connections of a contact (LinkedIn)
+hosts: [www.linkedin.com]
+steps:
+  - enumerate: { as: asked, track: true, cross: [{ as: url, asked: [person_id, path, keep, explored_by] }] }
+  - browse:
+      as: pages
+      for_each: asked
+      site: www.linkedin.com
+      session: required
+      keep: false
+      steps:
+        - open: "{{url}}"
+        - wait: { ms: 2500 }
+        - assert: { url_contains: "{{path}}" }
+        - click: { selector: "a[href*='connectionOf'][href*='\"S\"']", optional: true }
+        - wait: { ms: 3000 }
+        - assert: { url_contains: "connectionOf" }
+        - scroll: bottom
+        - wait: { ms: 2000 }
+        - extract: { cards: { selector: "main [role='listitem']:has(a[href*='/in/']), main li:has(a[href*='/in/'])", max: 10, fields: { card: {}, link: { selector: "a[href*='/in/']", attr: href } } }, as: connections.1, optional: true }
+        - click: { role: button, name: Next, optional: true }
+        - click: { role: button, name: Suivant, optional: true }
+        - wait: { ms: 4000 }
+        - scroll: bottom
+        - wait: { ms: 2000 }
+        - extract: { cards: { selector: "main [role='listitem']:has(a[href*='/in/']), main li:has(a[href*='/in/'])", max: 10, fields: { card: {}, link: { selector: "a[href*='/in/']", attr: href } } }, as: connections.2, optional: true }
+        - click: { role: button, name: Next, optional: true }
+        - click: { role: button, name: Suivant, optional: true }
+        - wait: { ms: 4000 }
+        - scroll: bottom
+        - wait: { ms: 2000 }
+        - extract: { cards: { selector: "main [role='listitem']:has(a[href*='/in/']), main li:has(a[href*='/in/'])", max: 10, fields: { card: {}, link: { selector: "a[href*='/in/']", attr: href } } }, as: connections.3, optional: true }
+  - sql:
+      as: found
+      sql: SELECT a.person_id, a.keep, a.explored_by, p.name, p.text FROM asked a JOIN pages p ON true
+  - call: { as: people, from: found, function: linkedin_contact_connections }
+  - write:
+      from: people
+      objects:
+        objects:
+          - { as: contact, type: person, key: "@id", create: false, properties: { "@id": person_id } }
+          - { as: person, type: person, key: profile_url, create: true, title: name, properties: { profile_url: url } }
+        links:
+          - { type: knows, from: contact, to: person, attributes: { source: { value: linkedin_connections }, explored_by: explored_by } }
+  - sql:
+      as: proposed
+      sql: >-
+        SELECT 'organization' AS type_key, 'id' AS key_property, organization_id AS key, name AS title,
+          'employs' AS link_type, 'person' AS to_type, 'profile_url' AS to_property, url AS to_key,
+          evidence
+        FROM people
+  - write:
+      from: proposed
+      proposals: { origin: linkedin_connections }
+tests:
+  # Whole folded words, the longest title wins; a company page, a person seen
+  # twice and another firm are never kept.
+  - name: only the people at a chosen organization are kept
+    asked: [{ url: "https://www.linkedin.com/in/carla", person_id: "8f1c2b9e-0000-4000-8000-000000000001", path: "/in/carla", explored_by: "1", keep: '[{"id": "8f1c2b9e-0000-4000-8000-00000000000a", "title": "Acme"}, {"id": "8f1c2b9e-0000-4000-8000-000000000002", "title": "Acme Industrie"}, {"id": "8f1c2b9e-0000-4000-8000-00000000000b", "title": "X"}]' }]
+    given: { "browse:pages": contact_connections.json }
+    expect:
+      people:
+        rows: 2
+        contains:
+          - { url: "https://www.linkedin.com/in/jmartin", name: Jeanne Martin, headline: "Directrice d'usine chez Acme Industrie", organization_id: "8f1c2b9e-0000-4000-8000-000000000002" }
+          - { url: "https://www.linkedin.com/in/lroy", organization_id: "8f1c2b9e-0000-4000-8000-000000000002" }
+      proposed:
+        rows: 2

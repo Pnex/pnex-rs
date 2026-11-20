@@ -69,10 +69,12 @@
 # people are kept from a contact's connections (D976, renumbered in 4.1.0).
 # Since 4.2.0 a captured profile or employee list is a document linked by
 # `captured_text`, kept by the pack's navigation pipelines (D996).
+# Since 4.6.0 a contact's connections are read by the pipeline
+# `connections_capture_linkedin` (D976, PE5.4).
 key: prospecting_b2b
 name: B2B account mapping
 names: {fr: "Cartographie commerciale"}
-version: "4.5.1"
+version: "4.6.0"
 requires: [companies, web_presence, watch]
 description: "Accounts as a dated network: group and subsidiaries, sites with their commercial status, contacts by persona, who recommended whom. Questions: which subsidiaries of this group have no contact yet? Who follows this account? Which sites are customers?"
 descriptions: {fr: "Les comptes vus comme un réseau daté : groupe et filiales, sites avec leur statut commercial, contacts par persona, qui a recommandé qui. Questions : quelles filiales de ce groupe n'ont encore aucun contact ? Qui suit ce compte ? Quels sites sont clients ?"}
@@ -2068,4 +2070,80 @@ pipeline_functions:
                   position, company = employer(c["headline"])
                   out.append({"url": c["url"], "name": c["name"][:255], "position": position[:255],
                               "company": company[:255], "place": c["place"][:255], "page": str(page)})
+          return out
+  # A contact's connections list (D976): only the people whose card names an
+  # organization of the org's selection are kept (minimization, D998 gaps).
+  - name: linkedin_contact_connections
+    language: starlark
+    description: "People of a contact's connections whose card names a chosen organization (rows person_id, keep, explored_by, name, text of each cards extract → one row per person kept, 100 at most)."
+    code: |
+      FOLD = {"à": "a", "â": "a", "ä": "a", "á": "a", "ã": "a", "å": "a", "ç": "c",
+              "é": "e", "è": "e", "ê": "e", "ë": "e", "í": "i", "ì": "i", "î": "i",
+              "ï": "i", "ñ": "n", "ó": "o", "ò": "o", "ô": "o", "ö": "o", "õ": "o",
+              "ø": "o", "ú": "u", "ù": "u", "û": "u", "ü": "u", "ý": "y", "ÿ": "y",
+              "œ": "oe", "æ": "ae", "ß": "ss"}
+      KEPT_MAX = 100
+
+      def padded(text):
+          out = []
+          cur = ""
+          for c in (text or "").lower().elems():
+              c = FOLD.get(c, c)
+              if c.isalnum():
+                  cur += c
+              elif cur:
+                  out.append(cur)
+                  cur = ""
+          if cur:
+              out.append(cur)
+          return " " + " ".join(out) + " "
+
+      # The canonical address of a profile link, None for anything else.
+      def profile_url(link):
+          at = (link or "").find("linkedin.com/in/")
+          if at < 0:
+              return None
+          slug = link[at + len("linkedin.com/in/"):].split("?")[0].split("#")[0].split("/")[0].lower()
+          if slug == "" or len(slug) > 100:
+              return None
+          for c in slug.elems():
+              if not (c.isalnum() or c in "-_%"):
+                  return None
+          return "https://www.linkedin.com/in/" + slug
+
+      # The chosen organization a card line names: the longest title wins.
+      def organization_of(line, orgs):
+          l = padded(line)
+          best = None
+          for o in orgs:
+              if o["padded"] in l and (best == None or len(o["padded"]) > len(best["padded"])):
+                  best = o
+          return best
+
+      def handle(rows):
+          out = []
+          seen = []
+          for r in rows:
+              if not (r.get("name") or "").startswith("connections."):
+                  continue
+              orgs = []
+              for o in json.decode(r.get("keep") or "[]"):
+                  p = padded(o.get("title"))
+                  if len(p.strip()) >= 3:
+                      orgs.append({"id": o.get("id"), "padded": p})
+              for c in json.decode(r.get("text") or "[]"):
+                  url = profile_url(c.get("link"))
+                  if url == None or url in seen:
+                      continue
+                  seen.append(url)
+                  lines = [l.strip() for l in (c.get("card") or "").split("\n") if l.strip()]
+                  for line in lines[1:]:
+                      o = organization_of(line, orgs)
+                      if o != None:
+                          if len(out) < KEPT_MAX:
+                              out.append({"person_id": r.get("person_id"), "explored_by": r.get("explored_by"),
+                                          "url": url,
+                                          "name": lines[0][:255], "headline": line[:255], "organization_id": o["id"],
+                                          "evidence": json.encode({"url": url, "headline": line[:255]})})
+                          break
           return out

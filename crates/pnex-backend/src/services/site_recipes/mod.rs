@@ -1155,28 +1155,6 @@ pub async fn file_key(
 
 #[cfg(test)]
 mod tests {
-    #[test]
-    fn every_default_rule_parses_and_needs_a_session() {
-        use pnex_core::default_rules as d;
-        let rules = vec![d::connections_capture()];
-        for y in &rules {
-            let r = super::parse(y).unwrap_or_else(|e| panic!("{e:?}\n{y}"));
-            assert!(r.needs_session(), "{y}");
-        }
-        // The step the server reads as "list hidden" is the connections check.
-        let c = super::parse(&d::connections_capture()).unwrap();
-        let hidden = &c.steps[d::CONNECTIONS_HIDDEN_STEP as usize];
-        assert_eq!(hidden.action(), "assert");
-        assert!(format!("{hidden:?}").contains("connectionOf"), "{hidden:?}");
-        // The profile also links the mutual connections (network F only):
-        // the click must target the full list (F and S).
-        let click = format!("{:?}", c.steps[3]);
-        assert!(
-            click.contains(r#"connectionOf'][href*='\"S\"']"#),
-            "{click}"
-        );
-    }
-
     use super::*;
 
     #[test]

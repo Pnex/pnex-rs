@@ -17,7 +17,6 @@ use std::collections::BTreeMap;
 use crate::services::extension::ExtensionError;
 use crate::services::ontology;
 use crate::services::site_recipes::purpose;
-use crate::services::site_recipes::{RecipeError, StartError};
 
 /// Days a captured profile text is kept (D333).
 pub const RAW_TEXT_DAYS: i64 = 30;
@@ -293,15 +292,6 @@ pub(crate) fn capture_view(
     }
 }
 
-pub(crate) fn start_error(e: StartError) -> ExtensionError {
-    match e {
-        StartError::NoAgent => ExtensionError::NoAgent,
-        StartError::DailyCap { max } => ExtensionError::RunDailyCap { max },
-        StartError::Recipe(RecipeError::Db(e)) => ExtensionError::Db(e),
-        other => ExtensionError::Db(sea_orm::DbErr::Custom(format!("default rule: {other:?}"))),
-    }
-}
-
 /// Pipelines of the prospecting pack that capture a profile, one per network
 /// (`profile_capture_<network>`, D996).
 const PROFILE_PIPELINES: &str = "prospecting_b2b/profile_capture_";
@@ -435,14 +425,6 @@ pub async fn captures(
             capture_view(id, &url, &state, reason, at)
         })
         .collect())
-}
-
-pub(crate) fn actor_of(source_ref: &str) -> ontology::Actor {
-    ontology::Actor {
-        user_id: None,
-        role: crate::models::_entities::sea_orm_active_enums::OrgMemberRole::Member,
-        source_ref: source_ref.to_string(),
-    }
 }
 
 /// A live object of the org whose type declares [`PEOPLE_TO_READ`]: the

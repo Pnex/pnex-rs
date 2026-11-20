@@ -209,7 +209,7 @@ flowchart LR
 
 `ontology_trigger` publie les objets créés ou modifiés, les liens ouverts ou fermés et les propositions décidées sur `pnex:onto:v1:{org}`, depuis le journal des changements. La publication est au mieux, sans rejeu. Le message nomme l'objet, jamais ses propriétés. `pipeline_ask` relit la configuration déployée, plafonne par jour (`per_day`) et refuse un objet sous opposition (D341). Il utilise l'agent de celui qui a déployé le flow, ou un agent commun (D550).
 
-Les captures de profil (D333) et la liste d'employés (D779) sont aussi des pipelines du pack `prospecting_b2b` (`profile_capture_<réseau>`, `people_capture_linkedin`), écrits par `write: media` (D996). Les relations du membre sont lues par `my_connections_linkedin`, une page par ligne demandée.
+Les captures de profil (D333) et la liste d'employés (D779) sont aussi des pipelines du pack `prospecting_b2b` (`profile_capture_<réseau>`, `people_capture_linkedin`), écrits par `write: media` (D996). Les relations du membre sont lues par `my_connections_linkedin`, une page par ligne demandée. Les relations d'un contact (D976) sont lues par `connections_capture_linkedin` : la route donne la sélection d'organisations, la fonction `linkedin_contact_connections` garde seulement les personnes de cette sélection, et les cartes brutes sont effacées (`keep: false`).
 
 ### 3.6 Synchro vers l'ontologie
 
@@ -765,7 +765,6 @@ tests:
 
 **Lots du moteur non finis :**
 
-- PE5.4 : les relations d'un contact (D976) passent encore par `Purpose::ConnectionsCapture` et `default_rules`.
 - PE5.5 : `/site-recipes`, la page « Sites web » et `pnex_core::default_rules` existent encore.
 - PE7 : les routes de lecture `/markets/*` existent encore à côté des requêtes nommées.
 - PE8 : mesure autour d'événements et chaînes candidates dans `/analysis`, note de séance en règle.
