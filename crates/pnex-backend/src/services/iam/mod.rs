@@ -218,6 +218,8 @@ fn routes() -> &'static HashMap<(String, String), (&'static str, Access)> {
 /// Registry entry of a request: its operationId and who may call it.
 /// `None` off the spec (WebSockets, `/internal/*`, unknown routes).
 pub fn operation_of(method: &Method, path: Option<&MatchedPath>) -> Option<(&'static str, Access)> {
+    // axum answers HEAD with the GET handler: same operation, same permission.
+    let method = if method == Method::HEAD { &Method::GET } else { method };
     routes()
         .get(&(method.to_string(), path?.as_str().to_string()))
         .copied()
