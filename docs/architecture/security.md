@@ -198,7 +198,7 @@ Sévérité : HIGH = compromission inter-org, plateforme ou prise de compte. MED
 | SEC-26 | MEDIUM | **Clé de frame forgée dans un message de flow** (`pnex-node-camera/src/record.rs`, `pnex-node-vision/src/lib.rs`) : un nœud `function` pouvait faire lire une clé Valkey d'une autre org | R3 | corrigé 2026-10-10 : `camera::frame_key_in_org`, clé lue seulement si elle est une clé de frame de l'org tamponnée ; test `frame_keys_are_bound_to_their_org` |
 | SEC-27 | LOW | **Secret d'accès d'un flux remis à son boîtier de capture** (`services/media_ingest/boxes.rs`, `/ws/media`) : un boîtier compromis livre les secrets des flux qu'il capte | R9, R16 | accepté 2026-10-10 avec garde-fous : secret envoyé seulement au boîtier désigné (org et device tirés de l'identité mTLS + Noise, R1), sur son lien chiffré, en mémoire seulement, jamais un secret de stockage ; déplacer un flux à secret exige `secrets:write` (`secret-destination-locked` sinon, test `media_box.rs`) ; seul un agent qui annonce `media_capture` capte |
 | SEC-28 | LOW | **Pages : débit non borné par connexion** (`services/pages/room.rs`) | R2 | corrigé 2026-10-10 : seau à jetons par session (rafale 200, 50 messages/s), fermeture 4429 (`controllers/ws_doc.rs`) |
-| SEC-28 (bis) | LOW | **Fil bloqué par un document hostile** (`services/doc_search.rs`) : extraction synchrone sur des octets utilisateur ; zip-bomb refusée, inflate et texte plafonnés, `spawn_blocking`, délai de 300 s ; le fil hors délai n'est pas annulable | — (disponibilité) | accepté 2026-10-10 (shortcut commenté dans le code) |
+| SEC-90 | LOW | **Fil bloqué par un document hostile** (`services/doc_search.rs`) : extraction synchrone sur des octets utilisateur ; zip-bomb refusée, inflate et texte plafonnés, `spawn_blocking`, délai de 300 s ; le fil hors délai n'est pas annulable | — (disponibilité) | accepté 2026-10-10 (shortcut commenté dans le code) |
 | SEC-29 | LOW | **Pages : rôle figé à l'ouverture du websocket** (`controllers/ws_doc.rs`) | R2 | corrigé 2026-10-15 : rôle relu à chaque battement (30 s) ; retiré → 4006, rétrogradé viewer → lecture seule |
 | SEC-30 | MEDIUM | **Export COCO du Vision Lab en mémoire** (`services/lab.rs::export`) | — (disponibilité) | corrigé 2026-10-13 : 512 Mo d'images au plus, vérifié avant lecture → 413 `lab-export-too-large` |
 | SEC-31 | MEDIUM | **Import de trames : segments chargés en bloc** (`services/lab.rs::import_recording`) | — (disponibilité) | corrigé 2026-10-13 : segments lus un par un, plafond 2 Gio par import |
@@ -334,7 +334,7 @@ Détail et correctifs dans `audit-2026-11-06.md` (référence entre parenthèses
 | SEC-77 | LOW | **Promotion admin plateforme sans `email_verified`** (C2) | R1 | corrigé 2026-11-07 |
 | SEC-78 | LOW | **Contrôle de version non atomique de `update_notification_template`** (C5) | D144 | corrigé 2026-11-07 : `update_if_unchanged` |
 | SEC-79 | LOW | **`authorize_tool` ouvert sur un outil hors registre IAM** (C6) | R2 | corrigé 2026-11-07 |
-| SEC-80 | LOW | **`OrgContext` laisse passer une route absente du registre IAM** (`operation_of` → `None`) | R2 | ouvert : seule `tests/iam.rs` empêche la livraison ; à fermer par un refus par défaut, après inventaire des routes hors spec |
+| SEC-80 | LOW | **`OrgContext` laisse passer une route absente du registre IAM** (`operation_of` → `None`) | R2 | corrigé 2026-11-20 : refus par défaut (403 `access-denied`). Seules les routes hors spec (`services::iam::off_spec` : `/_*`, `/ws/*`, `/internal/*`) passent sans entrée. Test `unregistered_org_route_is_refused` |
 | SEC-81 | LOW | **AIS danois servi en HTTP clair, sans somme de contrôle** (`markets-research.md` F.7) | R8 | accepté 2026-11-09 : hôte fixé, rien de l'org envoyé, décodage strict |
 | SEC-82 | MEDIUM | **Chargements massifs déclenchables par tout inscrit** (MK22–MK24) | R2 | corrigé 2026-11-09 : `bulk_history` seulement avec un quota de tables fixé par un admin plateforme (D821) |
 | SEC-83 | LOW | **Lectures non bornées d'un fichier massif** (ADS-B, gzip) | R8 | corrigé 2026-11-09 : 64 Mio avant et après décompression, ligne ≤ 64 Kio |
@@ -796,7 +796,6 @@ flowchart LR
 ## 11. Reste à faire
 
 - **SEC-10** : créer la clé de signature de l'APK release et la poser en secrets GitHub.
-- **SEC-28** est utilisé deux fois (débit des pages, document hostile). Choix de Shan : garder les deux entrées telles quelles, ou attribuer un nouveau numéro à la seconde.
 - **SEC-17 à SEC-20** : SEC-20 attend V4 (eFuses, après la validation communautaire du firmware).
 - **V2** : mécanisme de flags (`security_floor`, `security_profile`, flags par device) et exigences du profil `industrial`.
 - **Rotation de CA d'org** : outillage absent (double CA de transition, OTA), EX-A8 en V3.

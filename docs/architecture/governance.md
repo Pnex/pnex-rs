@@ -207,4 +207,3 @@ Préfixe `/api/v1`. Permissions au registre `pnex-api-contract/src/iam.rs`.
 - Choix de Shan : deux marquages peuvent porter le même nom. Les listes de choix sont ambiguës.
 - Hors dépôt : `PNEX_PSEUDONYM_KEY` en secret dans le chart `pipelineWorker` de `pnex-deploy`.
 - L'onglet « Marquages et habilitations » n'a pas de passe axe dédiée.
-- SEC-80 ouvert (`security.md` §7) : l'extracteur laisse passer une route absente du registre IAM.

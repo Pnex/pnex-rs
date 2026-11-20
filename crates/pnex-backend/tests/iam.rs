@@ -264,6 +264,57 @@ async fn me_permissions_follow_the_managed_role() {
     .await;
 }
 
+/// SEC-80: an org route missing from the registry is refused by default;
+/// WebSocket and internal routes stay outside the registry.
+#[tokio::test]
+#[serial]
+async fn unregistered_org_route_is_refused() {
+    let base = common::spawn_mock_rauthy().await;
+    unsafe { std::env::set_var("RAUTHY_URL", &base) };
+    let alice = common::valid_token(
+        &base,
+        "00000000-0000-0000-0000-00000000000a",
+        "alice",
+        "alice@example.com",
+    );
+    let config: RequestConfig = RequestConfigBuilder::new().build();
+    loco_rs::testing::request::request_with_config::<App, _, _>(
+        config,
+        move |server, ctx| async move {
+            let org = server
+                .post("/api/v1/orgs")
+                .add_header("Authorization", bearer(&alice))
+                .json(&serde_json::json!({ "name": "SEC-80" }))
+                .await
+                .json::<Value>()["id"]
+                .as_i64()
+                .unwrap();
+            async fn probe(_: pnex_backend::auth::OrgContext) -> &'static str {
+                "ok"
+            }
+            let router = axum::Router::new()
+                .route("/api/v1/not-registered", axum::routing::get(probe))
+                .route("/ws/probe", axum::routing::get(probe))
+                .with_state(ctx.clone());
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
+            let get = |path: &str| {
+                reqwest::Client::new()
+                    .get(format!("http://{addr}{path}"))
+                    .header("Authorization", bearer(&alice))
+                    .header("X-Org-Id", org.to_string())
+                    .send()
+            };
+            let res = get("/api/v1/not-registered").await.unwrap();
+            assert_eq!(res.status(), 403);
+            assert_eq!(res.json::<Value>().await.unwrap()["error"], "access-denied");
+            assert_eq!(get("/ws/probe").await.unwrap().status(), 200);
+        },
+    )
+    .await;
+}
+
 #[test]
 fn every_checked_permission_exists() {
     // `org.can("…")` (backend) and `access::can("…")` / `role_can(_, "…")`

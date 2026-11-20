@@ -223,6 +223,12 @@ pub fn operation_of(method: &Method, path: Option<&MatchedPath>) -> Option<(&'st
         .copied()
 }
 
+/// Routes outside the spec by design: loco probes, WebSockets and
+/// server-to-server internal endpoints. Any other route must be registered.
+pub fn off_spec(path: &str) -> bool {
+    path.starts_with("/_") || path.starts_with("/ws/") || path.contains("/internal/")
+}
+
 /// Decision for a managed role alone (no assignment).
 pub fn authorize(role: &OrgMemberRole, permission: &str) -> Decision {
     Grants::managed(role).decide(permission)

@@ -315,6 +315,14 @@ impl FromRequestParts<AppContext> for OrgContext {
             // Off the registry's org operations (sockets, internal routes):
             // humans only.
             _ if auth.service.is_some() => return Err(access_key_not_allowed()),
+            // Deny by default (SEC-80): an org route missing from the registry
+            // is refused, not let through unchecked.
+            None if !matched.is_some_and(|p| crate::services::iam::off_spec(p.as_str())) => {
+                refused = Some("unregistered");
+                Some(crate::services::iam::Decision::Deny(
+                    crate::services::iam::DenyReason::Implicit,
+                ))
+            }
             _ => None,
         };
         // Recorded before refusing: refusals are audited (D294).

@@ -16,7 +16,7 @@ const PENDING_FILE: &str = "tests/fixtures/openapi_pending.txt";
 /// (not describable in OpenAPI) and server-to-server internal endpoints.
 fn excluded(route: &str) -> bool {
     let uri = route.split_once(' ').map_or(route, |(_, u)| u);
-    uri.starts_with("/_") || uri.starts_with("/ws/") || uri.contains("/internal/")
+    pnex_backend::services::iam::off_spec(uri)
 }
 
 fn manifest() -> PathBuf {
