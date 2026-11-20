@@ -175,6 +175,9 @@ pub const PERMISSIONS: &[(&str, Level)] = &[
     ("mail:read", Level::Viewer),
     ("mail:send", Level::Member),
     ("mail:write", Level::Member),
+    // Decisions on the maintenance pack's proposals (parts-docs.md PD1d): an org may
+    // keep it to its referents with a custom role.
+    ("maintenance:validate", Level::Member),
     ("media:delete", Level::Member),
     ("media:read", Level::Viewer),
     ("media:test", Level::Member),
@@ -198,6 +201,7 @@ pub const PERMISSIONS: &[(&str, Level)] = &[
     ("ontology:read", Level::Viewer),
     ("ontology:write", Level::Member),
     ("proposals:decide", Level::Member),
+    ("proposals:file", Level::Member),
     ("proposals:read", Level::Viewer),
     ("orgs.invitations:read", Level::Admin),
     ("orgs.members:delete", Level::Admin),
@@ -1282,6 +1286,7 @@ pub const OPERATIONS: &[(&str, Access)] = &[
     ),
     ("web_search_providers_list", Access::Org("web-search:read")),
     ("proposals_decide", Access::Org("proposals:decide")),
+    ("proposals_file", Access::Org("proposals:file")),
     ("proposals_get", Access::Org("proposals:read")),
     ("proposals_list", Access::Org("proposals:read")),
     ("qr_tags_list", Access::Org("qr-tags:read")),
@@ -1320,6 +1325,10 @@ pub const OPERATIONS: &[(&str, Access)] = &[
 /// beyond the operation's own: a field gate, a redacted field, a case of
 /// the operation. Only those no operation needs are listed here.
 pub const GATES: &[(&str, &str)] = &[
+    (
+        "maintenance:validate",
+        "deciding a proposal on a type or link of the maintenance pack (parts-docs.md PD1d)",
+    ),
     (
         "orgs.owners:write",
         "grant the owner role, change or remove an owner (invitation included)",

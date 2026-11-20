@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Statut** | PRD validé le 2026-11-17. **Codé** : lots PD0, PD1a, PD1b, PD1c. **Proposé** : PD1d, PD2 à PD5, module prix (D969). |
+| **Statut** | PRD validé le 2026-11-17. **Codé** : lots PD0, PD1a à PD1d. **Proposé** : PD2 à PD5, module prix (D969). |
 | **Roadmap** | P2.39 |
 | **Renvois** | `ontology.md` annexe C (GMAO générique : `spare_part`, `work_order`, stock, fournisseurs), `pages.md` (L1–L2, procédures L6), `vision.md` (annotations D147, D219), `doc-search.md`, `proposals.md` (D371–D377), `security.md` (R1, R8, R11–R13), `iam.md`, `ai-assistant.md` §9 |
 
@@ -31,7 +31,7 @@ Hors périmètre : la recherche dans le catalogue d'un distributeur, l'aspiratio
 | **Étiquette QR** | Code imprimé qui porte une adresse courte vers un jeton stable. Elle sert à tout objet. | table noyau `qr_tags` |
 | **Panier** | Les pièces d'une intervention, remontées au chiffreur. | `work_order` (ordre de travail, OT) et liens `uses_part` |
 | **Correction** | Une erreur de référence constatée (modèle, plage de séries, référence fausse et bonne). | type `part_correction` |
-| **Note terrain** | Page ou commentaire sur une pièce, un modèle ou un appareil. Elle entre en proposition. | proposé (PD1d) |
+| **Note terrain** | Objet `field_note` : un texte et des photos sur une pièce, un modèle ou un appareil. Elle entre en proposition. | codé (PD1d) |
 
 ```mermaid
 classDiagram
@@ -178,7 +178,7 @@ flowchart LR
 
 L'extraction passe par les pipelines et les flows de PneX (`pipelines.md`), jamais par un traitement à côté. Tout ce qui est extrait entre en proposition, jamais en fait. Chaque donnée garde sa provenance : document, page, date d'import, validateur (D184).
 
-### 3.7 Validation et apprentissage (proposé, PD1d et PD5)
+### 3.7 Validation et apprentissage (codé en PD1d, indicateurs en PD5)
 
 ```mermaid
 ---
@@ -195,9 +195,9 @@ flowchart LR
   fait --> rech[Recherche et alertes]
 ```
 
-La permission `maintenance:validate` appartient par défaut au rôle éditeur. Une org peut la limiter à ses référents par un rôle personnalisé. Le serveur refuse qu'un auteur valide sa propre proposition. Les indicateurs par pièce et par modèle comptent les retours, les corrections et la confiance de la nomenclature. La confiance est la part des lignes validées par une personne, avec le nombre de retours sur 12 mois.
+La permission `maintenance:validate` appartient par défaut au rôle membre. Une org peut la limiter à ses référents par un rôle personnalisé. Elle s'applique à toute proposition sur un type ou un lien du pack `maintenance`. Le moteur reste générique : un pack réserve ses décisions dès que le registre IAM déclare `<pack>:validate`. Le serveur refuse qu'un auteur accepte sa propre proposition (`proposal-own`), quel que soit le pack. Les indicateurs par pièce et par modèle comptent les retours, les corrections et la confiance de la nomenclature. La confiance est la part des lignes validées par une personne, avec le nombre de retours sur 12 mois.
 
-### 3.8 Hors ligne (proposé, PD1d et PD5)
+### 3.8 Hors ligne (file d'envoi codée en PD1d, consultation en PD5)
 
 ```mermaid
 sequenceDiagram
@@ -212,6 +212,10 @@ sequenceDiagram
   S->>M: synchroniser un site ou une tournée
   Note over M,S: PD5 : fiches, nomenclatures, PDF compressés
 ```
+
+La file d'envoi garde chaque note sur l'appareil, par org, avec ses photos. Elle sert l'app Android et le web, avec le même code. L'app renvoie la file au démarrage, toutes les 30 s, et juste après l'écriture d'une note. Une photo déjà envoyée garde son média et ne repart jamais. Une note refusée par le serveur reste visible avec son code, jusqu'à ce que la personne la retire. Une session expirée ou un serveur indisponible ne refuse pas la note : elle repart plus tard. Envoyer deux fois la même note répond la même proposition.
+
+**Attention :** sur le web, le stockage du navigateur est limité à quelques Mo. Si les photos ne tiennent pas, l'app ne garde pas la note et le dit. Sinon, les photos seraient perdues sans avertissement.
 
 ## 4. Exigences
 
@@ -233,6 +237,8 @@ sequenceDiagram
 16. Un PDF fabricant ne doit jamais être republié. Une vue éclatée protégée se cite par un lien vers sa source.
 17. Une photo terrain doit être floutée ou validée avant tout partage hors de l'org (proposé).
 18. L'assistant doit lire pièces, nomenclatures et remplacements. Il écrit le panier et les corrections en proposition seulement, par le service partagé avec l'UI (proposé, `ai-assistant.md` §9.3).
+19. Une note terrain doit attendre la décision d'une autre personne que son auteur (codé, `tests/field_notes.rs`).
+20. Une note écrite sans réseau doit partir au retour du réseau, sans perdre ses photos ni les envoyer deux fois (codé, non mesuré sur téléphone réel).
 
 ## 5. Décisions
 
@@ -255,7 +261,7 @@ D969 en détail : le prix se lit avec le compte du client, rangé dans le coffre
 
 ## 6. Interfaces
 
-**Pack** `maintenance` 1.8.0 : types `equipment_model`, `part_reference`, `part_correction`. Liens `instance_of`, `refers_to`, `supersedes`, `equivalent_to`, `compatible_with`, `bom_line`. Propriétés `manufactured_on` et `variant` sur les équipements. `spare_part` gagne famille et caractéristiques. Les champs texte `manufacturer`, `model` et `manufacturer_ref` ont disparu au profit des liens. **Pack** `maintenance_partners` 1.1.0 : lien `manufactures`.
+**Pack** `maintenance` 1.9.0 : types `equipment_model`, `part_reference`, `part_correction`, `field_note`. Liens `instance_of`, `note_on`, `note_photo`, `refers_to`, `supersedes`, `equivalent_to`, `compatible_with`, `bom_line`. Propriétés `manufactured_on` et `variant` sur les équipements. `spare_part` gagne famille et caractéristiques. Les champs texte `manufacturer`, `model` et `manufacturer_ref` ont disparu au profit des liens. **Pack** `maintenance_partners` 1.1.0 : lien `manufactures`.
 
 **Imports** (D301, fichier CSV de l'org, aperçu avant écriture) :
 
@@ -277,7 +283,16 @@ D969 en détail : le prix se lit avec le compte du client, rangé dans le coffre
 
 Codes d'erreur : `qr-tag-not-found`, `qr-tag-not-blank`.
 
-**Écrans** : `/parts`, `/scan`, `/qr-tags` (« Étiquettes QR », menu Opérer), `/q/:token`, `/qr-sheet` (hors coquille), section « Nomenclature (modèle) » de la fiche d'un appareil, « Code QR » sur toute fiche objet, export CSV sur la fiche d'un OT. Fiches de l'assistant : `assistant-kb/maintenance-parts.md`, `assistant-kb/qr-tags.md`.
+**Notes terrain** (`controllers/proposals.rs`, migration 000160 : colonnes `author_id` et `links` de `proposals`) :
+
+| Route | Effet | Permission | MCP |
+|---|---|---|---|
+| `POST /api/v1/proposals` | une personne propose un objet, avec un lien et au plus 20 liens de plus | `proposals:file` (membre) | exposé |
+| `POST /api/v1/proposals/{id}/decision` | décider. Le pack `maintenance` exige aussi `maintenance:validate` | `proposals:decide` | exclu (signature humaine) |
+
+Code d'erreur : `proposal-own`.
+
+**Écrans** : `/parts`, `/scan`, `/qr-tags` (« Étiquettes QR », menu Opérer), `/q/:token`, `/qr-sheet` (hors coquille), section « Nomenclature (modèle) » de la fiche d'un appareil, « Écrire une note terrain » sur toute fiche objet quand l'org a le pack, « Code QR » sur toute fiche objet, export CSV sur la fiche d'un OT. Fiches de l'assistant : `assistant-kb/maintenance-parts.md`, `assistant-kb/qr-tags.md`.
 
 ## 7. Reste à faire
 
@@ -286,7 +301,7 @@ Codes d'erreur : `qr-tag-not-found`, `qr-tag-not-blank`.
 | PD0 | Pack, imports CSV, recherche par référence, fiche pièce | Exigence 1 | codé |
 | PD1a | Étiquettes QR, planches, liaison, `/q/:token` | — | codé |
 | PD1b, PD1c | Nomenclature filtrée, panier = OT, export CSV, scanner | Exigence 6 | codé |
-| PD1d | File d'envoi hors ligne (photos, notes), notes terrain en proposition, `maintenance:validate` | — | à faire, avec le rattachement d'un média à un objet |
+| PD1d | File d'envoi hors ligne (photos, notes), notes terrain en proposition, `maintenance:validate` | Exigences 19 et 20 | codé |
 | PD2 | Visualiseur PDF ancré, vue éclatée à repères saisis à la main, procédures en pages Pages, lien `documents` | Le technicien trouve la procédure sans quitter PneX | proposé |
 | PD3 | Extraction des nomenclatures et des repères, écran de relecture | 50 repères relus en moins de 10 min | proposé |
 | PD4 | OCR de plaque côté serveur, recherche par photo de pièce | Plaque reconnue dans plus de 80 % des cas d'un jeu de test | proposé |

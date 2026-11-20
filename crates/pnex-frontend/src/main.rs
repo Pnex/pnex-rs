@@ -105,6 +105,10 @@ fn App() -> Element {
             state::compat::check().await;
         });
     });
+    // Field notes kept on the device go out when the network is there (PD1d).
+    use_hook(|| {
+        spawn(state::field_notes::run());
+    });
     // Native target with no resolved server URL: the configuration screen
     // replaces the router on first launch (Bitwarden-style). Global:
     // the login page (logout → "Change server") reopens this screen.

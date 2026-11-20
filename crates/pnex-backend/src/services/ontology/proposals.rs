@@ -93,6 +93,25 @@ pub async fn propose<C: ConnectionTrait>(
     org_id: i64,
     p: &ProposalInput,
 ) -> Result<Option<Uuid>> {
+    propose_by(db, org_id, p, None, &[]).await
+}
+
+/// One extra link an `object_create` makes on acceptance, from the new object.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ExtraLink {
+    pub link_type: String,
+    pub target_id: String,
+}
+
+/// [`propose`], filed by a person (`author`, who never accepts it) and, for an
+/// `object_create`, with extra links made on acceptance (parts-docs.md PD1d).
+pub async fn propose_by<C: ConnectionTrait>(
+    db: &C,
+    org_id: i64,
+    p: &ProposalInput,
+    author: Option<i64>,
+    extra: &[ExtraLink],
+) -> Result<Option<Uuid>> {
     let Some(kind) = p.kind else {
         return Err(invalid("kind", FIELD_REQUIRED));
     };
@@ -151,18 +170,18 @@ pub async fn propose<C: ConnectionTrait>(
             format!("{FIELD_MAX_LENGTH}:{VALUES_MAX_BYTES}"),
         ));
     }
-    let (Some(slot), Some(text)) = (slot(p), fingerprint_text(p)) else {
+    let Some((slot, fingerprint)) = keys(p, author) else {
         return Err(invalid("kind", FIELD_INVALID));
     };
-    let fingerprint = digest(&text);
     let refs = refs_of(db, org_id, p).await?;
     let id = Uuid::new_v4();
     let inserted = db
         .query_one_raw(stmt(
             "INSERT INTO proposals (id, org_id, kind, type_key, target_id, source_id, \
                link_target_id, title, vals, base_version, evidence, refs, origin, confidence, \
-               slot, fingerprint, link_type) \
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) \
+               slot, fingerprint, link_type, author_id, links) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, \
+               $18, $19) \
              ON CONFLICT (org_id, fingerprint) DO NOTHING RETURNING id",
             vec![
                 id.into(),
@@ -182,6 +201,10 @@ pub async fn propose<C: ConnectionTrait>(
                 slot.clone().into(),
                 fingerprint.clone().into(),
                 p.link_type.clone().into(),
+                author.into(),
+                (!extra.is_empty())
+                    .then(|| serde_json::to_value(extra).unwrap_or_default())
+                    .into(),
             ],
         ))
         .await?;
@@ -208,6 +231,45 @@ pub async fn propose<C: ConnectionTrait>(
     ))
     .await?;
     Ok(Some(id))
+}
+
+/// Slot and fingerprint. A person's proposal competes only with their own about the
+/// same object: two people's notes with the same title never replace each other.
+fn keys(p: &ProposalInput, author: Option<i64>) -> Option<(String, String)> {
+    let (mut slot, mut text) = (slot(p)?, fingerprint_text(p)?);
+    if let Some(a) = author {
+        let by = format!(
+            "|author:{a}|{}",
+            p.link_target_id.as_deref().unwrap_or_default()
+        );
+        slot.push_str(&by);
+        text.push_str(&by);
+    }
+    Some((slot, digest(&text)))
+}
+
+/// A person files a proposal (parts-docs.md PD1d). Filing it again (an offline queue
+/// sending twice) answers the proposal already filed.
+pub async fn file(
+    db: &DatabaseConnection,
+    org_id: i64,
+    author: i64,
+    p: &ProposalInput,
+    extra: &[ExtraLink],
+) -> Result<ProposalView> {
+    if let Some(id) = propose_by(db, org_id, p, Some(author), extra).await? {
+        return get(db, org_id, id).await;
+    }
+    let (_, fingerprint) = keys(p, Some(author)).ok_or_else(|| invalid("kind", FIELD_INVALID))?;
+    let id = db
+        .query_one_raw(stmt(
+            "SELECT id FROM proposals WHERE org_id = $1 AND fingerprint = $2",
+            vec![org_id.into(), fingerprint.into()],
+        ))
+        .await?
+        .and_then(|r| r.try_get::<Uuid>("", "id").ok())
+        .ok_or(OntologyError::NotFound)?;
+    get(db, org_id, id).await
 }
 
 fn digest(text: &str) -> String {
@@ -432,6 +494,21 @@ async fn apply<C: ConnectionTrait>(
                 };
                 links::create(db, org_id, actor, &link).await?;
             }
+            let extra: Vec<ExtraLink> = raw
+                .try_get::<Option<Value>>("", "links")
+                .ok()
+                .flatten()
+                .and_then(|v| serde_json::from_value(v).ok())
+                .unwrap_or_default();
+            for l in extra {
+                let link = LinkInput {
+                    link_type: l.link_type,
+                    source_id: id.clone(),
+                    target_id: l.target_id,
+                    ..Default::default()
+                };
+                links::create(db, org_id, actor, &link).await?;
+            }
             id
         }
         ProposalKind::ObjectUpdate => {
@@ -520,6 +597,54 @@ async fn apply<C: ConnectionTrait>(
     })
 }
 
+/// The first unknown key of a filed proposal: its object type (`type_key`) or one of
+/// its link types (`link_type`); `None` when the org has them all.
+pub async fn types_known<'a>(
+    db: &DatabaseConnection,
+    org_id: i64,
+    type_key: &str,
+    link_types: impl Iterator<Item = &'a String>,
+) -> Result<Option<&'static str>> {
+    let exists =
+        |sql: &str, key: &str| db.query_one_raw(stmt(sql, vec![org_id.into(), key.into()]));
+    if exists(
+        "SELECT 1 FROM object_types WHERE org_id = $1 AND key = $2",
+        type_key,
+    )
+    .await?
+    .is_none()
+    {
+        return Ok(Some("type_key"));
+    }
+    for l in link_types {
+        if exists(
+            "SELECT 1 FROM link_types WHERE org_id = $1 AND key = $2 LIMIT 1",
+            l,
+        )
+        .await?
+        .is_none()
+        {
+            return Ok(Some("link_type"));
+        }
+    }
+    Ok(None)
+}
+
+/// Pack of the object type or link type a proposal is about, if a pack installed it.
+pub async fn pack_of(db: &DatabaseConnection, org_id: i64, id: Uuid) -> Result<Option<String>> {
+    Ok(db
+        .query_one_raw(stmt(
+            "SELECT coalesce( \
+               (SELECT t.pack_key FROM object_types t WHERE t.org_id = p.org_id AND t.key = p.type_key), \
+               (SELECT l.pack_key FROM link_types l WHERE l.org_id = p.org_id AND l.key = p.type_key \
+                ORDER BY l.version DESC LIMIT 1)) AS pack_key \
+             FROM proposals p WHERE p.id = $1 AND p.org_id = $2",
+            vec![id.into(), org_id.into()],
+        ))
+        .await?
+        .and_then(|r| r.try_get::<Option<String>>("", "pack_key").ok().flatten()))
+}
+
 /// Marks an open proposal accepted once its write was made elsewhere
 /// (`erase::decide`); refused when decided or superseded meanwhile.
 pub async fn mark_accepted(
@@ -570,7 +695,8 @@ pub async fn decide(
         let txn = db.begin().await?;
         let raw = txn
             .query_one_raw(stmt(
-                "SELECT target_id, source_id, link_target_id, link_type, base_version, status \
+                "SELECT target_id, source_id, link_target_id, link_type, base_version, status, \
+                   author_id, links \
                  FROM proposals WHERE id = $1 AND org_id = $2 FOR UPDATE",
                 vec![id.into(), org_id.into()],
             ))
@@ -587,6 +713,10 @@ pub async fn decide(
         }
         if p.status != ProposalStatus::Proposed {
             return Err(OntologyError::ProposalDecided);
+        }
+        let author = raw.try_get::<Option<i64>>("", "author_id").ok().flatten();
+        if d.decision == DecisionKind::Accept && author.is_some() && author == actor.user_id {
+            return Err(OntologyError::ProposalOwn);
         }
         match d.decision {
             DecisionKind::Accept => {

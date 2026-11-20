@@ -4,9 +4,9 @@ title: Proposals to validate
 kind: feature
 pages: /proposals
 nodes: 
-err_codes: proposal-decided, ontology-version-conflict
+err_codes: proposal-decided, proposal-own, ontology-version-conflict
 tools: 
-tags: voice, voix, recognized voice, voix reconnue, automatic, automatique, rule, règle, to validate, à valider, proposal, proposition, accept, accepter, reject, rejeter, inbox, review, machine, community data, wikidata, candidate, candidat, decided by, décidé par
+tags: voice, voix, recognized voice, voix reconnue, automatic, automatique, rule, règle, to validate, à valider, proposal, proposition, accept, accepter, reject, rejeter, inbox, review, machine, community data, wikidata, candidate, candidat, decided by, décidé par, field note, note terrain, validator, valideur
 ---
 Some writes come from a source that is not sure it is right: a group link from a community source, a website candidate, a value read by a model, a detection on the tracks of an investigation case. They do not enter the ontology on their own. They wait as **proposals** on the **To validate** page (Knowledge menu), and on the page of each object concerned.
 
@@ -18,10 +18,12 @@ Some writes come from a source that is not sure it is right: a group link from a
 - **Automatic** (in the Decided by column): a proposal accepted by a rule of the organization, without anyone deciding, for example a website whose score reaches the confirming score of the Web presence pack (Ontology › Packs › Settings). The rule and the score are shown; if it is wrong, close the link on the object page: the flow never opens it again.
 - **Case event**: a detection of an investigation case (two members together, a stop, a signal lost); accepting it adds the event to the case, as **Retain** does in the case; *Correct and accept* edits the event's title.
 - **Recognized voice**: a person recognized by their voice on an audio or video file (consented voice profile). It is listed here but decided on the file's review page, where you can hear it and move its span: **Listen and decide** opens it.
+- **Field note** (maintenance pack): a technician writes a note on an equipment, a part or a model, with photos, from the object page. It waits here; once accepted, it is a field note linked to the object, with its photos. Without network, the app keeps the note and sends it when the network is back.
 - Filter by status: to validate, accepted, rejected, replaced (a newer proposal for the same thing replaced it before anyone decided).
 
-Viewers read the proposals but do not decide. The assistant never decides: it can only list them.
+Viewers read the proposals but do not decide. A person never accepts a proposal they filed: another member does. The maintenance pack's proposals need the right to validate maintenance: an org can keep it to its referents with a custom role. The assistant never decides: it can only list them.
 
 ## Good to know
 - *proposal-decided*: someone already decided it the other way, or a newer proposal replaced it; refresh the list.
+- *proposal-own*: you filed this proposal; another member accepts it.
 - *ontology-version-conflict* on accepting a change: the object was edited since the value was read; the proposal stays to validate; reject it if it no longer applies.

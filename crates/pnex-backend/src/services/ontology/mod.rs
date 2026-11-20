@@ -91,6 +91,9 @@ pub enum OntologyError {
     /// The proposal was already decided the other way, or superseded (D373).
     #[error("proposal decided")]
     ProposalDecided,
+    /// The person who filed the proposal may not accept it (parts-docs.md PD1d).
+    #[error("proposal own")]
+    ProposalOwn,
     /// A track file that cannot be imported (`err_codes::TRACK_IMPORT_*`).
     #[error("track import: {0}")]
     TrackImport(&'static str),

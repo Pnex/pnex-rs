@@ -120,6 +120,11 @@ fn onto_error(e: OntologyError) -> ToolError {
             "this proposal is already decided; only a person decides proposals".into(),
             None,
         ),
+        OntologyError::ProposalOwn => coded(
+            c::PROPOSAL_OWN,
+            "the user filed this proposal; another person accepts it".into(),
+            None,
+        ),
         OntologyError::CaseProposalStale => coded(
             c::CASE_PROPOSAL_STALE,
             "this proposal was already reviewed by the user; only the user retains or rejects proposals".into(),

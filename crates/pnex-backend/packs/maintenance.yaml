@@ -25,10 +25,12 @@
 # Since 1.8.0 (PD1) an equipment carries its variant: its page lists the
 # parts of its model for its serial, build date and variant, and adds them
 # to a work order.
+# Since 1.9.0 (PD1d) field notes: a technician proposes a note on any object,
+# with photos; another person with `maintenance:validate` accepts it.
 key: maintenance
 name: Augmented maintenance
 names: {fr: "Maintenance augmentée"}
-version: "1.8.0"
+version: "1.9.0"
 description: Sites, lines, machines and pumps; sensors bound to equipment series survive sensor replacements.
 descriptions: {fr: "Sites, lignes, machines et pompes ; les capteurs liés aux séries des équipements survivent à leur remplacement."}
 types:
@@ -244,6 +246,13 @@ types:
         labels: {reported: {fr: "Signalée", en: "Reported"}, validated: {fr: "Validée", en: "Validated"}, rejected: {fr: "Rejetée", en: "Rejected"}}
         colors: {reported: amber, validated: green, rejected: gray}
         indexed: true
+  - key: field_note
+    name: Field note
+    names: {fr: "Note terrain"}
+    icon: file-text
+    may_be_contained_in: [folder]
+    properties:
+      - { key: text, name: Text, names: {fr: "Texte"}, kind: text, max_len: 4000, required: true }
   - key: stock_location
     name: Stock location
     names: {fr: "Emplacement de stock"}
@@ -302,6 +311,20 @@ link_types:
     inverse_names: {fr: "est maintenu par"}
     from_types: [maintenance_plan]
     to_types: "*"
+  - key: note_on
+    name: is a note on
+    names: {fr: "est une note sur"}
+    inverse_name: has the note
+    inverse_names: {fr: "a pour note"}
+    from_types: [field_note]
+    to_types: "*"
+  - key: note_photo
+    name: shows
+    names: {fr: "montre"}
+    inverse_name: is shown in
+    inverse_names: {fr: "est montré dans"}
+    from_types: [field_note]
+    to_types: [media_asset]
   - key: feeds
     name: feeds
     names: {fr: "alimente"}

@@ -6,6 +6,7 @@ pub mod ai;
 pub mod annotations;
 pub mod compat;
 pub mod devices;
+pub mod field_notes;
 pub mod functions;
 pub mod map;
 pub mod media;

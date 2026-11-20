@@ -193,6 +193,16 @@ const COUPLED: &[(&str, &[&str], &str)] = &[
         "parts list of an installed equipment and its work order basket, built on the maintenance pack (parts-docs.md PD1, Q-PD4)",
     ),
     (
+        "pnex-frontend/src/pages/field_note.rs",
+        &["field_note"],
+        "field note form on an object page, shown when the org has the maintenance pack's type (parts-docs.md PD1d)",
+    ),
+    (
+        "pnex-frontend/src/state/field_notes.rs",
+        &["field_note", "note_on", "note_photo"],
+        "offline queue of field notes, sent as proposals of the maintenance pack with their links (parts-docs.md PD1d)",
+    ),
+    (
         "pnex-frontend/src/pages/parts.rs",
         &["part_reference", "refers_to", "supersedes"],
         "spare parts search page built on the maintenance pack (parts-docs.md PD0, D961): its references, what they designate and the supersessions; a pack-declared reference search would lift it",

@@ -445,6 +445,7 @@ pub const EXPOSED: &[&str] = &[
     "mailboxes_state",
     "proposals_list",
     "proposals_get",
+    "proposals_file",
     "web_sites_list",
     "mt5_terminals_backfill",
     "mt5_terminals_create",

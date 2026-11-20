@@ -10214,6 +10214,65 @@
         ],
         "type": "string"
       },
+      "FileLink": {
+        "description": "One extra link of a filed proposal, from the new object.",
+        "properties": {
+          "link_type": {
+            "type": "string"
+          },
+          "target_id": {
+            "description": "Object linked to (UUID), a photo's media for a field note.",
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "link_type",
+          "target_id"
+        ],
+        "type": "object"
+      },
+      "FileProposal": {
+        "description": "`POST /proposals`: a person proposes a new object.",
+        "properties": {
+          "link_target_id": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "link_type": {
+            "description": "Link type from the new object to `link_target_id` (the object a note is on).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "links": {
+            "description": "Other links made on acceptance, at most 20.",
+            "items": {
+              "$ref": "#/components/schemas/FileLink"
+            },
+            "type": "array"
+          },
+          "title": {
+            "type": "string"
+          },
+          "type_key": {
+            "description": "Object type of the new object.",
+            "type": "string"
+          },
+          "values": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "type_key",
+          "title"
+        ],
+        "type": "object"
+      },
       "FilterOp": {
         "enum": [
           "eq",
@@ -91827,6 +91886,93 @@
           "proposals"
         ],
         "x-pnex-as-of": "current_only"
+      },
+      "post": {
+        "description": "A person proposes a new object (a field note on an equipment, with its photos): it waits in the inbox until another person accepts it, never its author. On acceptance the object is created with its links. Filing the same proposal again answers the one already filed (an offline queue may send twice). Any member.",
+        "operationId": "proposals_file",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FileProposal"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProposalView"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Unknown type or link type, empty title, more than 20 links (`field-invalid`, `field-required`)"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation · `access-denied` (`args.permission` = `proposals:file`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "An object linked to is not in the organization (`ontology-not-found`)"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Propose a new object",
+        "tags": [
+          "proposals"
+        ]
       }
     },
     "/api/v1/proposals/{id}": {
@@ -91984,7 +92130,7 @@
                 }
               }
             },
-            "description": "`access-denied`, or `ontology-write-forbidden` by the type's write role · `access-denied` (`args.permission` = `proposals:decide`): the caller's role does not grant it"
+            "description": "`access-denied` (also when the type's pack reserves decisions to `<pack>:validate`, as `maintenance:validate`), `ontology-write-forbidden` by the type's write role, or `proposal-own` (the author accepts their own proposal) · `access-denied` (`args.permission` = `proposals:decide`): the caller's role does not grant it"
           },
           "404": {
             "content": {

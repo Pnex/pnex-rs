@@ -31,6 +31,7 @@ pub mod edge_refs;
 pub mod equipment_parts;
 /// JSON events written by flows (vision.md D84).
 pub mod events;
+pub mod field_note;
 pub mod firmware;
 pub mod flows;
 pub mod fluid_mixtures;

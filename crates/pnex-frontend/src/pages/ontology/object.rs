@@ -236,6 +236,7 @@ pub fn OntologyObject(id: String) -> Element {
                 if !closed {
                     crate::pages::qr::ObjectQr { object_id: o.id.clone() }
                     crate::pages::equipment_parts::EquipmentParts { object: o.clone() }
+                    crate::pages::field_note::FieldNoteForm { object_id: o.id.clone() }
                 }
                 if o.type_key == "work_order" {
                     crate::pages::equipment_parts::BasketExport { object: o.clone() }

@@ -213,6 +213,11 @@ pub(crate) fn onto_error(e: OntologyError) -> Result<Response> {
             err_codes::PROPOSAL_DECIDED,
             "This proposal was already decided, or a newer one replaced it.",
         ),
+        OntologyError::ProposalOwn => coded(
+            StatusCode::FORBIDDEN,
+            err_codes::PROPOSAL_OWN,
+            "You filed this proposal: another person accepts it.",
+        ),
         OntologyError::TrackImport(code) => coded(
             StatusCode::UNPROCESSABLE_ENTITY,
             code,

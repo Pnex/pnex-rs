@@ -1119,6 +1119,8 @@ pub const DOCUMENT_TEXT_NO_TEXT: &str = "document-text-no-text";
 pub const DOCUMENT_TEXT_UNREADABLE: &str = "document-text-unreadable";
 /// A proposal already decided the other way, or superseded (proposals.md D373).
 pub const PROPOSAL_DECIDED: &str = "proposal-decided";
+/// The person who filed a proposal tries to accept it (parts-docs.md PD1d).
+pub const PROPOSAL_OWN: &str = "proposal-own";
 /// Making a property unique (D302) on a type whose objects already share\nvalues; `args.property`, `args.values` (first duplicates, comma-separated).
 pub const ONTOLOGY_UNIQUE_DUPLICATES: &str = "ontology-unique-duplicates";
 /// A person is attached to a case only once its processing basis is declared
@@ -1586,6 +1588,7 @@ pub const ALL: &[&str] = &[
     DOCUMENT_TEXT_NO_TEXT,
     DOCUMENT_TEXT_UNREADABLE,
     PROPOSAL_DECIDED,
+    PROPOSAL_OWN,
     ONTOLOGY_UNIQUE_DUPLICATES,
     CASE_LEGAL_BASIS_REQUIRED,
     ONTOLOGY_LINK_MEMBER_ONLY,
