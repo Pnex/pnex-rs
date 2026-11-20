@@ -38,7 +38,7 @@ pub(super) fn PoiFormModal(
             .unwrap_or_default()
     });
     // New POI from a map click: prefill the location with the address of
-    // the point (org reverse geocoder, geo-layers.md §8). Silent when no
+    // the point (org reverse geocoder, geo-layers.md §3.4). Silent when no
     // provider is configured.
     let reverse_wanted = initial.is_none() && suggested.is_none();
     use_hook(move || {

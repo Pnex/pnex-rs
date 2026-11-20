@@ -1,4 +1,4 @@
-//! Geo providers of the org (geo-layers.md §8, L16–L28): basemaps,
+//! Geo providers of the org (geo-layers.md §3.4, L16–L28): basemaps,
 //! geocoders and routers the org plugs in, list + inline form on the org
 //! page (school of `llm_providers`). The optional API key is a
 //! [`SecretField`] (typed or picked, never shown), sent as a query

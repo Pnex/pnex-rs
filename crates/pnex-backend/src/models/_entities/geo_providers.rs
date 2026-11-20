@@ -1,4 +1,4 @@
-//! `SeaORM` Entity, hand-written on the generated shape (geo-layers.md §8).
+//! `SeaORM` Entity, hand-written on the generated shape (geo-layers.md §3.4).
 
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};

@@ -1,4 +1,4 @@
-//! Geo providers contract (`docs/architecture/geo-layers.md` §8, phase F):
+//! Geo providers contract (`docs/architecture/geo-layers.md` §3.4, phase F):
 //! capabilities, adapter kinds, normalized DTOs (L18) and the pure
 //! request/response mapping of each native adapter (L17). Wasm-safe: the
 //! HTTP call, the cache and the rate limit live in the backend proxy (L20).

@@ -42,7 +42,7 @@ const ENGINE_WORDS: &[(&str, &str)] = &[
 ];
 
 /// Existing couplings to a shipped pack, frozen: each is debt to move to
-/// the pack or to a declaration (external-apps.md §11). (file, keys, reason).
+/// the pack or to a declaration (external-apps.md §3.6). (file, keys, reason).
 const COUPLED: &[(&str, &[&str], &str)] = &[
     (
         "pnex-backend/src/services/ontology/cases/",

@@ -1,5 +1,5 @@
 //! Geo providers of the org and the server-side geo proxy
-//! (`/api/v1/geo/*`, geo-layers.md §8): basemaps of the map, provider CRUD
+//! (`/api/v1/geo/*`, geo-layers.md §3.4): basemaps of the map, provider CRUD
 //! (secret = vault reference), forward / reverse geocoding.
 
 use pnex_core::geo::{Basemap, GeoProvider, GeoProviderInput, GeocodeResult};

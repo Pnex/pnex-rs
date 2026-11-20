@@ -1,4 +1,4 @@
-//! Org geo providers (`geo-layers.md` §8, phase F, L16–L28): basemap,
+//! Org geo providers (`geo-layers.md` §3.4, phase F, L16–L28): basemap,
 //! geocoding and routing engines the org plugs in. Configuration, not an
 //! ontology object (no `objects` row). The optional API key lives in the
 //! vault (`secret_id`, tracked by `secret_usages`, school of

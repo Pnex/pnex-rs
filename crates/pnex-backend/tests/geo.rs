@@ -1,4 +1,4 @@
-//! Integration tests of the org geo providers (geo-layers.md §8, phase F):
+//! Integration tests of the org geo providers (geo-layers.md §3.4, phase F):
 //! nothing until the org adds a provider, CRUD with the API key in the
 //! vault, one default per capability, viewer refused on writes (R2), other
 //! org → 404 (R1), and the proxy against a local mock Nominatim (key added

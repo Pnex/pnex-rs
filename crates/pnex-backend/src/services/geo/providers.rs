@@ -1,4 +1,4 @@
-//! Org geo providers (geo-layers.md §8, L16–L28): CRUD of
+//! Org geo providers (geo-layers.md §3.4, L16–L28): CRUD of
 //! `/api/v1/geo/providers`, one default per capability and the basemaps of
 //! the map. Like LLM providers (D119), nothing is seeded: an org without a
 //! provider has no basemap, geocoding nor routing until it adds one.

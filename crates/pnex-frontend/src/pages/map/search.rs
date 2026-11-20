@@ -2,7 +2,7 @@ use super::*;
 use crate::components::gerbe::Gerbe;
 use crate::components::ui::INPUT;
 
-// ───────────────────── address search (geo-layers.md §8) ─────────────────────
+// ───────────────────── address search (geo-layers.md §3.4) ─────────────────────
 
 /// Address search over the map, through the org's default geocoder (server
 /// proxy). A result recentres the map; "+ POI" opens the creation form

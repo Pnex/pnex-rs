@@ -264,7 +264,7 @@ pub const LLM_PROVIDER_NAME_TAKEN: &str = "llm-provider-name-taken";
 pub const LLM_PROVIDER_NO_KEY: &str = "llm-provider-no-key";
 /// Provider test: its API key could not be read from the vault.
 pub const LLM_PROVIDER_KEY_UNREADABLE: &str = "llm-provider-key-unreadable";
-// Geo providers (geo-layers.md §8, phase F).
+// Geo providers (geo-layers.md §3.4, phase F).
 pub const GEO_PROVIDER_NOT_FOUND: &str = "geo-provider-not-found";
 pub const GEO_PROVIDER_NAME_TAKEN: &str = "geo-provider-name-taken";
 /// No default provider for the capability (args: `capability`).

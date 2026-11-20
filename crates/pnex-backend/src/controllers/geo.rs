@@ -1,4 +1,4 @@
-//! Geo providers and proxy — `/api/v1/geo/*` (geo-layers.md §8, phase F).
+//! Geo providers and proxy — `/api/v1/geo/*` (geo-layers.md §3.4, phase F).
 //! Providers: CRUD owner/admin, list every member (secret = vault
 //! reference). Proxy: every member, the browser never calls a provider
 //! (L20). Org always from the principal (R1).
