@@ -1,408 +1,319 @@
 # Recherche juridique composable (D485–D496, D498–D505)
 
-> Statut : **proposé** (2026-10-28, élargi le 2026-10-29), rien
-> d'implémenté · Décisions **D485–D496** (vérification de citations) et
-> **D498–D505** (famille de packs, §7) · Lots **LR0–LR11** · Périmètre
-> V1 : **droit français**, puis UE, CEDH, international (D499).
->
-> Le 2026-10-29, la cible s'élargit : la vérification de citations
-> (§1–§6) n'est plus le produit mais la **première brique** d'une famille
-> de packs composables : corpus public de référence, pratique d'un
-> cabinet (affaires, délais, moyens reliés aux faits et aux sources),
-> veille par flows, doctrine interne. Chaque étage s'installe seul ;
-> l'utilisateur assemble son outil (§7).
->
-> Le besoin : des avocats emploient des assistants conversationnels
-> généralistes, qui citent parfois des décisions inexistantes, ou des
-> décisions réelles avec un numéro, une date ou un passage faux. On ne
-> fournit pas d'assistant : on fournit une **source vérifiable** que
-> chacun branche sur le sien (MCP ou API), et un **vérificateur de
-> citations**. PneX est le moteur (collecte, ontologie, pipeline,
-> synthèse) ; une application séparée, `pnex-juris`, est la seule
-> surface publique.
->
-> Liens : `external-apps.md` (D432–D441, SDK d'applications, garde de
-> généricité), `pipelines.md` (D317–D322), `partners.md` (D303
-> synchronisations), `ontology.md` (D176–D191, D184 provenance, D185
-> requêtes, D190 packs), `doc-search.md` (index plein texte et
-> vectoriel), `iam.md` (comptes de service), `api.md`,
-> `ai-assistant.md` (D119 : LLM de l'org seulement), `security.md`.
+| | |
+|---|---|
+| **Statut** | Proposé. Aucune ligne de code : pas de pack `case_law` ni `legal_practice`, pas de brique `external_ref`, pas de localisation de passage, pas de façade `pnex-juris` (vérifié par `git grep`, 2026-11-20). |
+| **Lots** | LR0–LR6 (vérification de citations), LR7–LR11 (famille de packs) |
+| **Périmètre** | Droit français d'abord, puis UE, CEDH et international (D499) |
+| **Repose sur** | `external-apps.md` (D432–D441), `pipelines.md`, `ontology.md` (D176, D184, D185, D190), `doc-search.md`, `cases.md`, `notifications.md`, `analysis.md` (D829), `iam.md`, `api.md`, `ai-assistant.md` (D119, D145), `security.md` |
 
-## 1. Le besoin en une phrase
+## 1. Résumé
 
-Rassembler les décisions de justice et les textes publiés en open data,
-les relier entre eux, et répondre à un assistant tiers par le texte
-officiel, son lien et un verdict sur la citation qu'il s'apprête à faire.
+Des avocats emploient des assistants conversationnels généralistes. Ces assistants citent parfois une décision qui n'existe pas, ou une décision réelle avec un numéro, une date ou un passage faux. PneX ne fournit pas d'assistant. Il fournit une source vérifiable que chacun branche sur son assistant (MCP ou API), et un vérificateur de citations. La vérification de citations est la première brique d'une famille de packs : corpus public, pratique d'un cabinet, veille et doctrine interne.
 
-## 2. Ce qui existe et ce qui manque
+## 2. Concepts
 
-| Besoin | Existant | Manque |
-|---|---|---|
-| Collecte planifiée de gros fichiers publics | nœud `ingest`, zone de transit, `ontology_import` (D317–D322), synchronisations (D303) | connecteurs des sources juridiques (§4) |
-| Objets typés et liens datés | ontologie, packs, liens à intervalle de validité | pack `case_law` + couche `case_law_fr` |
-| Texte intégral cherchable | doc-search (chunks, plein texte, vecteurs), versions de médias | découpage par section d'une décision |
-| Retrouver un passage cité | — | **localisation d'un passage** dans un document, exacte ou approchée (D490) |
-| Références dans un texte → liens | — | **motifs de références déclarés par un pack** (D489) |
-| Synthèse par IA | assistant, LLM de l'org (D119), provenance (D184) | **champ dérivé par IA, à la demande, mis en cache** (D491) |
-| Application externe | SDK d'applications, comptes de service (D433) | la façade publique (`pnex-juris`, hors dépôt) |
+| Terme | Définition |
+|---|---|
+| **Corpus** | Décisions et textes publiés en open data officiel, typés par le pack `case_law` et ses couches. |
+| **Couche** | Pack `case_law_<ordre>` : ce qui est propre à un ordre juridique (`_fr`, `_eu`, `_echr`, `_intl`). Le suffixe désigne un ordre juridique, pas toujours un pays. |
+| **Org de référence** | Org désignée par l'admin plateforme. Elle porte le corpus et seulement des données publiques (D500). |
+| **Référence externe** | Propriété `external_ref` d'un objet d'org : type cible, clé naturelle (ECLI, CELEX, ELI, numéro de requête), libellé figé. |
+| **Motif de référence** | Expression déclarée par un pack, qui trouve une référence dans un texte et donne son type cible et sa clé (D489). |
+| **Localisation** | Recherche d'un passage dans un document, avec un verdict `exact`, `approximate` ou `absent` (D490). |
+| **Synthèse** | Résumé calculé par le LLM de l'org, stocké comme champ dérivé. Une synthèse n'est jamais une source (D491). |
+| **Façade** | Application `pnex-juris`, hors dépôt, seule surface publique (D485). |
+| **Méthode de calcul** | Façon de calculer la fin d'un délai, déclarée par une couche (jours francs, jours fériés, prorogation). |
 
-## 3. Décisions
+```mermaid
+classDiagram
+  class court
+  class decision
+  class legal_text
+  class article
+  class treaty
+  class award
+  class document
+  decision --> court : issued_by
+  decision --> decision : cites, overturns, follows
+  decision --> article : applies
+  article --> legal_text : version_of
+  decision --> document : evidence
+  award --> document : evidence
+  treaty --> document : evidence
+```
+
+Le pack générique `case_law` déclare ces types et ces liens, sans juridiction. Un objet `article` est une version d'article, avec son intervalle de vigueur. Le texte intégral d'une décision est un document (média) relié par un lien `evidence` (D437). L'objet porte les métadonnées, jamais le texte.
+
+```mermaid
+---
+config:
+  layout: elk
+---
+flowchart LR
+  subgraph REF["Org de référence (D500)"]
+    C["case_law + couches (D499)"]
+  end
+  subgraph CAB["Org d'un cabinet"]
+    P["legal_practice (D501)"]
+    K["Dossier (cases.md)"]
+    D["Doctrine interne (D503)"]
+    V["Veille (D502)"]
+  end
+  J["pnex-juris (D492)"]
+  P -- "external_ref" --> C
+  P --> K
+  V -- "lit" --> C
+  V -- "alerte" --> P
+  D -. "recherche commune" .- C
+  J -- "compte de service, lecture" --> C
+```
+
+La famille compte trois étages indépendants : corpus, pratique, veille. Chaque étage s'installe seul. L'interface du cabinet est l'UI de PneX. La façade n'est qu'un consommateur du corpus.
+
+## 3. Fonctionnement
+
+### 3.1 Collecte et découpage du corpus
+
+```mermaid
+---
+config:
+  layout: elk
+---
+flowchart TD
+  src[Open data officiel] -->|stock en fichiers| pl[Pipeline d'import]
+  src -->|API, différentiel| pl
+  pl --> obj[Objets decision, article]
+  pl --> doc[Document du texte]
+  doc --> cut[Découpage par section]
+  cut --> idx[Index doc-search]
+  doc --> fl[Flow : motifs de référence]
+  fl -->|propose| lk[Liens cites, applies]
+  fl -->|clé absente| ur[Référence non résolue]
+```
+
+Le stock en fichiers passe avant les API : il consomme moins de quotas et sa reprise est simple. Les API servent au différentiel quotidien. Chaque objet garde sa source, sa date de collecte et son lien officiel. Le corpus ne sert pas une décision sans lien officiel.
+
+Le découpage emploie un parseur déterministe déclaré par la couche. Il produit des sections (en-tête, faits et procédure, moyens, motifs, dispositif) et des paragraphes numérotés. Une section non reconnue reste un bloc « texte ». Le découpage ne perd et ne réécrit aucun texte.
+
+Un lien trouvé par un motif est un lien déduit : un flow le propose (D998). Une référence vers un objet absent reste non résolue. Le prochain import la résout. Le flow ne crée jamais d'objet « au cas où ».
+
+### 3.2 Vérification d'une citation
+
+```mermaid
+sequenceDiagram
+  participant A as Assistant tiers
+  participant J as pnex-juris
+  participant P as PneX (org de référence)
+  A->>J: verify_citation(citation, passage)
+  J->>J: contrôle de la clé et du quota
+  J->>P: recherche par clé naturelle (compte de service)
+  P-->>J: décision ou candidates
+  J->>P: localisation du passage
+  P-->>J: exact, approximate ou absent
+  J-->>A: verdict, champs divergents, lien officiel
+```
+
+`verify_citation` ne corrige rien en silence. Il dit ce qui diffère (date, juridiction, numéro) et propose les candidates les plus proches. L'avocat tranche. Chaque réponse porte le lien officiel et la date de dernière synchronisation de la source.
+
+La localisation applique une normalisation déclarée : espaces, apostrophes, guillemets, casse, ligatures. Elle n'applique aucune normalisation sémantique : un mot changé reste un écart. Un verdict `approximate` donne la similarité et les écarts mot à mot. La brique sert aussi ailleurs : citation d'un document, preuve d'une page collectée.
+
+### 3.3 Cycle de vie d'une synthèse
+
+```mermaid
+stateDiagram-v2
+  [*] --> Absente
+  Absente --> EnCache: premier appel (LLM de l'org)
+  Absente --> EnCache: pré-calcul (publiée au Bulletin)
+  EnCache --> Invalidee: nouvelle version du document
+  Invalidee --> EnCache: appel suivant
+```
+
+Le LLM de l'org opératrice calcule la synthèse (D119). La synthèse garde sa provenance : `ai`, modèle, date, version du document source. Elle garde aussi les passages qui la fondent. La façade la renvoie toujours à part du texte, avec la mention « synthèse générée ». Chaque phrase renvoie à un passage du texte.
+
+### 3.4 Résolution d'une référence externe
+
+```mermaid
+sequenceDiagram
+  participant O as Org d'un cabinet
+  participant R as Route de résolution (plateforme)
+  participant C as Org de référence
+  O->>R: clé naturelle ou requête
+  R->>C: lecture seule
+  C-->>R: objet du corpus, lien officiel
+  R-->>O: objet, lien officiel
+  Note over O,C: aucun lien ne traverse la frontière d'org
+```
+
+La route ne reçoit rien d'autre de l'org appelante. Elle ne journalise ni la clé ni la requête, sauf pour le comptage. Une référence non résolue reste affichée comme telle. Cette lecture est une exception à la frontière d'org : lecture seule, une seule org désignée, aucune donnée d'org à l'intérieur.
+
+### 3.5 Pratique d'un cabinet et veille
+
+```mermaid
+---
+config:
+  layout: elk
+---
+flowchart LR
+  ev[Faits du dossier] --> arg[argument]
+  pa[Passage localisé] --> arg
+  arg -->|external_ref| src[Décision ou article]
+  src -->|nouvelle version ou overturns| sig[Signal sur le moyen]
+  q[Ensemble d'objets nommé] --> fl[Flow de veille]
+  fl --> nt[Notification ou digest]
+  fl -->|article cité par un moyen ouvert| mat[Alerte de l'affaire]
+```
+
+Une `matter` (affaire) ouvre un dossier de `cases.md` et s'y rattache : pièces, chronologie, argent, preuves. Un `argument` (moyen) relie des faits du dossier à des sources. Une source qui change signale chaque moyen et chaque modèle d'acte qui la citent.
+
+Un `deadline` (délai) porte une date de départ, une durée et sa méthode de calcul. La date calculée affiche sa méthode. Elle reste à confirmer par l'avocat et n'est jamais présentée comme certaine.
+
+Une recherche couvre l'org et le corpus. Chaque résultat porte sa source : officiel, interne ou synthèse générée. Un extrait ne mélange jamais deux sources.
+
+## 4. Exigences
+
+1. Le moteur ne doit gagner que des briques génériques : motifs de référence, localisation, `external_ref`, méthodes de calcul de dates, recherche multi-sources. Le vocabulaire juridique doit vivre dans les packs (garde D441).
+2. Une couche ne doit contenir que ce qui est propre à son ordre juridique.
+3. Seul l'open data officiel doit entrer au corpus : pas de site éditorial, pas de base sous licence.
+4. La licence et les conditions de réutilisation d'une source doivent être consignées dans ce document avant sa première collecte.
+5. Le corpus ne doit servir aucune décision sans lien officiel.
+6. Le découpage ne doit perdre ni réécrire aucun texte (test sur des décisions réelles).
+7. Les tests des motifs de référence doivent employer une ontologie inventée, pas `case_law`.
+8. Aucun type, propriété, lien, agrégat, filtre ni outil ne doit porter sur un magistrat ou un greffier (loi n° 2019-222, art. 33). Un test du pack et un test de la façade doivent le vérifier.
+9. Aucune partie ne doit être ré-identifiée, rattachée à un objet `person` ni croisée avec un autre pack.
+10. Une occultation reçue de la source doit retirer la version précédente de l'index et de la façade au différentiel suivant.
+11. La façade doit lire PneX par un compte de service en lecture seule, sur un réseau privé. PneX ne doit pas être joignable depuis Internet pour ce service.
+12. La façade ne doit journaliser ni les questions ni les passages, sauf pour compter les quotas.
+13. La façade doit borner la longueur des passages et des requêtes. Elle ne doit renvoyer aucun texte utilisateur en HTML.
+14. Les clés des utilisateurs doivent être stockées hachées. La clé du compte de service doit rester sur le serveur de la façade (R4, R16).
+15. La collecte doit passer par l'egress gardé, avec la liste blanche des hôtes des sources (R8).
+16. Aucune donnée de cabinet ne doit entrer dans l'org de référence.
+17. Une instance auto-hébergée doit chercher dans son corpus sans appel sortant.
+
+## 5. Décisions
 
 ### D485 — PneX moteur, `pnex-juris` seule surface publique
 
-- `pnex-juris` est une **application** au sens de D432 : un dépôt à part,
-  sa propre interface, qui lit PneX par le SDK avec un **compte de
-  service en lecture seule** (D433) sur l'org qui porte le corpus.
-- PneX n'est **pas joignable depuis Internet** pour ce service : la
-  façade l'appelle sur un réseau privé. Aucun utilisateur de la façade
-  n'a de compte PneX.
-- Rien d'avocat ni de jurisprudence n'entre au moteur (garde D441) : le
-  métier vit dans les packs (D486) et dans la façade (D492–D494).
+`pnex-juris` est une application au sens de D432 : dépôt à part, compte de service en lecture seule (D433). Aucun utilisateur de la façade n'a de compte PneX.
 
 ### D486 — Pack `case_law`, couche pays `case_law_fr`
 
-- `case_law` (générique) : types `court`, `decision`, `legal_text`,
-  `article` (une version d'article = un objet, intervalle de vigueur) ;
-  liens `cites`, `applies` (décision → article), `overturns`
-  (cassation, annulation), `follows` (renvoi, suite de la procédure),
-  `version_of`, `issued_by`.
-- `case_law_fr` : ce qui est propre à la France seulement (formations
-  de la Cour de cassation, numéro de pourvoi, numéro de requête,
-  publication au Bulletin, codes, NOR, ELI), clé naturelle = ECLI quand
-  la source le fournit, identifiant de la source sinon.
-- Le texte intégral d'une décision est un **document** (média) rattaché
-  à l'objet `decision` (lien `evidence`, D437), indexé par doc-search.
-  L'objet porte les métadonnées, jamais le texte.
+`case_law_fr` porte les formations, le numéro de pourvoi, le numéro de requête, le Bulletin, les codes, le NOR et l'ELI. La clé naturelle est l'ECLI, sinon l'identifiant de la source.
 
 ### D487 — Sources V1 : open data officiel seulement
 
-Par ordre de lot :
-
-1. **Cour de cassation** : décisions (Judilibre, API PISTE ; base CASS
-   / INCA de la DILA en fichiers).
-2. **Textes consolidés** : codes et lois (base LEGI de la DILA ; API
-   Légifrance sur PISTE pour le différentiel).
-3. **Juridictions administratives** : Conseil d'État, cours
-   administratives d'appel (base JADE ; open data de la justice
-   administrative).
-4. **Conseil constitutionnel** (base CONSTIT).
-5. **Cours d'appel et tribunaux judiciaires**, au rythme du calendrier
-   de l'open data des décisions judiciaires.
-
-- Les fichiers en masse (stock) passent avant les API (différentiel
-  quotidien) : moins de quotas, reprise simple.
-- Chaque objet garde sa source, sa date de collecte et le **lien
-  officiel** (D437) ; une décision sans lien officiel n'est pas servie.
-- Licence et conditions de réutilisation de chaque source vérifiées et
-  consignées au lot LR0 avant toute collecte.
-- Pas de collecte de sites éditoriaux ni de bases sous licence : seul
-  l'open data public entre au corpus.
+Ordre des lots : Cour de cassation (Judilibre, CASS / INCA), textes consolidés (LEGI, API Légifrance), juridictions administratives (JADE), Conseil constitutionnel (CONSTIT), puis cours d'appel et tribunaux selon le calendrier de l'open data judiciaire.
 
 ### D488 — Découpage d'une décision
 
-- Un parseur déterministe, déclaré par la couche pays, découpe le texte
-  en sections (en-tête, faits et procédure, moyens, motifs, dispositif)
-  et en paragraphes numérotés ; doc-search indexe par section.
-- Une section non reconnue reste un bloc « texte » : jamais de perte de
-  texte, jamais de texte réécrit.
+Parseur déterministe déclaré par la couche, index par section (§3.1).
 
 ### D489 — Références déclarées par un pack → liens
 
-- Brique générique : un pack déclare des **motifs de référence**
-  (expression, type cible, gabarit de clé naturelle). Un nœud de flow
-  les applique à un document et propose les liens vers les objets
-  trouvés (`cites`, `applies`).
-- Référence vers un objet absent : gardée comme référence non résolue,
-  résolue au prochain import, jamais d'objet créé « au cas où ».
-- Exemple et tests sur une ontologie inventée (`article`, `auteur`), pas
-  sur `case_law` (D432).
+Un flow applique les motifs et propose les liens `cites` et `applies` (§3.1).
 
 ### D490 — Localisation d'un passage
 
-- Brique générique du moteur : pour un document et un passage, renvoyer
-  la ou les positions où le passage figure, avec un **verdict** :
-  `exact`, `approximate` (similarité et écarts mot à mot), `absent`.
-- Normalisation déclarée (espaces, apostrophes, guillemets, casse,
-  ligatures) ; aucune normalisation sémantique : un mot changé reste un
-  écart.
-- Réutilisable ailleurs (citation d'un document, preuve d'une page
-  collectée).
+Brique générique, verdict `exact`, `approximate` ou `absent`, normalisation déclarée sans sémantique (§3.2).
 
 ### D491 — Synthèse par IA : à la demande, en cache, marquée
 
-- Une synthèse se calcule au premier appel avec le **LLM de l'org
-  opératrice** (D119), puis se stocke comme champ dérivé, avec sa
-  provenance (`ai`, modèle, date, version du document source) et les
-  passages sur lesquels elle s'appuie.
-- Pré-calcul pour les décisions publiées au Bulletin uniquement.
-- Une synthèse n'est **jamais une source** : la façade la renvoie
-  toujours séparée du texte, avec la mention « synthèse générée », et
-  chaque phrase renvoie à un passage du texte.
-- Nouvelle version du document source → synthèse invalidée.
+Calcul au premier appel, pré-calcul pour le Bulletin seulement, invalidation à chaque nouvelle version (§3.3).
 
 ### D492 — Façade : outils MCP et API en lecture seule
+
+Cinq outils (§6). API REST et MCP viennent du même contrat, comme dans `api.md`.
+
+### D493 — Accès : clé API gratuite, quotas
+
+Une clé par utilisateur, inscription par e-mail, quotas par jour, par clé et par outil. OAuth vient au lot suivant. Pas de journalisation du contenu (secret professionnel).
+
+### D494 — Page de connexion
+
+Page statique : obtenir sa clé, brancher MCP ou API sur les assistants courants, connaître la couverture et la date de synchronisation. Pas de chat ni de LLM côté façade.
+
+### D495 — Pas d'analyse des magistrats
+
+Exigence 8.
+
+### D496 — Données des parties
+
+Exigences 9 et 10.
+
+### D498 — Le juridique est une famille de packs, pas un produit
+
+Corpus, pratique et veille s'installent séparément. `pnex-juris` est un consommateur parmi d'autres.
+
+### D499 — Ordres juridiques en couches
+
+`case_law` gagne `treaty` et `award`. Couches `case_law_fr`, `case_law_eu` (EUR-Lex, CJUE, Tribunal, clé CELEX ou ECLI), `case_law_echr` (numéro de requête, ECLI), `case_law_intl` (traités, organes internationaux, sentences publiées par leur institution). D487, D495 et D496 s'appliquent à chaque couche.
+
+### D500 — Corpus de référence : une org de plateforme lue par toutes
+
+L'admin plateforme (D72) désigne l'org. Seuls ses imports l'écrivent. Les autres orgs la référencent par `external_ref` (§3.4).
+
+### D501 — Pack `legal_practice` : affaires, délais, actes, moyens
+
+Types `matter`, `party_role`, `deadline`, `filing`, `argument`. Une `matter` ouvre un dossier, un `argument` relie faits et sources, un `deadline` reste à confirmer (§3.5).
+
+### D502 — Veille composable
+
+Un abonnement est un ensemble d'objets nommé (D434) sur le corpus. Un flow le lit et produit une notification ou un digest. Le pack fournit des flows d'exemple.
+
+### D503 — Doctrine interne et recherche multi-sources
+
+Notes, consultations et modèles d'actes sont des documents de l'org. Une recherche couvre org et corpus, avec la source de chaque extrait (§3.5).
+
+### D504 — Composer sans développer
+
+Le cabinet ajoute ses types, liens, vues et flows depuis l'UI (D176, D190). Son pack se partage comme tout pack, par le hub quand le hub sortira du gel.
+
+### D505 — Secret professionnel et auto-hébergement
+
+Rien du cabinet dans l'org de référence. Une instance auto-hébergée remplit son corpus par `pnex-mirror` (D439) ou par les mêmes imports. LLM de l'org seulement (D119), conversations privées (D145).
+
+## 6. Interfaces
+
+Outils de la façade (D492), tous en lecture seule :
 
 | Outil | Entrée | Sortie |
 |---|---|---|
 | `search_decisions` | requête, juridiction, période, article visé | décisions, extraits, lien officiel |
-| `get_decision` | identifiant (ECLI, pourvoi, requête) | métadonnées, texte par section, lien officiel, synthèse séparée |
-| `verify_citation` | citation libre, passage cité facultatif | décision trouvée ou non, champs divergents (date, juridiction, numéro), verdict sur le passage (D490), candidates les plus proches |
+| `get_decision` | ECLI, pourvoi ou requête | métadonnées, texte par section, lien officiel, synthèse à part |
+| `verify_citation` | citation libre, passage cité (option) | décision ou non, champs divergents, verdict du passage, candidates |
 | `get_citing_decisions` | identifiant | suite de la procédure (`overturns`, `follows`), décisions qui la citent |
 | `get_article` | référence, date | version en vigueur à la date, lien officiel |
 
-- Chaque réponse porte le lien officiel et la date de dernière
-  synchronisation de la source.
-- `verify_citation` ne « corrige » rien en silence : il dit ce qui
-  diffère et propose des candidates, l'avocat tranche.
-- API REST et MCP sont générés du même contrat que la façade publie
-  (même discipline que `api.md`).
+Un quota dépassé renvoie 429.
 
-### D493 — Accès : clé API gratuite, quotas
-
-- Inscription par e-mail, une **clé par utilisateur**, quotas
-  journaliers par clé et par outil, tenus par la façade.
-- OAuth (connecteurs en un clic des assistants grand public) au lot
-  suivant.
-- La façade ne journalise ni les questions ni les passages envoyés
-  au-delà du comptage des quotas : ils peuvent contenir le secret
-  professionnel d'un client.
-
-### D494 — Page de connexion
-
-- Une page statique de la façade : obtenir sa clé, puis la marche à
-  suivre pour brancher le serveur MCP ou l'API sur les assistants
-  courants, et les limites (couverture des sources, date de
-  synchronisation).
-- Pas de chat, pas de LLM côté façade.
-
-### D495 — Pas d'analyse des magistrats
-
-- L'article 33 de la loi n° 2019-222 interdit de réutiliser l'identité
-  des magistrats et des greffiers pour évaluer, analyser, comparer ou
-  prédire leurs pratiques professionnelles.
-- Aucun type, propriété, lien, agrégat, filtre ni outil par magistrat
-  ou greffier, dans le pack comme dans la façade. Les textes restent tels
-  que publiés ; la recherche ne propose aucun critère de personne.
-- Garde : test du pack (aucune clé de ce domaine) et test de la façade
-  (aucun paramètre de ce domaine).
-
-### D496 — Données des parties
-
-- Les sources publient des décisions pseudonymisées : on ne les
-  ré-identifie jamais, on ne rattache aucune partie à un objet
-  `person`, on ne les croise avec aucun autre pack.
-- Une demande d'occultation reçue de la source (décision retirée ou
-  modifiée) est appliquée au prochain différentiel : la version
-  précédente sort de l'index et de la façade.
-
-## 4. Lots
+Lots :
 
 | Lot | Contenu | Tests |
 |---|---|---|
-| **LR0** | Conditions de réutilisation et volumes de chaque source (D487), consignés ici | — |
-| **LR1** | Pack `case_law` + `case_law_fr` (D486, D495), import du stock Cour de cassation, texte en document | import idempotent ; clé naturelle ; garde D495 |
-| **LR2** | Découpage (D488), index doc-search par section | sections d'un jeu de décisions réelles ; aucune perte de texte |
-| **LR3** | Motifs de référence (D489), textes consolidés LEGI, `applies` / `cites` | ontologie inventée ; références non résolues puis résolues |
-| **LR4** | Localisation d'un passage (D490) | exact, approché, absent ; normalisation |
-| **LR5** | `pnex-juris` : outils D492, clés et quotas D493, page D494 | compte de service en lecture seule ; quota dépassé → 429 ; aucune journalisation du contenu |
-| **LR6** | Synthèse à la demande (D491), JADE, CONSTIT, différentiels quotidiens | invalidation sur nouvelle version ; synthèse séparée du texte |
+| LR0 | Conditions de réutilisation et volumes de chaque source | — |
+| LR1 | `case_law` + `case_law_fr`, stock Cour de cassation, texte en document | import idempotent, clé naturelle, garde D495 |
+| LR2 | Découpage, index par section | aucune perte de texte |
+| LR3 | Motifs de référence, LEGI, `applies` / `cites` | ontologie inventée, références résolues plus tard |
+| LR4 | Localisation d'un passage | exact, approché, absent, normalisation |
+| LR5 | `pnex-juris` : outils, clés, quotas, page | lecture seule, 429, pas de journal du contenu |
+| LR6 | Synthèse, JADE, CONSTIT, différentiels quotidiens | invalidation, synthèse à part |
+| LR7 | Org de référence, `external_ref`, route de résolution | lecture seule, pas de journal du contenu, référence non résolue |
+| LR8 | `legal_practice` : affaire et dossier, moyens, signal de source | moyen signalé sur `overturns` |
+| LR9 | Veille, recherche multi-sources | notification, source de chaque extrait |
+| LR10 | `case_law_eu`, `case_law_echr` | clés CELEX, ECLI, numéro de requête |
+| LR11 | `deadline` et méthodes de calcul, `case_law_intl` | jours francs, fériés, prorogation |
 
-Premier lot de valeur sans LLM : LR1 → LR5 avec `verify_citation` sur la
-Cour de cassation.
+Le premier lot utile sans LLM va de LR1 à LR5, avec `verify_citation` sur la Cour de cassation.
 
-## 5. Sécurité (grille `security.md` §6, points saillants)
+## 7. Reste à faire
 
-- R1/R2 : la façade n'a qu'un compte de service en lecture sur une org ;
-  aucune écriture, aucune action (D485).
-- R8 : collecte par l'egress gardé ; liste blanche des hôtes des sources.
-- R4/R16 : la clé de compte de service reste côté serveur de la façade ;
-  les clés des utilisateurs sont hachées.
-- Entrées de la façade non fiables : longueur bornée des passages et des
-  requêtes, quotas, aucun texte utilisateur renvoyé en HTML.
-- D493 (pas de journalisation du contenu) et D495–D496 sont opposables.
-
-## 6. Questions ouvertes
-
-- **Q-LR1 — Volumes** : stock judiciaire et administratif (nombre de
-  décisions, taille du texte, coût de l'index) ; à chiffrer au LR0 avant
-  de choisir l'org et le stockage.
-- **Q-LR2 — Recherche sémantique** : V1 = plein texte + références
-  exactes ; vecteurs (doc-search) sur tout le corpus ou seulement les
-  motifs, au lot suivant ?
-- **Q-LR3 — Copie locale** : la façade appelle PneX sur réseau privé ;
-  servir depuis `pnex-mirror` (D439) isolerait davantage, mais demande
-  la recherche plein texte côté miroir.
-- ~~**Q-LR4 — Droit de l'UE**~~ : tranché par D499 (couches `case_law_eu`,
-  `case_law_echr`, après la France).
-- **Q-LR5 — Corpus partagé ou copié** : D500 propose une org de
-  référence lue par toutes les orgs d'une instance ; une instance
-  auto-hébergée la remplit par synchronisation (D505). Reste à chiffrer
-  la copie complète contre une copie filtrée (juridictions, période).
-- **Q-LR6 — Calcul des délais** : règles déclarées par la couche pays
-  (D501) ; quelle couverture minimale (délais d'appel, de pourvoi,
-  d'opposition) avant de proposer le type `deadline` ?
-- **Q-LR7 — Sentences arbitrales** : peu sont publiées ; quelles
-  institutions publient sous une licence réutilisable (LR0 étendu) ?
-- **Q-LR8 — Exception à la frontière d'org** : D500 introduit une lecture
-  d'une org de plateforme par les autres ; à inscrire au registre
-  `security.md` §7 et à valider en revue avant LR7.
-
-## 7. Élargissement : la famille de packs juridiques (D498–D505)
-
-```mermaid
-flowchart LR
-  subgraph REF["Org de référence (D500), données publiques seulement"]
-    C["case_law + couches _fr _eu _echr _intl (D499)"]
-  end
-  subgraph CAB["Org d'un cabinet (privée)"]
-    P["legal_practice : affaire, délai, acte, moyen (D501)"]
-    K["Dossier (cases.md) : pièces, chronologie, argent"]
-    D["Doctrine interne : notes, modèles, consultations (D503)"]
-    V["Veille : requêtes nommées + flows (D502)"]
-  end
-  J["pnex-juris : MCP / API publics (D492)"]
-  P -- "référence par clé naturelle" --> C
-  P --> K
-  V -- "lit" --> C
-  V -- "alerte" --> P
-  D -. "recherche commune, source marquée" .- C
-  J -- "compte de service, lecture" --> C
-```
-
-### D498 — Le juridique est une famille de packs, pas un produit
-
-- Trois étages indépendants : **corpus** (sources publiques, §3, D499,
-  D500), **pratique** (le travail d'un cabinet, D501, D503), **veille**
-  (D502). Chacun s'installe seul ; aucun ne suppose les autres.
-- `pnex-juris` (D485) n'est qu'un consommateur du corpus parmi d'autres ;
-  l'interface du cabinet est l'UI de PneX elle-même.
-- Garde D441 inchangée : le moteur ne gagne que des briques génériques
-  (références externes D500, règles de calcul de dates D501, recherche
-  multi-sources D503). Tout le vocabulaire juridique vit dans les packs.
-
-### D499 — Ordres juridiques en couches
-
-- Le pack générique `case_law` reste sans juridiction ; il gagne `treaty`
-  (traité, convention) et `award` (sentence) aux côtés de `decision`.
-- Couches, une par ordre juridique, chacune ne contenant que ce qui lui
-  est propre : `case_law_fr` (§3), `case_law_eu` (EUR-Lex, CJUE et
-  Tribunal ; clé CELEX ou ECLI), `case_law_echr` (arrêts et décisions de
-  la CEDH ; numéro de requête, ECLI), `case_law_intl` (traités publiés,
-  décisions d'organes internationaux, sentences arbitrales **publiées par
-  leur institution**).
-- Le suffixe d'une couche désigne un ordre juridique et pas toujours un
-  pays (`_eu`, `_echr`, `_intl`) ; la règle « la couche ne contient que
-  ce qui lui est propre » s'applique à l'identique.
-- D487 (open data officiel, lien officiel obligatoire, licence vérifiée
-  avant collecte), D495 et D496 s'appliquent à chaque couche.
-
-### D500 — Corpus de référence : une org de plateforme lue par toutes
-
-- Le corpus vit dans une **org de référence** désignée par l'admin
-  plateforme (D72). Elle ne contient que des données publiques et n'est
-  écrite que par ses flows d'import.
-- Les autres orgs ne la voient pas comme une org : leurs objets la
-  **référencent par clé naturelle** (ECLI, CELEX, ELI, numéro de
-  requête), avec une propriété de type `external_ref` (brique
-  générique : type cible, clé, libellé figé à la création). Aucun lien
-  ne traverse la frontière d'org ; une référence non résolue reste
-  affichée comme telle.
-- La résolution passe par une route de lecture de plateforme : entrée =
-  clé ou requête, sortie = l'objet du corpus et son lien officiel. Elle
-  ne reçoit rien d'autre de l'org appelante et ne journalise ni la clé
-  ni la requête au-delà du comptage (comme D493).
-- Exception explicite à la frontière d'org (Q-LR8) : lecture seule, une
-  seule org désignée, aucune donnée d'org à l'intérieur.
-
-### D501 — Pack `legal_practice` : affaires, délais, actes, moyens
-
-- Types : `matter` (affaire), `party_role` (rôle d'un objet de l'org
-  dans l'affaire), `deadline` (délai), `filing` (acte, conclusions,
-  mémoire), `argument` (moyen).
-- Le pack ne réinvente pas le dossier : une `matter` ouvre un dossier
-  `cases.md` (pièces, chronologie, argent, preuves D437) et s'y rattache.
-- **Le droit et les faits au même endroit** : un `argument` relie des
-  faits du dossier (événements, pièces, passages localisés D490) à des
-  sources (`external_ref` vers une décision, un article à la date des
-  faits). Une source modifiée (nouvelle version d'article, décision
-  cassée via `overturns`) signale chaque moyen qui s'y appuie.
-- `deadline` : date de départ, durée, règle de calcul **déclarée par la
-  couche pays** (jours francs, jours fériés, prorogation). Brique
-  générique : règles de calcul de dates déclarées par un pack. La date
-  calculée affiche sa règle et reste **à confirmer par l'avocat** ;
-  jamais présentée comme certaine.
-
-### D502 — Veille composable
-
-- Un abonnement est une **requête D185 nommée** (D434) sur le corpus :
-  juridiction, article visé, motif de référence, texte, formation.
-- Un flow la lit au rythme des synchronisations et produit une
-  notification ou un digest (`notifications.md`). Le pack fournit des
-  flows d'exemple ; le cabinet les modifie ou en compose d'autres.
-- Veille liée à une affaire : une décision nouvelle qui vise un article
-  cité par un `argument` ouvert alerte l'affaire.
-
-### D503 — Doctrine interne et recherche multi-sources
-
-- Notes, consultations, modèles d'actes du cabinet sont des documents de
-  son org, indexés par doc-search.
-- Une recherche couvre l'org et le corpus de référence ; chaque résultat
-  porte sa source : **officiel** (corpus, lien officiel), **interne**
-  (org), **synthèse générée** (D491). Les trois ne se mélangent jamais
-  dans un même extrait.
-- Un modèle d'acte peut citer des sources par `external_ref` : la veille
-  (D502) signale le modèle quand une source change.
-
-### D504 — Composer sans développer
-
-- Un cabinet ajoute ses propres types, propriétés, liens, vues et flows
-  depuis l'UI (ontologie D176, packs D190), au-dessus des packs
-  juridiques, sans toucher au moteur.
-- Un pack d'un cabinet (spécialité, procédure propre) s'exporte et se
-  partage comme tout pack ; le partage public suit le hub quand il
-  sortira du gel.
-
-### D505 — Secret professionnel et auto-hébergement
-
-- Aucune donnée de cabinet n'entre dans l'org de référence ; aucune
-  requête d'un cabinet n'y laisse de trace de contenu (D500).
-- Une instance auto-hébergée remplit sa propre org de référence par
-  synchronisation (`pnex-mirror`, D439, ou mêmes flows d'import) et
-  fonctionne sans appel sortant pour la recherche.
-- LLM : celui de l'org seulement (D119) ; conversations de l'assistant
-  privées utilisateur × org (D145).
-
-### Lots de l'élargissement
-
-| Lot | Contenu | Tests |
-|---|---|---|
-| **LR7** | Org de référence + `external_ref` + route de résolution (D500), revue de sécurité (Q-LR8) | lecture seule ; aucune écriture depuis une autre org ; aucune journalisation du contenu ; référence non résolue |
-| **LR8** | `legal_practice` (D501) : affaire ↔ dossier, moyens reliés aux faits et aux sources, signal de source modifiée | ontologie inventée pour la brique ; moyen signalé sur `overturns` |
-| **LR9** | Veille (D502) + recherche multi-sources marquée (D503) | requête nommée → notification ; source de chaque extrait |
-| **LR10** | Couches `case_law_eu` et `case_law_echr` (D499) | import idempotent ; clés CELEX, ECLI, numéro de requête |
-| **LR11** | `deadline` et règles de calcul de dates (D501, Q-LR6), `case_law_intl` (Q-LR7) | jours francs, fériés, prorogation ; règle affichée |
-
-## 8. Récapitulatif des décisions
-
-| Décision | Résumé |
-|---|---|
-| D485 | `pnex-juris` application séparée, compte de service en lecture seule ; PneX jamais exposé |
-| D486 | Pack `case_law` + `case_law_fr` ; texte intégral = document lié à l'objet |
-| D487 | Sources V1 : open data officiel français, stock en fichiers puis API ; lien officiel obligatoire |
-| D488 | Découpage déterministe par section, sans perte ni réécriture |
-| D489 | Motifs de référence déclarés par un pack → liens proposés (brique générique) |
-| D490 | Localisation d'un passage : `exact` / `approximate` / `absent` (brique générique) |
-| D491 | Synthèse IA à la demande, en cache, marquée, jamais présentée comme source |
-| D492 | Cinq outils MCP/API en lecture seule, dont `verify_citation` |
-| D493 | Clé API gratuite + quotas ; OAuth ensuite ; pas de journalisation du contenu |
-| D494 | Page de connexion statique, pas de chat |
-| D495 | Aucune analyse des magistrats (loi 2019-222, art. 33), gardée par test |
-| D496 | Pas de ré-identification des parties ; occultations appliquées |
-| D498 | Famille de packs : corpus, pratique, veille, installables séparément ; `pnex-juris` = un consommateur |
-| D499 | Couches par ordre juridique : `_fr`, `_eu`, `_echr`, `_intl` ; `treaty`, `award` au générique |
-| D500 | Org de référence lue par toutes ; objets d'org → corpus par `external_ref` (clé naturelle) |
-| D501 | Pack `legal_practice` : affaire ↔ dossier, moyens reliés aux faits et aux sources, délais à confirmer |
-| D502 | Veille = requête nommée + flow → notification ; alerte d'affaire |
-| D503 | Doctrine interne + corpus dans une recherche, source de chaque extrait marquée |
-| D504 | Le cabinet compose ses types, vues et flows depuis l'UI ; packs partageables |
-| D505 | Secret professionnel : rien du cabinet dans le corpus ; instance autonome par synchronisation |
+- **LR0** : vérifier et consigner ici la licence et les volumes de chaque source.
+- **Q-LR1 — Volumes** : chiffrer le stock judiciaire et administratif (décisions, taille, coût de l'index) avant de choisir l'org et le stockage.
+- **Q-LR2 — Recherche sémantique** : la V1 fait du plein texte et des références exactes. Choix de Shan : vecteurs sur tout le corpus ou sur les motifs seulement.
+- **Q-LR3 — Copie locale** : servir la façade depuis `pnex-mirror` (D439) isole mieux, mais demande la recherche plein texte côté miroir. Choix de Shan.
+- **Q-LR5 — Corpus copié** : chiffrer la copie complète contre une copie filtrée (juridictions, période) pour une instance auto-hébergée.
+- **Q-LR6 — Délais** : fixer la couverture minimale (appel, pourvoi, opposition) avant de proposer `deadline`.
+- **Q-LR7 — Sentences arbitrales** : trouver les institutions qui publient sous une licence réutilisable.
+- **Q-LR8 — Frontière d'org** : inscrire l'exception D500 au registre `security.md` §7 et la valider en revue avant LR7.
+- **Veille et règles** : D502 précède les règles D829 (`analysis.md`). Choix de Shan : la veille devient-elle une règle, ou reste-t-elle un flow ?
+- **`external_ref`** : D369 (`ontology.md`) prévoit aussi un `external_ref` de premier rang, au démarrage du CRM ou de l'ERP. Choix de Shan : une seule brique pour les deux usages, ou deux.
