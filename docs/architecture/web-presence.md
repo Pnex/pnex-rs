@@ -1,383 +1,200 @@
 # Présence web des organisations (D359–D366)
 
-> **Statut : proposé (2026-10-22), questions Q-W1–Q-W4 tranchées par Shan le même jour (§6).** Demande
-> de la session `pnex-quali-watch` : trouver le site de chaque organisme
-> habilité, le faire valider, puis le crawler chaque semaine pour la
-> conformité. Suit `pipelines.md` (D344–D358). Liens : `pipelines.md`
-> (D317–D322), `partners.md` (D301–D316, D307 crawl, D312 nœuds
-> ontologie), `browser-agents.md` (D254), `agents.md`
-> (D323–D328), `geo-layers.md` (fournisseurs géo), `security.md` §9 (D110–D118),
-> `security.md` (R1, R2, R4, R8, R16).
+| | |
+|---|---|
+| **Statut** | **Codé** : lots W0 à W4. Fournisseurs de recherche web, nœuds `web_search` et `web_visit`, options `skip_closed` et `keep_best` de `link_upsert`, pack `web_presence` 3.0.1 et son flow d'identification. Questions Q-W1 à Q-W4 tranchées par Shan le 2026-10-22. |
+| **Renvois** | `partners.md` (D301–D316, D307 parcours), `pipelines.md` (D344 imports à étapes), `proposals.md` (D375–D377), `browser-agents.md` (D254), `agents.md` (D323–D328), `geo-layers.md` (modèle des fournisseurs), `security.md` (R1, R2, R4, R8, R11–R13, R16) |
 
-## 1. Constat (code lu le 2026-10-22)
+## 1. Résumé
 
-- **Aucune source ouverte ne donne le site** d'un organisme (open data FC
-  XML et CSV, catalogue CPF, liste DGEFP : vérifié par la session pair).
-  Les données en ont pourtant une trace : `compliance_contact_email`,
-  `network_manager_email` (pack `quali_watch`) portent souvent le domaine de
-  l'organisme.
-- **Le type et le lien existent déjà** : `website` (`domain` unique,
-  `root_url`, état de collecte) et `has_website` (organisation → site)
-  dans `quali_watch.yaml`. Les reprendre dans un pack générique ne déplace
-  aucune donnée : `packs.rs` `hands_over` transfère la propriété d'un type
-  quand l'ancien propriétaire se met à dépendre du nouveau.
-- **Écrire dans l'ontologie depuis un flow existe** : `object_upsert` et
-  `link_upsert` (D312, `services/ontology/flow_nodes.rs`), config lue dans
-  la version déployée, acteur `flow:<id>@<v>`, journal O2, budget de
-  600 écritures/min. Deux manques pour ce besoin : un lien fermé n'empêche
-  pas d'en rouvrir un (le rejet ne tient pas) ; la fermeture n'écrit pas
-  d'attributs (impossible de poser `status: rejected` en fermant).
-- **Fournisseurs** : LLM, géo et navigateurs sont **par org** (D119 : la
-  plateforme ne fournit pas de LLM). Modèle le plus propre : `geo_providers`
-  (`kind`, défaut par capacité, `base_url` contrôlée par `egress`, secret
-  à un champ au coffre, route `…/test`). Quota journalier : `count_daily`
-  dans Valkey (`flow_ai.rs`).
-- **Capture serveur** : `services/site_recipes/cdp.rs` pilote
-  `chrome-headless-shell` ou Obscura en CDP (capture, texte), mais seulement
-  à travers une recette enregistrée sur un site déclaré. Pas de visite
-  ponctuelle d'une URL quelconque.
-- **Vision** : `vision_detect` / `vision_caption` ne lisent qu'une clé
-  d'image Valkey de caméra ou de média (`frame_key_in_org`).
+Une organisation a souvent un site web, mais aucune source ouverte ne le donne. PneX trouve des candidats par le domaine des e-mails connus, puis par un fournisseur de recherche web de l'org. Il visite chaque candidat une fois et calcule un score sur ce que le site dit de lui-même. Un score fort écrit le lien, un score moyen devient une proposition pour un humain. Seul un site accepté peut ensuite être parcouru chaque semaine (D307).
 
-## 2. Décisions
+## 2. Concepts
+
+| Terme | Définition |
+|---|---|
+| **Site web** | Objet `website`, de clé `domain`. |
+| **Lien de site** | Lien `has_website` (organisation → site web), avec ses preuves et sa provenance. |
+| **Candidat** | Domaine qui peut être le site web d'une organisation. Sa `source` est `email`, `search` ou `manual`. |
+| **Fournisseur de recherche web** | Service externe que l'org branche pour chercher sur le web (D360). Il est propre à l'org. |
+| **Visite** | Au plus 3 requêtes sur l'origine d'un candidat, pour l'identifier (D364). Ce n'est pas un parcours. |
+| **Parcours** | Collecte récurrente d'un site web accepté (D307, `partners.md`). |
+| **Score** | Note de 0 à 100 calculée sur le texte du site web visité. |
+
+```mermaid
+classDiagram
+  class Organisation {
+    website_searched_on
+  }
+  class Site["website"] {
+    domain
+    root_url
+    crawl_state
+    capture
+  }
+  class LienDeSite["has_website"] {
+    score
+    siren_proof
+    nda_proof
+    llm_opinion
+    source
+    validated_by
+  }
+  class Fournisseur["web_search_providers"] {
+    kind
+    base_url
+  }
+  Organisation --> LienDeSite
+  LienDeSite --> Site
+  Fournisseur ..> LienDeSite : candidats
+```
+
+## 3. Fonctionnement
+
+### 3.1 Flow d'identification (D365)
+
+Le pack livre le flow « Web presence · find websites » en brouillon. L'humain le déploie (D144).
+
+```mermaid
+---
+config:
+  layout: elk
+---
+flowchart LR
+  T[inject 04:00] --> Q[ontology_query<br/>50 orgs sans recherche]
+  Q --> P[pw_prepare]
+  P --> M[marquer website_searched_on]
+  P --> S[web_search<br/>3 résultats]
+  P -->|domaine e-mail| V[web_visit]
+  S --> R[pw_results] --> V
+  V --> SC[pw_score]
+  SC -->|≥ 80| A[link_upsert<br/>accepté par règle D377]
+  SC -->|40–79| PR[link_upsert<br/>proposition]
+  PR --> L[llm_text<br/>avis du modèle]
+  L --> PR2[proposition + avis]
+  SC -->|< 40| X[rien écrit]
+```
+
+Le score est déterministe : SIREN trouvé 60, NDA trouvé 30, candidat issu du domaine e-mail 30, nom de l'organisation 10. Les seuils 80 et 40 sont des réglages du pack (`confirm_threshold`, `propose_threshold`, D368). Le domaine e-mail exclut une liste fermée de webmails.
+
+Le modèle de l'org répond `YES`, `NO` ou `MAYBE` et une phrase. Sa réponse devient la preuve de la proposition : +10 sur `YES` (79 au plus), −20 sur `NO`. Sans fournisseur d'IA, la proposition reste sans avis. Le flow emploie `llm_text`, parce que le modèle de `text_decide` n'est pas installé partout. Le modèle lit le texte du site web, jamais la capture.
+
+### 3.2 Vie d'un candidat
+
+```mermaid
+stateDiagram-v2
+  [*] --> propose : score 40–79
+  [*] --> accepte : score ≥ 80, règle d'org
+  propose --> accepte : humain, « À valider »
+  propose --> rejete : humain
+  accepte --> parcouru : parcours D307
+  rejete --> [*] : lien fermé, jamais reproposé
+```
+
+Un rejet ferme le lien avec ses attributs (D362). Ensuite `skip_closed` renvoie ce lien fermé, sans en ouvrir un autre. Avec `keep_best: score`, un message de score plus bas ne réécrit jamais un lien ouvert.
+
+### 3.3 Visite d'un candidat (D364)
+
+```mermaid
+sequenceDiagram
+  participant F as Nœud web_visit
+  participant B as Serveur
+  participant S as Site web candidat
+  participant N as Navigateur de l'org
+  F->>B: /internal/flow/web-visit (url)
+  B->>S: robots.txt
+  B->>S: page demandée
+  B->>S: mentions légales (LEGAL_PATHS)
+  opt screenshot et navigateur joignable
+    B->>N: capture CDP
+    N-->>B: JPEG gardé en asset média
+  end
+  B-->>F: final_url, title, text, legal_url, screenshot_asset_id
+```
+
+Le client est celui du parcours D307 : identifié, sortie gardée (R8), pas de redirection hors origine. Le serveur tient un plancher de 2 s par hôte. Sans `robots.txt`, tout est permis. Le navigateur est celui de l'org par défaut, sinon celui de la plateforme (`PNEX_BROWSER_URL`). Sans navigateur, la visite se fait sans capture.
+
+## 4. Exigences
+
+1. Un site web non accepté peut être visité, jamais parcouru.
+2. Une visite doit faire 3 requêtes au plus sur l'origine du candidat.
+3. Une URL candidate privée, en IP littérale ou hors http(s) doit être refusée (R8).
+4. Le texte d'un site web inconnu doit passer au modèle comme donnée, jamais comme instruction.
+5. La capture d'un site web ne doit jamais être rendue sur l'origine de l'app (R11–R13).
+6. Un candidat rejeté ne doit jamais revenir.
+7. `validated_by` doit porter le nom affiché, jamais l'e-mail ni un identifiant (R4).
+8. La clé d'un fournisseur doit rester au coffre et ne jamais revenir dans une réponse (R4, R16).
+9. L'org de chaque appel doit venir du nœud déployé ou du principal (R1).
+10. Une org doit avoir au plus 500 recherches et 1 000 visites par jour, sauf réglage (`settings.web_search.daily_calls`, `settings.web_visit.daily_calls`).
+11. L'assistant ne doit lancer ni recherche ni visite.
+12. Un flow qui contient le nœud retiré `ingest` doit être refusé au déploiement avec `flow-node-retired`.
+
+## 5. Décisions
 
 ### D359 — Retrait du nœud `ingest`
 
-Conditionné à L1+ déployé et France Compétences passé en entier sur
-l'org 4 (certificateurs → fiches → blocs → partenaires, lancés à la main).
-
-- **Retirés** : le kind `ingest` (graphe, validation, `NodeDoc`, artefact),
-  le nœud du runtime (`pnex-node-ui-control/src/ingest.rs`),
-  `/internal/flow/ingest` et `PNEX_FLOW_INGEST_URL`, `GET
-  /flows/{id}/ingest-steps` (+ outil MCP `flows_ingest_steps`, lignes
-  `exposure.rs` / `iam.rs`), l'étape `ontology_import` et
-  `imports::open_from_flow` / `flow_run_of`, le rappel « pending », la
-  garde de déploiement `ingest::deploy_violations`, le panneau du front
-  (palette, inspecteur, catégorie « Ingestion »), les clés ftl
-  `flows-ingest-*` / `flows-palette-ingest-*`, la fiche
-  `open-data-ingestion.md` (réécrite pour les imports à étapes), le flow
-  « Ingestion France Compétences » du pack `quali_watch` (remplacé par les
-  `steps:` de ses imports), les tests `open_data_ingestion_chain` et
-  `ingest_import_outlives_its_call`. Colonnes `ingest_run_id` /
-  `ingest_node_id` de `object_import_runs` supprimées (bêta, D120).
-- **Gardés** : `services/ingest` (étapes resolve → filter, staging, purge,
-  quota), la table `ingest_steps` (`node_id = import:<id>`), les codes
-  `err-ingest-*`, `IngestConfig` (le format des `steps:`).
-- **Refus propre** : un flow sauvegardé ou déployé avec un nœud `ingest`
-  est refusé au déploiement avec le code `flow-node-retired` (`args` :
-  nœud, kind, remplaçant « import à étapes »). Au démarrage du serveur, un
-  flow déjà déployé qui le contient est isolé comme les onglets ignorés
-  (`flow_error`), jamais de boucle de redémarrage.
-- **Flow 9** : désactivé puis supprimé par Shan dans l'UI (D144 : aucun
-  outil ne l'arrête). Pas de migration de données.
-- Amende D317 et D322 (retirés), D318–D321 inchangés hors flow.
+Le kind `ingest`, sa route interne et son panneau sont retirés. Les étapes vivent dans les `steps:` d'un import (D344). Au déploiement, `pnex_core::flow::retired_nodes` refuse avec `flow-node-retired` (`args` : `node`, `kind`, `instead`). En lecture, `pnex_core::flow::read_graph` écarte un nœud retiré dans `unreadable_nodes`, jamais de 500. Une montée de pack supprime les flows qu'il ne livre plus, s'ils n'ont jamais été modifiés ni déployés (`drop_unshipped_flows`). D317 et D322 sont retirées.
 
 ### D360 — Fournisseur de recherche web
 
-- Table `web_search_providers`, calquée sur `geo_providers` : `kind`
-  (liste fermée), `base_url` contrôlée par `egress::check_url`, secret à un
-  champ au coffre (`SecretConsumerKind::WebSearch`, préfixe
-  `web_search/<nom>/`), `timeout_ms`, `rate_limit_per_s`, défaut, route
-  `POST …/test`. **Par org** (Q-W1), comme géo et LLM : chaque org pose sa
-  clé, la plateforme n'en fournit pas.
-- Premiers `kind` : **`serper`** et **`searxng`** (Q-W2, choix de Shan pour
-  tester). Pas d'API générale gratuite et officielle en 2026 (Brave sans
-  offre gratuite, Google Custom Search fermé aux nouveaux clients et arrêté
-  le 2027-01-01). Serper revend des résultats Google et SearXNG interroge
-  des moteurs publics : comme pour D254, l'org répond des conditions des
-  services qu'elle branche ; l'écran de réglage le rappelle.
-  - `serper` : clé au coffre, `POST /search` (`q`, `gl`, `hl`, `num`).
-  - `searxng` : instance de l'org (souvent auto-hébergée), clé facultative,
-    `GET /search?format=json` (le format JSON doit être activé sur
-    l'instance). Une instance sur le réseau du cluster demande que l'opérateur
-    autorise son hôte (`PNEX_EGRESS_ALLOW_HOSTS`), comme tout hôte privé.
-  - Le `kind` est une liste fermée extensible (Brave, Mojeek plus tard) :
-    un fournisseur = un module (requête, traduction de la réponse), sans
-    toucher au nœud ni à la table.
-- Les candidats gratuits passent **avant** la recherche (D365) : domaine
-  des emails déjà connus, et propriété « site officiel » de Wikidata (P856)
-  pour les organisations qui y ont un identifiant (SIREN P1616). Exclus par principe : tout ce qui gratte un
-  moteur sans accord (Serper et équivalents revendent des pages Google ;
-  SearXNG interroge les moteurs à leur insu). Un `kind` = un module de
-  quelques dizaines de lignes (requête, traduction de la réponse).
-- Quota : `count_daily("web_search", org)`, plafond `web_search.daily_calls`
-  (défaut 500), refus `web-search-quota` ; erreurs fournisseur codées
-  (`web-search-unavailable`, `web-search-denied`).
+Table `web_search_providers`, au modèle de `geo_providers` : `kind` en liste fermée, `base_url` gardée par `egress::check_url`, clé au coffre (`web_search/<nom>/key`). Le fournisseur est propre à l'org (Q-W1, D119). Les `kind` codés sont `serper` et `searxng` (Q-W2). Un nouveau `kind` est un module, sans toucher au nœud ni à la table. L'org répond des conditions du service qu'elle branche.
 
 ### D361 — Nœud `web_search`
 
-Entrée `msg.payload.query` (texte, ≤ 400 caractères) ; config :
-fournisseur (ou défaut), `limit` (≤ 20), `country`, `lang`, exclusions de
-domaines (annuaires et réseaux sociaux par défaut). Sortie :
-`payload.results = [{url, title, snippet, rank, domain}]`, plus
-`payload.query` et `payload.provider`. **N'écrit rien.** Appel par
-`/internal/flow/web-search`, config lue dans la version déployée
-(`flow_nodes::deployed`), org tirée du nœud (R1). Rien ne quitte le
-serveur sauf la requête.
+Entrée `msg.payload.query` (≤ 400 caractères). Sortie `payload.results = [{url, title, snippet, rank, domain}]`. Le nœud n'écrit rien. Il passe par `/internal/flow/web-search` et lit sa config dans la version déployée.
 
 ### D362 — `link_upsert` : rejet durable et fermeture motivée
 
-Deux options sur la config existante, pas de nouveau nœud :
-
-- `skip_closed: bool` : si un lien fermé existe déjà pour la même paire,
-  le nœud le renvoie tel quel (`created: false`, `closed: true`) au lieu
-  d'en ouvrir un nouveau. C'est ce qui empêche de reproposer un candidat
-  rejeté.
-- en fermeture (`close: true`), les `attributes` du message sont fusionnés
-  avant la fermeture, dans la même transaction.
-
-`object_upsert` reste tel quel (créer le `website` par `domain`).
+`skip_closed` renvoie le lien fermé d'une paire au lieu d'en ouvrir un autre. Avec `close`, les attributs du message sont écrits avant la fermeture, en deux écritures successives.
 
 ### D363 — Pack générique `web_presence`
 
-Pack de référence `web_presence` (requiert `companies`), que
-`quali_watch` et `prospecting_b2b` requièrent. Il **reprend** `website` et
-`has_website` de `quali_watch` (même clé, même sens, transfert par
-`hands_over`, aucune donnée déplacée) ; on ne crée pas de `site_de` :
-l'inverse s'affiche déjà « est le site de ».
-
-Attributs ajoutés sur `has_website` :
-
-| Clé | Type | Rôle |
-|---|---|---|
-| `status` | enum `proposed`, `confirmed`, `rejected` (indexé) | seul `confirmed` part au crawl |
-| `score` | nombre 0–100 | |
-| `siren_proof`, `nda_proof`, `address_proof` | bool | ce que la visite a trouvé |
-| `llm_opinion` | texte ≤ 2 000 | justification du modèle, si appelé |
-| `requete`, `rank`, `provider` | texte, nombre, texte | provenance du candidat |
-| `source` | enum `email`, `search`, `manual` | |
-| `validated_by` | texte | **Q-W3** |
-
-Un candidat rejeté = lien fermé avec `status: rejected` (D362) ; l'historique
-O2 garde qui a fait quoi. `website.domain` est la clé ; `crawl_state`
-reste. La page « Sites web » et `web:site:<hôte>` : un `website` confirmé
-devient une cible de crawl D307 (`web:site:<domain>`), sans nouveau
-registre.
+Le pack `web_presence` requiert `companies`. Il reprend `website` et `has_website` de `quali_watch` par `hands_over`, sans déplacer de donnée. `quali_watch` et `prospecting_b2b` le requièrent.
 
 ### D364 — Visite ponctuelle d'un candidat (amende D254 et D307)
 
-**Amendement** : un site non déclaré peut être **visité pour
-l'identifier**, jamais crawlé. Visite = au plus 3 requêtes sur l'origine
-du candidat : l'URL donnée, `robots.txt`, la page de mentions légales
-(premier lien interne dont le texte ou le chemin correspond à une liste
-fermée : « mentions légales », « legal », « CGV », « qui sommes-nous »).
-Robots respecté, client identifié (`PNEX-Crawler`), plancher de 2 s par
-hôte, egress gardé. Le crawl D307 ne démarre qu'après `status: confirmed`.
-
-Nœud **`web_visit`** : entrée `msg.payload.url` ; sortie `final_url`,
-`status`, `title`, `text` (accueil et mentions, ≤ 50 000 caractères
-chacun), `legal_url`, et `screenshot` (**Q-W4**). Exécuté par le serveur :
-texte par le client HTTP du crawl (`crawl::html::read`), capture par CDP
-(`site_recipes/cdp.rs`) par le navigateur de l'org, sinon celui de la
-plateforme ; sans navigateur joignable, pas de capture.
+Un site web non déclaré peut être visité pour l'identifier (§3.3), jamais parcouru.
 
 ### D365 — Flow d'identification livré par le pack
 
-`ontology_query` (organisations sans `has_website` confirmé, par lots) →
-candidats sans recherche d'abord (domaine des emails de l'org hors
-webmails, liste fermée) → `web_search` (raison sociale + ville) →
-`web_visit` sur les 3 premiers domaines non rejetés → score déterministe
-(fonction Starlark du pack : SIREN/SIRET ou NDA dans les mentions, code
-postal et voie comparés aux établissements SIRENE) → si score moyen,
-`llm_*` sur texte et capture (`Msg::UserImage`) → `object_upsert`
-(`website`) + `link_upsert` (`has_website`, `skip_closed`).
-
-Seuils (réglage du pack) : ≥ 80 proposition acceptée aussitôt par la règle de l'org (D377, `web_presence` 1.5.0), 40–79 `propose`
-(validation humaine), < 40 rien écrit. La capture de la visite est
-conservée comme asset média de l'org rattaché au `website` (Q-W4) : la
-page de validation l'affiche, la vision et le lab la reliront plus tard
-sans copie (quota de stockage de l'org). Le flow est livré non déployé :
-c'est l'humain qui le déploie (D144).
+Flow du §3.1, livré non déployé. Depuis D375, un score moyen est une proposition.
 
 ### D366 — Validation humaine
 
-Page **« Sites à valider »** (Q-W3) : organisme, candidat, capture,
-preuves trouvées, score, boutons Confirmer et Rejeter ; liste des liens
-`has_website` ouverts au `status: proposed`. `validated_by` = nom affiché de
-l'utilisateur (pas d'identifiant, R4). Le geste écrit par le service partagé
-(`links::update` puis `close` pour un rejet), acteur = l'utilisateur ;
-permission `ontology:write`.
+La validation se fait dans la boîte « À valider » des propositions (D375–D376). La section « Sites à valider » et l'attribut `has_website.status` ont été retirés.
 
-## 3. Plus tard (hors de ces lots)
+Questions tranchées le 2026-10-22 :
 
-- `vision_detect` / `vision_caption` sur une image stockée (capture de
-  visite ou de preuve) : élargir `frame_key_in_org` à une clé d'image
-  d'objet, ou un `image_source` par asset.
-- Import des captures d'un crawl dans le vision lab (projet, images), pour
-  entraîner la détection des logos réglementés (Qualiopi, France
-  Compétences, MCF, Marianne, certificateur).
-- Règles de conformité du crawl hebdomadaire (texte d'abord).
+- **Q-W1** : fournisseur propre à l'org.
+- **Q-W2** : premiers `kind` `serper` et `searxng`, liste ouverte.
+- **Q-W3** : validation humaine, `validated_by` = nom affiché (aujourd'hui par les propositions).
+- **Q-W4** : la capture est un asset média `photo` de l'org (`metadata.source = web_visit`), son id va dans `website.capture`.
 
-## 4. Sécurité (grille `security.md` §6)
+## 6. Interfaces
 
-- **R1** : org tirée du nœud déployé (internes) ou du principal (routes).
-- **R2** : `web_search_providers:read|write|test` au registre IAM, test
-  403 par route ; validation sous `ontology:write`.
-- **R4 / R16** : clé du fournisseur au coffre, jamais relue ; DTO sans
-  secret ; champ dans `REDACTED` (MCP).
-- **R8** : recherche et visite par le client gardé ; URL candidate
-  refusée si privée, IP littérale ou schéma autre que http(s).
-- **Contenu hostile** : texte et capture d'un site inconnu = données non
-  fiables. Le texte passe au LLM comme donnée (pas d'instruction suivie,
-  sortie bornée à un schéma `text_decide`) ; la capture n'est jamais
-  rendue sur l'origine de l'app (R11–R13).
-- **MCP** : lecture des fournisseurs exposée ; écriture et test `EXCLUDED`
-  (secret, sortant). L'assistant ne lance ni recherche ni visite.
+| Route | Effet | Permission |
+|---|---|---|
+| `GET /api/v1/web-search/providers` | Liste des fournisseurs | `web-search:read` (lecteur) |
+| `POST /api/v1/web-search/providers` | Crée un fournisseur | `web-search:write` (admin) |
+| `PUT /api/v1/web-search/providers/{id}` | Modifie | `web-search:write` |
+| `DELETE /api/v1/web-search/providers/{id}` | Supprime | `web-search:delete` |
+| `POST /api/v1/web-search/providers/{id}/test` | Teste la clé et l'adresse | `web-search:test` |
+| `POST /internal/flow/web-search` | Appel du nœud `web_search` | interne, org du nœud |
+| `POST /internal/flow/web-visit` | Appel du nœud `web_visit` | interne, org du nœud |
 
-## 5. Lots
+MCP : la liste est exposée. Écriture, suppression et test sont `EXCLUDED` (secret, destructif, sortant).
 
-| Lot | Contenu | Prérequis | Taille |
+| `kind` | Clé | Adresse | Appel |
 |---|---|---|---|
-| **W0** | D359 retrait du nœud `ingest` | L1+ déployé, FC passé sur l'org 4 | M (beaucoup de fichiers, peu de logique) |
-| **W1** | D360–D361 fournisseurs + nœud `web_search`, page de réglage | — | M |
-| **W2** | D362–D363 options de `link_upsert`, pack `web_presence`, montée de `quali_watch` | — | S |
-| **W3** | D364 nœud `web_visit` (texte, puis capture) | — | M |
-| **W4** | D365–D366 flow du pack, fonction de score, surface de validation | W1–W3 | M |
+| `serper` | obligatoire | par défaut | `POST /search` (`q`, `gl`, `hl`, `num`) |
+| `searxng` | facultative (Bearer) | obligatoire | `GET /search?format=json`. Une instance privée demande `PNEX_EGRESS_ALLOW_HOSTS`. |
 
-W1, W2 et W3 sont indépendants ; W0 attend le déploiement.
+Code : `pnex_core::web_search`, `pnex_core::web_visit`, `crates/pnex-backend/src/services/web_search.rs`, `crates/pnex-backend/src/services/web_visit.rs`, `crates/pnex-backend/packs/web_presence.yaml`. Tests : `tests/web_visit.rs`, `tests/partner_watch.rs` (`web_presence_takes_websites_over`).
 
-**W0 livré (2026-10-24, demandé par Shan pendant la recette R1 de
-`partners.md`)** :
+## 7. Reste à faire
 
-- **Retirés** : tout ce que liste D359. S'y ajoutent les étapes
-  `ontology_import` **et** `staging_cleanup` du cœur (le nettoyage se fait en
-  fin de run d'import), `IngestRequest`, `ImportAction` et le champ
-  `pending`. La migration 000053 supprime les colonnes et l'index.
-  `resolve_imports` du pack est retiré aussi.
-- **Clés ftl** : les libellés d'étapes que la page Imports réutilise sont
-  renommés `onto-imp-step-*` ; les autres `flows-ingest-*` /
-  `flows-palette-ingest-*` sont supprimées.
-- **Refus propre** : au déploiement, `pnex_core::flow::retired_nodes` lit le
-  graphe brut et refuse avec `flow-node-retired` (`args` : `node`, `kind`,
-  `instead`). Au démarrage, un graphe qui contient encore `ingest` n'est
-  plus lisible : il est isolé comme `graph_unreadable`.
-- **Lecture** : `GET /flows/{id}` et `/versions/{n}` lisent le graphe nœud
-  par nœud (`pnex_core::flow::read_graph`) : un nœud retiré ou illisible est
-  écarté avec ses fils et signalé dans `unreadable_nodes`
-  (`flow-node-retired`, `flow-node-unreadable`), jamais de 500. L'éditeur
-  l'affiche en violation ; un enregistrement le fait disparaître. La
-  suppression du flow reste possible.
-- **Remplacement** : les cinq imports France Compétences de `quali_watch`
-  1.5.0 portent leurs `steps:` et une récurrence quotidienne.
-  - Le filtre des certificateurs lit le nouveau réglage `certifiers`
-    (`rows_filter.setting`, `partners.md` D425). Vide = tous les
-    certificateurs.
-  - Les autres imports filtrent sur les certifications de l'org
-    (`in_objects`).
-  - Raccourci : tous les runs partent à 03:00 (`RUN_HOUR`), sans ordre
-    garanti. Le premier soir, les fiches peuvent passer avant les
-    certificateurs ; tout est en place la nuit suivante.
-- **Flow 16 de l'org 4** : à la montée de version, le pack supprime les
-  flows qu'il avait écrits et ne livre plus, s'ils n'ont jamais été
-  modifiés ni déployés (`drop_unshipped_flows`). Un flow de l'org qui
-  contient le nœud reste en place ; son déploiement est refusé.
-- **Tests** : `partner_watch` `open_data_ingestion_chain` est porté sur les
-  runs d'imports à étapes, `import_runs_its_own_steps` part de l'import du
-  pack, `ingest_import_outlives_its_call` est supprimé, et
-  `pack_upgrade_follows_untouched_imports` vérifie le refus et la
-  suppression du flow retiré.
-
-**Avancement (2026-10-22)** — **W1 codé** :
-
-- table `web_search_providers` (migration 000044), service
-  `services/web_search.rs` (CRUD au modèle des navigateurs, clé au coffre
-  `web_search/<nom>/key`, consommateur `web-search-provider`), routes
-  `GET|POST /api/v1/web-search/providers`, `PUT|DELETE …/{id}`,
-  `POST …/{id}/test` ; permissions `web-search:read` (lecteur),
-  `web-search:write|delete|test` (admin) ; MCP : liste exposée, écriture
-  et test `EXCLUDED` (secret, destructif, sortant) ;
-- `kind` `serper` (clé obligatoire, adresse par défaut) et `searxng`
-  (adresse obligatoire, clé facultative en Bearer, sortie JSON) ;
-- nœud `web_search` (cœur `pnex_core::web_search`, runtime
-  `pnex-web-search`, route interne `/internal/flow/web-search`, options lues
-  dans la version déployée) ; quota `settings.web_search.daily_calls`
-  (500 par défaut, compteur Valkey `web-search`) ; ports résultats / échec ;
-- section « Recherche web » de la page Organisation, nœud dans la palette
-  (catégorie Ingestion, à côté de la règle de site), fiche `assistant-kb`
-  `web-search.md`, ligne au lexique et règle de garde (« moteur de
-  recherche » refusé).
-
-**Avancement (2026-10-22)** — **W2, W3 (texte), W4 codés** :
-
-- **W2** : `link_upsert` gagne `skip_closed` (une paire déjà fermée répond
-  son dernier lien fermé, jamais rouvert) ; `close` fusionne d'abord les
-  attributs du message (motif, qui a décidé). Les deux écritures se font
-  l'une après l'autre, pas dans une seule transaction (chacune journalise ;
-  le message suivant ferme si la seconde a échoué). Pack **`web_presence`**
-  1.0.0 (`requires: [companies]`) : `website`, `has_website` et ses
-  attributs D363 (statut coloré D339), `organization.website_searched_on` ;
-  `quali_watch` 1.3.0 et `prospecting_b2b` en dépendent. **La passation
-  couvre maintenant les types d'objets** (`types::set_pack`), en plus des
-  propriétés et des types de liens. Test :
-  `web_presence_takes_websites_over` (org en `quali_watch` 1.2.0 → 1.3.0).
-- **W3** : nœud `web_visit` (cœur `pnex_core::web_visit`, runtime
-  `pnex-web-visit`, route `/internal/flow/web-visit`). Il fait trois requêtes
-  au plus avec le client du parcours D307 (identifié, egress gardé,
-  redirections hors origine non suivies) : `robots.txt` (absent = tout
-  permis), la page, puis les mentions légales (premier lien interne dont le
-  chemin est dans `LEGAL_PATHS`). Un plancher de 2 s par hôte est tenu par
-  processus. Quota `settings.web_visit.daily_calls` (1 000 par jour).
-  Quatre codes `web-visit-*`. Test `tests/web_visit.rs`. **Capture (Q-W4,
-  2026-10-22)** : option `screenshot` du nœud ; le navigateur **par défaut
-  de l'org**, sinon celui de la plateforme (`PNEX_BROWSER_URL`, même
-  résolution qu'un parcours et que les preuves serveur, Q-N1 ; 2026-10-25),
-  requêtes gardées
-  comme un parcours (`guard_page`), image JPEG gardée comme asset média
-  `photo` de l'org (`metadata.source = web_visit`), id rendu dans
-  `screenshot_asset_id`. Pas de navigateur ou échec : visite sans capture.
-  `web_presence` 1.3.0 l'active et écrit l'id dans `website.capture`.
-- **W4** : opérateur de filtre `missing` (propriété absente) pour
-  `ontology_query`.
-  - Flow « Web presence · find websites » livré en brouillon. Chaque nuit,
-    il prend au plus 50 organisations jamais traitées.
-    `pw_prepare` produit trois sorties : la requête, le marquage
-    `website_searched_on`, et un candidat tiré du domaine e-mail (hors
-    webmails). Viennent ensuite `web_search` (3 résultats), `pw_results`
-    (un message par résultat), `web_visit` et `pw_score`. Le score est
-    déterministe : SIREN 60, NDA 30, domaine de ses e-mails 30, nom 10.
-    À partir de 80 le site est accepté par la règle (D377), de 40 à 79 `propose`, en
-    dessous rien n'est écrit. Enfin `object_upsert` crée le `website`
-    par `domain` et `link_upsert` pose `has_website` avec `skip_closed`.
-  - **Avis du modèle (`web_presence` 1.2.0)** : un score moyen est
-    proposé tout de suite, puis `llm_text` (LLM de l'org, réponse
-    YES / NO / MAYBE depuis 3.0.0 + une phrase) et `pw_opinion` reproposent les mêmes
-    valeurs avec l'avis en `evidence` : la proposition ouverte prend l'avis
-    et la confiance (+10 sur YES, 79 au plus ; −20 sur NO). Sans
-    fournisseur d'IA, la proposition reste sans avis. Le texte du site est
-    passé comme donnée. Le choix de `llm_text` plutôt que `text_decide` :
-    le modèle de décision n'est pas installé partout et un échec perdrait
-    la proposition. Le modèle ne lit que le texte, pas la capture.
-  - Section **« Sites à valider »** en tête de la page Sites web, appuyée
-    sur `GET /api/v1/web-presence/candidates` (lecture `ontology:read`,
-    exposé au MCP) et `POST …/{id}/decision` (`confirmed` | `rejected`,
-    `ontology:write`, exclu du MCP sous « sign-off »).
-  - `validated_by` = nom affiché, « — » à défaut, jamais l'e-mail. Le
-    domaine candidat est affiché en texte, jamais en lien cliquable.
-  - Tests : Starlark (`pack_rules.rs`, 2 tests) et
-    `web_presence_takes_websites_over` (liste, lecteur 403, rejet
-    définitif, 404 sur un lien fermé).
-
-Limites connues :
-- `link_upsert` sur un lien **ouvert** met ses attributs à jour : un site
-  déjà confirmé retrouvé par le flow (organisation remise à zéro à la
-  main) repasserait en `proposed`.
-- Seul `confirmed` doit partir au parcours D307 : le filtre côté parcours
-  n'est pas codé (les sites déclarés sans statut restent parcourus).
-
-## 6. Questions
-
-Tranchées par Shan le 2026-10-22 :
-
-- **Q-W1** — Portée du fournisseur : **org seule**, comme géo et LLM
-  (D119).
-- **Q-W2** — Premiers fournisseurs : **Serper et SearXNG** pour tester ;
-  architecture ouverte à d'autres `kind`.
-- **Q-W3** — Validation : **page « Sites à valider »**, `validated_by` = nom
-  affiché.
-- **Q-W4** — Capture : **asset média de l'org**, rattaché au `website`.
-
-**2026-10-22 — bascule vers les propositions (proposals.md D375–D376)** :
-l'attribut `has_website.status` et la section « Sites à valider » sont
-retirés. Un site moyen (40–79) est une proposition sur la page « À
-valider » ; le refus garde son motif et n'est jamais reproposé.
-`web_presence` passe en 1.1.0.
+- `address_proof` : la fonction `pw_score` l'écrit toujours à `false`. La comparaison de l'adresse aux établissements SIRENE n'est pas codée.
+- Parcours D307 : le filtre « seul un site web accepté part au parcours » n'est pas vérifié dans le code. Les sites web déclarés hors de ce flow restent parcourus.
+- `vision_detect` et `vision_caption` lisent seulement une image de caméra ou de média (`frame_key_in_org`). Lire une capture de visite demande une clé d'image d'objet.
+- Import des captures d'un parcours dans Vision Lab, pour apprendre les logos réglementés.
+- Règles de conformité du parcours hebdomadaire (texte d'abord).
