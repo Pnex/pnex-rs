@@ -766,7 +766,12 @@ tests:
 - PE5.5 (choix de Shan, 2026-11-20) : la page « Sites web » reste. Elle garde l'édition visuelle, les captures d'écran du run et la description des actions sur la page. Seul le stockage change : une règle devient un pipeline avec `browse`, après D934. `/site-recipes` disparaît alors, pas l'UI.
 - PE8 : mesure autour d'événements et chaînes candidates dans `/analysis`, note de séance en règle.
 - PE9 : `HOST_DEBT` à vider (5 lignes), lexique (Étape, Table de travail, Sonde, Requête nommée), fiches de l'assistant.
-- D934 : une org ne peut pas écrire un pipeline du moteur. `/api/v1/pipelines` sert le document D571.
+- D934 (choix de Shan, 2026-11-21) : une seule sorte de pipeline. `/api/v1/pipelines` doit servir le pipeline du moteur écrit par l'org, versionné, ses `tests:` joués avant l'enregistrement. Il peut lire tout hôte public, derrière la garde R8, la cadence D938 et le quota de l'org. Plan :
+  1. `write.table` reçoit `checks` (D576) et `retain_days`. Le run écrit le lignage des tables lues (D574).
+  2. Stockage et routes : le pipeline d'org remplace le document D571 dans `pipelines`. Le planificateur lance aussi les pipelines d'org.
+  3. Migration des données : un traitement D571 devient une étape `sql` suivie d'un `write`.
+  4. Studio `/pipelines/:id` : éditeur YAML, tests et graphe des tables.
+  5. Retrait du code D571, contrat, MCP, IAM, fiches de l'assistant.
 - D946 : les pipelines des packs restent hors des exécutions enchaînées. `after` d'un pipeline du moteur n'est pas appliqué.
 - D941 : cible `series` non codée.
 - D944 : la sonde n'a pas de route.
