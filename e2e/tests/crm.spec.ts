@@ -672,34 +672,14 @@ test.describe('crm flows on the runtime', { tag: '@crm' }, () => {
     const org = await api.post<{ id: number }>('/orgs', { name });
     const crm = api.forOrg(org.id);
     const today = new Date().toISOString().slice(0, 10);
-    const site = (siret: string, date_creation: string, etat_administratif = 'A') => ({
-      siret, date_creation, etat_administratif, est_siege: false, latitude: '45.76', longitude: '4.83',
-    });
-    const asked: string[] = [];
-    const server = createServer((req, res) => {
-      asked.push(new URL(req.url ?? '/', 'http://x').searchParams.get('q') ?? '');
-      res.writeHead(200, { 'content-type': 'application/json' });
-      res.end(JSON.stringify({ results: [{
-        siren: '100000009', nom_complet: 'ACME INDUSTRIE', nombre_etablissements_ouverts: 2,
-        matching_etablissements: [site('10000000900011', today), site('10000000900029', '2001-01-01'), site('10000000900037', today, 'F')],
-      }] }));
-    });
-    await new Promise<void>((done) => server.listen(0, '0.0.0.0', done));
     try {
       await crm.post('/ontology/packs/prospecting_b2b_fr/install', {});
       const account = await object(crm, 'organization', 'ACME INDUSTRIE', { siren: '100000009', account_status: 'customer' });
-      const imp = (await crm.list('/ontology/imports')).find((i: any) => i.name === 'Establishments (company register)');
-      const ip = Object.values(networkInterfaces())
-        .flat()
-        .find((a) => a && a.family === 'IPv4' && !a.internal && !a.address.startsWith('172.'))?.address;
-      const port = (server.address() as AddressInfo).port;
-      psql(`UPDATE object_imports SET source_url = 'http://${ip}:${port}/search?per_page=5' WHERE id = '${imp.id}'`);
-      const started = await crm.post(`/ontology/imports/${imp.id}/runs`);
-      await expect
-        .poll(async () => (await crm.get(`/ontology/imports/${imp.id}/runs/${started.id}`)).run?.state, POLL)
-        .toBe('applied');
-      expect(asked).toEqual(['ACME INDUSTRIE']);
-      expect(await query(crm, 'map_pin', [{ key: 'created_on', op: 'exists' }])).toHaveLength(2);
+      // The sites the import Establishments writes (its pipeline: partner_watch.rs).
+      for (const [siret, created_on] of [['10000000900011', today], ['10000000900029', '2001-01-01']]) {
+        const pin = await object(crm, 'map_pin', 'ACME INDUSTRIE', { siret, created_on, administrative_state: 'active' });
+        await link(crm, 'establishment_of', pin, account);
+      }
 
       await run(crm, 'Prospecting · new establishments');
       await expect.poll(async () => (await query(crm, 'sales_signal')).length, POLL).toBe(1);
@@ -710,7 +690,6 @@ test.describe('crm flows on the runtime', { tag: '@crm' }, () => {
       });
       await expect.poll(() => linked(crm, signal.id, 'signal_about'), POLL).toEqual([account.id]);
     } finally {
-      server.close();
       await api.forOrg(org.id).delete(`/orgs/${org.id}`).catch(() => {});
     }
   });

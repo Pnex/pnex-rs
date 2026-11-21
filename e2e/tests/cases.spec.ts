@@ -224,7 +224,8 @@ test.describe('cases', { tag: ['@cases', '@i18n'] }, () => {
     await app.goto(`/cases/${c.id}`);
     await page.getByTestId('case-frame').click();
     // A case threshold, saved as a number.
-    const gap = page.getByTestId('case-thresholds').locator('input').last();
+    // Fifth threshold: signal lost after (s).
+    const gap = page.getByTestId('case-thresholds').locator('input').nth(4);
     await gap.fill('120');
     await gap.blur();
     await expect.poll(async () => (await api.get(`/ontology/objects/${c.id}`)).properties.signal_gap_s).toBe(120);

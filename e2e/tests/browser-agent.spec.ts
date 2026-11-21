@@ -116,7 +116,8 @@ test.describe('browser agent', { tag: ['@extension'] }, () => {
       // its cards read, each result opened.
       const yaml = [
         `name: ${prefix} search`,
-        'site: localhost',
+        // The scheme as granted: a bare host means https.
+        'site: http://localhost',
         'params: [query]',
         'steps:',
         `  - open: "http://localhost:${port}/"`,

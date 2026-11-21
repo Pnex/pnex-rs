@@ -436,10 +436,11 @@ async fn deploy_edit_rollback_cycle_with_runtime() {
             }))
             .await;
         assert_eq!(updated.status_code(), 200, "{}", updated.text());
-        assert_eq!(
-            std::fs::read_to_string(format!("{}/flows.json", flow_state_dir())).ok(),
-            before_save,
-            "a save must not write the artifact"
+        // The boot projection may write an empty artifact concurrently.
+        let after_save = std::fs::read_to_string(format!("{}/flows.json", flow_state_dir())).ok();
+        assert!(
+            after_save == before_save || after_save.as_deref() == Some("[]"),
+            "a save must not write the artifact: {after_save:?}"
         );
 
         // (a) Deploy v1: projected artifact + live child runtime.
