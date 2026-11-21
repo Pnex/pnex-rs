@@ -4,7 +4,7 @@ title: Flows
 kind: feature
 pages: /flows
 nodes: inject, device_read, device_write, calc, metric, pnex_notify, debug, display, ontology_query, ontology_aggregate, object_upsert, link_upsert, check_record, document_text, sheet_write
-err_codes: access-denied, pin-already-assigned, flow-stale-version, flow-debug-disabled, flow-start-not-stopped, flow-no-deployed-version, flow-collecting, flow-inject-not-deployed, flow-inject-node, flow-inject-unavailable, ai-flow-running, ontology-node-unknown, document-text-no-text, document-text-unreadable
+err_codes: access-denied, pin-already-assigned, flow-stale-version, flow-debug-disabled, flow-start-not-stopped, flow-no-deployed-version, flow-inject-not-deployed, flow-inject-node, flow-inject-unavailable, ai-flow-running, ontology-node-unknown, document-text-no-text, document-text-unreadable
 tools: 
 tags: flow, flows, etl, automation, node-red, deploy, pipeline, nodes, debug, automatisation, déployer
 ---
@@ -18,7 +18,6 @@ The Flows page (Automation menu) lists the organization's flows: visual pipeline
 - **Save** stores a new version. **Deploy** runs the saved version; the editor proposes "Deploy vN?" right after a save.
 - **Stop** pauses a deployed flow, **Start** resumes its last deployed version, **Restart** reloads the engine as-is and clears what the nodes remember (notification anti-spam, values waiting for a trigger); deploying the same version again keeps it.
 - **Run now** (select an Inject node of a deployed flow) sends that trigger's message right away, in the deployed version, without waiting for its interval or cron; the result shows in the debug feed and node statuses. Deploy first (*flow-inject-not-deployed*); a node added since the last deploy cannot run yet (*flow-inject-node*); *flow-inject-unavailable* means the flow engine is not answering.
-- While a **Website rule** node of the flow waits for its run (a browser agent can take minutes), **Deploy** is refused (*flow-collecting*): a new deployment would lose the run's outcome. Wait for the run to end, or click **Deploy** again to go ahead anyway.
 - **History** lists versions: **Load** one into the editor, or **Deploy** an earlier version (rollback, no new version).
 - **Debug** opens the debug feed (last 100 entries, 5-minute window) when the server enables debug tools; otherwise the full feed is disabled (run mode), but each Debug and Display node still shows the last message it received.
 

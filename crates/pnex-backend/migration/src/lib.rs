@@ -153,6 +153,7 @@ mod m20261119_000158_qr_tags;
 mod m20261120_000159_marking_names_unique;
 mod m20261120_000160_proposal_author;
 mod m20261120_000161_rule_propose;
+mod m20261121_000162_site_recipe_node_fold;
 
 pub struct Migrator;
 
@@ -302,6 +303,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20261120_000159_marking_names_unique::Migration),
             Box::new(m20261120_000160_proposal_author::Migration),
             Box::new(m20261120_000161_rule_propose::Migration),
+            Box::new(m20261121_000162_site_recipe_node_fold::Migration),
         ]
     }
 }

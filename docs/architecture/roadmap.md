@@ -71,7 +71,6 @@ flowchart LR
         i4[I4 lectures filtrées] --> i5[I5 ontologie fine]
     end
     subgraph ag[Agents]
-        d786[D786 site_recipe dans agent_run]
         u4b[U4b missions en règles]
     end
     subgraph phys[Physique]
@@ -83,7 +82,7 @@ flowchart LR
     end
 ```
 
-PE5.4 est le seul lot en cours au 2026-11-20 (`pipelines.md`). D786, D801 et les gardes de gouvernance sont décidés et restent à coder. OP10 dépend aussi d'OP9, livré.
+PE5.4 est le seul lot en cours au 2026-11-20 (`pipelines.md`). D801 et les gardes de gouvernance sont décidés et restent à coder. OP10 dépend aussi d'OP9, livré.
 
 ## Exigences
 

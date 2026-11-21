@@ -3,6 +3,7 @@
 //! calls `POST /internal/flow/agent-run`; the backend reads the agent and the chain bounds
 //! from the deployed graph and answers the run id at once. The flow never waits for the
 //! run: `agent-run-finished` emits its end. Port 0 started or joined, port 1 refused.
+//! The same node plays a website rule (D786); `msg.params` then gives its parameters.
 
 use std::collections::BTreeMap;
 use std::time::Duration;
@@ -61,6 +62,12 @@ fn request_of(
         subject: (!paths.subject_from.is_empty())
             .then(|| msg_string(msg, &paths.subject_from))
             .flatten(),
+        params: msg["params"]
+            .as_object()
+            .into_iter()
+            .flatten()
+            .filter_map(|(k, v)| Some((k.clone(), v.as_str()?.to_string())))
+            .collect(),
     }
 }
 
@@ -145,11 +152,14 @@ mod tests {
         let msg = serde_json::json!({
             "payload": { "ticket": "a1", "key": "repo#7" },
             "chain_id": "c1",
+            "params": { "code": "RS0101", "n": 3 },
         });
         let req = request_of(&paths, &msg, &node);
         assert_eq!(req.inputs.len(), 1);
         assert_eq!(req.inputs["ticket"], "a1");
         assert_eq!(req.chain_id.as_deref(), Some("c1"));
         assert_eq!(req.subject.as_deref(), Some("repo#7"));
+        assert_eq!(req.params.len(), 1);
+        assert_eq!(req.params["code"], "RS0101");
     }
 }

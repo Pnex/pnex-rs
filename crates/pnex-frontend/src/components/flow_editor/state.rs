@@ -59,7 +59,6 @@ pub enum PaletteKind {
     CheckRecord,
     DocumentText,
     SheetWrite,
-    SiteRecipe,
     WebSearch,
     OrgResolve,
     WebVisit,
@@ -307,9 +306,6 @@ pub fn make_node(id: &str, kind: PaletteKind, pos: Position) -> FlowNode {
             },
             PaletteKind::SheetWrite => FlowNodeKind::SheetWrite {
                 config: Default::default(),
-            },
-            PaletteKind::SiteRecipe => FlowNodeKind::SiteRecipe {
-                config: pnex_core::site_recipe::SiteRecipeNodeConfig::default(),
             },
             PaletteKind::WebSearch => FlowNodeKind::WebSearch {
                 config: pnex_core::web_search::WebSearchConfig::default(),

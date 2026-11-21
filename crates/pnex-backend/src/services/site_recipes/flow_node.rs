@@ -1,59 +1,62 @@
-//! `site_recipe` flow node (agents.md D327). The flow runtime is not
-//! trusted: each call names its deployed node, whose recipe is read from
-//! the deployed version, in the node's org. The run is journaled like a
-//! studio run (trigger `flow`) and waited for.
+//! Website rules played by the `agent_run` node (agents.md D327, D786). The flow
+//! runtime is not trusted: each call names its deployed node, whose rule is read from
+//! the deployed version, in the node's org. The node answers at once; when the run
+//! ends, [`finished`] puts the extracts of a passing run in the media library and
+//! publishes the end to the `agent_run_finished` nodes.
 
 use std::collections::BTreeMap;
 
 use loco_rs::app::AppContext;
+use pnex_core::agent_chains::{
+    AgentRunNodeReply, AgentRunNodeRequest, NODE_PORT_REFUSED, NODE_PORT_STARTED, RULE_BROKE,
+    RULE_FAILED, RULE_PASSED,
+};
 use pnex_core::err_codes;
 use pnex_core::flow::FlowNodeKind;
-use pnex_core::site_recipe::{
-    RunStatus, SiteRecipeNodeReply, SiteRecipeNodeRequest, NODE_PORT_BROKE, NODE_PORT_FAILED,
-    NODE_PORT_OK, STRING_MAX,
-};
+use pnex_core::site_recipe::{RunStatus, STRING_MAX};
 use sea_orm::{ConnectionTrait, DatabaseConnection};
 use serde_json::{json, Value};
 use uuid::Uuid;
 
+use super::purpose::Purpose;
 use super::{browser, stmt, NewRun, RecipeError};
 use crate::services::ontology::flow_nodes::{deployed, NodeError};
 
-fn refused(code: &str, args: Value) -> SiteRecipeNodeReply {
-    SiteRecipeNodeReply {
-        port: NODE_PORT_FAILED,
+fn refused(code: &str, args: Value) -> AgentRunNodeReply {
+    AgentRunNodeReply {
+        port: NODE_PORT_REFUSED,
         code: Some(code.to_string()),
         args,
         ..Default::default()
     }
 }
 
-/// Longest wait of a node for a run on a browser agent, its queue and its
-/// play: under the 20 min the node's call allows (pnex-node-ui-control).
-const AGENT_WAIT: std::time::Duration = std::time::Duration::from_secs(18 * 60);
-
-/// Plays the rule of the deployed node `req.node` and answers its outcome.
-pub async fn run(
+/// Starts the rule of the deployed `agent_run` node `req.node`; `None` when the node
+/// runs an agent instead.
+pub async fn start(
     ctx: &AppContext,
-    req: &SiteRecipeNodeRequest,
-) -> Result<SiteRecipeNodeReply, NodeError> {
-    let FlowNodeKind::SiteRecipe { config } = deployed(&ctx.db, &req.node).await? else {
+    req: &AgentRunNodeRequest,
+) -> Result<Option<AgentRunNodeReply>, NodeError> {
+    let FlowNodeKind::AgentRun { config } = deployed(&ctx.db, &req.node).await? else {
         return Err(NodeError::NotDeployed);
     };
+    if config.recipe_id.is_empty() {
+        return Ok(None);
+    }
     let org_id = req.node.org_id;
     let unavailable = || refused(err_codes::SITE_RECIPE_UNAVAILABLE, Value::Null);
     let Ok(recipe_id) = Uuid::parse_str(&config.recipe_id) else {
-        return Ok(refused(err_codes::SITE_RECIPE_NOT_FOUND, Value::Null));
+        return Ok(Some(refused(err_codes::SITE_RECIPE_NOT_FOUND, Value::Null)));
     };
     let saved = match super::get(&ctx.db, org_id, recipe_id).await {
         Ok(r) => r,
         Err(RecipeError::NotFound) => {
-            return Ok(refused(err_codes::SITE_RECIPE_NOT_FOUND, Value::Null))
+            return Ok(Some(refused(err_codes::SITE_RECIPE_NOT_FOUND, Value::Null)))
         }
-        Err(_) => return Ok(unavailable()),
+        Err(_) => return Ok(Some(unavailable())),
     };
     let Ok(recipe) = super::parse(&saved.yaml) else {
-        return Ok(refused(err_codes::SITE_RECIPE_INVALID, Value::Null));
+        return Ok(Some(refused(err_codes::SITE_RECIPE_INVALID, Value::Null)));
     };
     let mut params = config.params.clone();
     params.extend(req.params.clone());
@@ -63,10 +66,10 @@ pub async fn run(
         .map(|(k, v)| (k, v.chars().take(STRING_MAX).collect()))
         .collect();
     if let Some(missing) = recipe.params.iter().find(|p| !params.contains_key(*p)) {
-        return Ok(refused(
+        return Ok(Some(refused(
             err_codes::SITE_RECIPE_PARAM_MISSING,
             json!({ "param": missing }),
-        ));
+        )));
     }
     // A rule that needs a session plays on a common browser agent (D782): a
     // flow has no person whose own browser it could use.
@@ -75,79 +78,97 @@ pub async fn run(
         match super::check_extension_run(&ctx.db, org_id).await {
             Ok(()) => {}
             Err(super::StartError::NoAgent) => {
-                return Ok(refused(err_codes::SITE_RECIPE_NO_AGENT, Value::Null))
+                return Ok(Some(refused(err_codes::SITE_RECIPE_NO_AGENT, Value::Null)))
             }
             Err(super::StartError::DailyCap { max }) => {
-                return Ok(refused(
+                return Ok(Some(refused(
                     err_codes::SITE_RECIPE_DAILY_CAP,
                     json!({ "max": max.to_string() }),
-                ))
+                )))
             }
-            Err(_) => return Ok(unavailable()),
+            Err(_) => return Ok(Some(unavailable())),
         }
     }
+    let purpose = Purpose::Flow {
+        recipe_id: recipe_id.to_string(),
+    };
     let new = NewRun {
         recipe_id: Some(recipe_id),
         recipe_version: Some(saved.version),
         recipe: &recipe,
         yaml: &saved.yaml,
         params: &params,
-        trigger: "flow",
+        trigger: purpose.kind(),
         user_id: None,
         engine,
-        purpose: None,
+        purpose: Some(serde_json::to_value(&purpose).unwrap_or_default()),
         flow: Some(&req.node),
     };
     let Ok(started) = super::insert_run(&ctx.db, org_id, &new).await else {
-        return Ok(unavailable());
+        return Ok(Some(unavailable()));
     };
-    let run_id = Uuid::parse_str(&started.id).expect("uuid");
-    let mut status = if engine == pnex_core::site_recipe::RunEngine::Extension {
-        RunStatus::Running
-    } else {
-        browser::play_to_end(
-            ctx.clone(),
-            org_id,
-            run_id,
-            recipe,
-            params.clone(),
-            None,
-            false,
-            true,
-        )
-        .await
-    };
-    // On a browser agent (asked, or handed over by a blocked site): the node
-    // waits for its end, the queue and the play included.
-    if status == RunStatus::Running {
-        status = super::wait_finished(&ctx.db, run_id, AGENT_WAIT).await;
+    if engine == pnex_core::site_recipe::RunEngine::ServerBrowser {
+        let run_id = Uuid::parse_str(&started.id).expect("uuid");
+        browser::spawn(ctx.clone(), org_id, run_id, recipe, params, None, true);
     }
-    let Ok(view) = super::run(&ctx.db, org_id, run_id).await else {
-        return Ok(unavailable());
-    };
-    let previous = previous_flow_status(&ctx.db, org_id, recipe_id, run_id)
+    Ok(Some(AgentRunNodeReply {
+        port: NODE_PORT_STARTED,
+        run_id: Some(started.id),
+        ..Default::default()
+    }))
+}
+
+/// Outcome of an ended flow run of the rule: passed, failed again, or broke (failed
+/// right after a passing flow run).
+pub async fn outcome(
+    db: &DatabaseConnection,
+    org_id: i64,
+    recipe_id: Uuid,
+    run_id: Uuid,
+    status: RunStatus,
+) -> &'static str {
+    let previous = previous_flow_status(db, org_id, recipe_id, run_id)
         .await
         .unwrap_or(None);
-    let port = match (status, previous) {
-        (RunStatus::Ok, _) => NODE_PORT_OK,
-        (_, Some(RunStatus::Ok)) => NODE_PORT_BROKE,
-        _ => NODE_PORT_FAILED,
+    match (status, previous) {
+        (RunStatus::Ok, _) => RULE_PASSED,
+        (_, Some(RunStatus::Ok)) => RULE_BROKE,
+        _ => RULE_FAILED,
+    }
+}
+
+/// The end of a rule run a flow started: a passing run feeds the media library, then
+/// the end goes to the `agent_run_finished` nodes with the rule's outcome and extracts.
+pub async fn finished(ctx: &AppContext, org_id: i64, run_id: Uuid, recipe_id: Uuid) {
+    let Ok(view) = super::run(&ctx.db, org_id, run_id).await else {
+        return;
     };
-    let failed_step = view.failed_step.map(|i| {
-        let action = view
-            .steps
-            .iter()
-            .find(|s| s.index == i)
-            .map(|s| s.action.clone());
-        json!({ "index": i, "action": action, "reason": view.reason })
-    });
+    let outcome = outcome(&ctx.db, org_id, recipe_id, run_id, view.status).await;
+    let Ok(Some(row)) = ctx
+        .db
+        .query_one_raw(stmt(
+            "SELECT job_id, plan -> 'params' AS params FROM agent_runs WHERE id = $1 AND org_id = $2",
+            vec![run_id.into(), org_id.into()],
+        ))
+        .await
+    else {
+        return;
+    };
+    let Ok(job) = row.try_get::<Uuid>("", "job_id") else {
+        return;
+    };
+    let params: BTreeMap<String, String> = row
+        .try_get::<Value>("", "params")
+        .ok()
+        .and_then(|v| serde_json::from_value(v).ok())
+        .unwrap_or_default();
     // A failed run concludes nothing: only a passing one feeds the library.
-    let mut media = BTreeMap::new();
-    if status == RunStatus::Ok {
+    let mut outputs = BTreeMap::new();
+    if view.status == RunStatus::Ok {
         for e in &view.extracts {
             match publish(ctx, org_id, recipe_id, &params, run_id, &view.name, e).await {
-                Ok(m) => {
-                    media.insert(e.name.clone(), m);
+                Ok((media, _)) => {
+                    outputs.insert(e.name.clone(), media.to_string());
                 }
                 Err(err) => {
                     tracing::warn!(run = %run_id, extract = %e.name, error = %err, "extract not published");
@@ -155,46 +176,20 @@ pub async fn run(
             }
         }
     }
-    let outputs: Vec<Value> = view
-        .extracts
-        .iter()
-        .map(|e| {
-            let (asset, version) = media.get(&e.name).copied().unzip();
-            json!({
-                "name": e.name,
-                "kind": e.kind,
-                "sha256": e.sha256,
-                "chars": e.chars,
-                "changed": view.changes.contains_key(&e.name),
-                "from": e.from,
-                "media": asset,
-                "media_version": version,
-            })
-        })
-        .collect();
-    let manifest = json!({
-        "site": view.site,
-        "recipe": view.name,
-        "recipe_id": recipe_id,
-        "version": saved.version,
-        "run": view.id,
-        "status": view.status,
-        "reason": if view.failed_step.is_none() { view.reason.clone() } else { None },
-        "failed_step": failed_step,
-        "outputs": outputs,
-    });
-    let payload = view
+    let event = crate::services::agent_chains::claim_finished(&ctx.db, org_id, job).await;
+    let Ok(Some(mut event)) = event else {
+        return;
+    };
+    event.recipe_id = Some(recipe_id.to_string());
+    event.outcome = Some(outcome.to_string());
+    event.outputs = outputs;
+    event.extracts = view
         .extracts
         .into_iter()
         .map(|e| (e.name, e.text))
         .collect();
-    Ok(SiteRecipeNodeReply {
-        port,
-        manifest,
-        payload,
-        code: None,
-        args: Value::Null,
-    })
+    let valkey = crate::services::shared_valkey::conn(&ctx.config).await;
+    crate::services::agent_chains::publish_event(valkey, org_id, &event).await;
 }
 
 /// Puts one extract of a passing flow run in the media library: one
@@ -352,7 +347,7 @@ async fn previous_flow_status(
         .map(|s| RunStatus::parse(&s)))
 }
 
-/// Deploy gate: every `site_recipe` node names a saved rule of the org.
+/// Deploy gate: every `agent_run` node playing a rule names a saved rule of the org.
 pub async fn deploy_violations(
     db: &DatabaseConnection,
     org_id: i64,
@@ -360,15 +355,10 @@ pub async fn deploy_violations(
 ) -> Result<Vec<pnex_core::FlowViolation>, sea_orm::DbErr> {
     let mut v = Vec::new();
     for n in &graph.nodes {
-        let FlowNodeKind::SiteRecipe { config } = &n.kind else {
+        let FlowNodeKind::AgentRun { config } = &n.kind else {
             continue;
         };
-        if let Some((code, message)) = config.check_deployable() {
-            v.push(pnex_core::FlowViolation::new(
-                Some(n.id.as_str()),
-                code,
-                message,
-            ));
+        if config.recipe_id.is_empty() {
             continue;
         }
         let Ok(id) = Uuid::parse_str(&config.recipe_id) else {
@@ -395,14 +385,14 @@ pub async fn deploy_violations(
 const NEXT_MAX: usize = 5;
 
 /// Triggers reaching the recipe's nodes in a graph: (cron expressions,
-/// repeat intervals). Walks the wires back from each `site_recipe` node
+/// repeat intervals). Walks the wires back from each `agent_run` node
 /// playing `recipe_id`.
 fn triggers(graph: &pnex_core::flow::FlowGraph, recipe_id: &str) -> (Vec<String>, Vec<f64>) {
     use std::collections::HashSet;
     let mut reached: HashSet<&str> = graph
         .nodes
         .iter()
-        .filter(|n| matches!(&n.kind, FlowNodeKind::SiteRecipe { config } if config.recipe_id == recipe_id))
+        .filter(|n| matches!(&n.kind, FlowNodeKind::AgentRun { config } if config.recipe_id == recipe_id))
         .map(|n| n.id.as_str())
         .collect();
     loop {
@@ -494,9 +484,11 @@ pub async fn schedule(
         let Ok(graph) = serde_json::from_value::<pnex_core::flow::FlowGraph>(raw) else {
             continue;
         };
-        if !graph.nodes.iter().any(
-            |n| matches!(&n.kind, FlowNodeKind::SiteRecipe { config } if config.recipe_id == id),
-        ) {
+        if !graph
+            .nodes
+            .iter()
+            .any(|n| matches!(&n.kind, FlowNodeKind::AgentRun { config } if config.recipe_id == id))
+        {
             continue;
         }
         let (cron, every_secs) = triggers(&graph, &id);
@@ -528,7 +520,7 @@ mod tests {
             {"id": "i3", "kind": "inject", "config": {"cron": "*/5 * * * *"}, "outputs": [{"port": 0, "targets": ["d"]}]},
             {"id": "f", "kind": "debug", "outputs": [{"port": 0, "targets": ["s"]}]},
             {"id": "d", "kind": "debug"},
-            {"id": "s", "kind": "site_recipe", "config": {"recipe_id": "r1"}}
+            {"id": "s", "kind": "agent_run", "config": {"recipe_id": "r1"}}
         ]}))
         .expect("graph");
         let (cron, every) = triggers(&graph, "r1");

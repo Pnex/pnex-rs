@@ -103,13 +103,10 @@ pub fn FlowEditor(
     // saved by someone else, if any.
     let seen_deployed = use_signal(|| None::<Option<i64>>);
     let mut remote_version = use_signal(|| None::<i64>);
-    // Armed by a `flow-collecting` refusal: the next Deploy forces.
-    let force_next = use_signal(|| false);
     let mut deploy = runtime::deploy_action(
         flow_id,
         saved_version,
         deploying,
-        force_next,
         seen_deployed,
         reload_meta,
         propose_deploy,

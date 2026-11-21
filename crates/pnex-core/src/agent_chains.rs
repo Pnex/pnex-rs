@@ -5,6 +5,10 @@
 //! on the org channel where the `agent_run_finished` nodes listen. No flow waits in memory:
 //! the state is in `agent_runs` and `agent_chains`. A chain shares one budget and holds one
 //! subject at most.
+//!
+//! The same node plays a saved website rule instead of an agent (D786): its run belongs to
+//! no chain, and its end carries the rule's outcome ([`RULE_PASSED`], [`RULE_FAILED`],
+//! [`RULE_BROKE`]) and extracts.
 
 use std::collections::BTreeMap;
 
@@ -31,6 +35,12 @@ pub const SUBJECT_MAX: usize = 200;
 pub const NODE_PORT_STARTED: usize = 0;
 pub const NODE_PORT_REFUSED: usize = 1;
 pub const NODE_PORT_COUNT: usize = 2;
+
+/// Outcomes of a rule run started by a flow: it passed, failed again, or failed right
+/// after a passing run (the site changed: wire that one to a notification).
+pub const RULE_PASSED: &str = "passed";
+pub const RULE_FAILED: &str = "failed";
+pub const RULE_BROKE: &str = "broke";
 
 fn runs_default() -> i32 {
     RUNS_MAX_DEFAULT
@@ -152,6 +162,12 @@ pub struct AgentRunNodeConfig {
     /// Agent of the org to run (UUID).
     #[serde(default)]
     pub agent_id: String,
+    /// Or a saved website rule of the org to play (UUID, D786).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub recipe_id: String,
+    /// Values of the rule's parameters; `msg.params` overrides them.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub params: BTreeMap<String, String>,
     /// Input name of the agent → dotted path in the message holding an artifact id,
     /// e.g. `"ticket": "payload.ticket"` or `"patch": "run.outputs.patch"`.
     #[serde(default)]
@@ -180,6 +196,23 @@ impl AgentRunNodeConfig {
         if !uuid_or_empty(&self.agent_id) {
             return bad("agent_run_invalid", "the agent id is not a UUID");
         }
+        if !uuid_or_empty(&self.recipe_id) {
+            return bad("agent_run_invalid", "the rule id is not a UUID");
+        }
+        if !self.agent_id.is_empty() && !self.recipe_id.is_empty() {
+            return bad("agent_run_invalid", "pick an agent or a rule, not both");
+        }
+        if self.params.len() > crate::site_recipe::PARAMS_MAX
+            || self.params.iter().any(|(k, v)| {
+                k.len() > crate::site_recipe::STRING_MAX
+                    || v.chars().count() > crate::site_recipe::STRING_MAX
+            })
+        {
+            return bad(
+                "agent_run_invalid",
+                "at most 10 parameters of 500 characters",
+            );
+        }
         for (name, path) in &self.inputs {
             if !crate::agent_runs::artifact_name_is_valid(name) || !path_is_valid(path) {
                 return bad("agent_run_invalid", "invalid input name or message path");
@@ -196,8 +229,8 @@ impl AgentRunNodeConfig {
 
     /// Deploy gate and runtime build: an agent is picked.
     pub fn check_deployable(&self) -> Option<(&'static str, String)> {
-        if self.agent_id.is_empty() {
-            return bad("agent_run_unset", "pick an agent");
+        if self.agent_id.is_empty() && self.recipe_id.is_empty() {
+            return bad("agent_run_unset", "pick an agent or a website rule");
         }
         self.check()
     }
@@ -212,12 +245,21 @@ pub struct AgentRunFinishedConfig {
     /// Runs that belong to a chain only.
     #[serde(default)]
     pub chained_only: bool,
+    /// Runs of this website rule only; empty = any (D786).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub recipe_id: String,
+    /// Rule runs of this outcome only (`passed`, `failed`, `broke`); empty = any.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub outcome: String,
 }
 
 impl AgentRunFinishedConfig {
     pub fn check(&self) -> Option<(&'static str, String)> {
-        if !uuid_or_empty(&self.agent_id) {
-            return bad("agent_run_invalid", "the agent id is not a UUID");
+        if !uuid_or_empty(&self.agent_id) || !uuid_or_empty(&self.recipe_id) {
+            return bad("agent_run_invalid", "the agent or rule id is not a UUID");
+        }
+        if !["", RULE_PASSED, RULE_FAILED, RULE_BROKE].contains(&self.outcome.as_str()) {
+            return bad("agent_run_invalid", "unknown rule outcome");
         }
         None
     }
@@ -245,8 +287,15 @@ pub struct AgentRunFinishedEvent {
     #[serde(default)]
     pub llm_calls: i32,
     /// Output name → id of the artifact it sent: the inputs of the next run (D729).
+    /// For a rule run: extract name → its document of the media library (passed runs).
     #[serde(default)]
     pub outputs: BTreeMap<String, String>,
+    /// The website rule a flow played (D786).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recipe_id: Option<String>,
+    /// Extract name → text, for a rule run.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub extracts: BTreeMap<String, String>,
     pub ts_ms: i64,
 }
 
@@ -254,6 +303,9 @@ impl AgentRunFinishedEvent {
     pub fn matches(&self, cfg: &AgentRunFinishedConfig) -> bool {
         (cfg.agent_id.is_empty() || self.agent_id.as_deref() == Some(cfg.agent_id.as_str()))
             && (!cfg.chained_only || self.chain_id.is_some())
+            && (cfg.recipe_id.is_empty()
+                || self.recipe_id.as_deref() == Some(cfg.recipe_id.as_str()))
+            && (cfg.outcome.is_empty() || self.outcome.as_deref() == Some(cfg.outcome.as_str()))
     }
 }
 
@@ -270,6 +322,9 @@ pub struct AgentRunNodeRequest {
     pub chain_id: Option<String>,
     #[serde(default)]
     pub subject: Option<String>,
+    /// `msg.params`: values of a rule's parameters, over the node's.
+    #[serde(default)]
+    pub params: BTreeMap<String, String>,
 }
 
 /// Reply of `POST /internal/flow/agent-run`.
@@ -313,6 +368,7 @@ mod tests {
             inputs: BTreeMap::from([("ticket".into(), "payload.ticket".into())]),
             subject_from: "payload.subject".into(),
             limits: ChainLimits::default(),
+            ..Default::default()
         };
         assert!(cfg.check_deployable().is_none());
         cfg.inputs.insert("bad/name".into(), "payload".into());
@@ -322,9 +378,39 @@ mod tests {
         assert_eq!(cfg.check().unwrap().0, "agent_run_invalid");
         let finished = AgentRunFinishedConfig {
             agent_id: "x".into(),
-            chained_only: false,
+            ..Default::default()
         };
         assert_eq!(finished.check().unwrap().0, "agent_run_invalid");
+        let outcome = AgentRunFinishedConfig {
+            outcome: "maybe".into(),
+            ..Default::default()
+        };
+        assert_eq!(outcome.check().unwrap().0, "agent_run_invalid");
+    }
+
+    #[test]
+    fn a_node_plays_an_agent_or_a_rule() {
+        let rule = AgentRunNodeConfig {
+            recipe_id: uuid::Uuid::nil().to_string(),
+            params: BTreeMap::from([("code".into(), "RS0101".into())]),
+            ..Default::default()
+        };
+        assert!(rule.check_deployable().is_none());
+        let both = AgentRunNodeConfig {
+            agent_id: uuid::Uuid::nil().to_string(),
+            ..rule.clone()
+        };
+        assert_eq!(both.check().unwrap().0, "agent_run_invalid");
+        let bad = AgentRunNodeConfig {
+            recipe_id: "nope".into(),
+            ..Default::default()
+        };
+        assert_eq!(bad.check().unwrap().0, "agent_run_invalid");
+        let many = AgentRunNodeConfig {
+            params: (0..11).map(|i| (i.to_string(), String::new())).collect(),
+            ..rule
+        };
+        assert_eq!(many.check().unwrap().0, "agent_run_invalid");
     }
 
     #[test]
@@ -340,16 +426,34 @@ mod tests {
             error: None,
             llm_calls: 0,
             outputs: BTreeMap::new(),
+            recipe_id: None,
+            extracts: BTreeMap::new(),
             ts_ms: 0,
         };
         assert!(ev.matches(&AgentRunFinishedConfig::default()));
         let cfg = |agent: &str, chained_only| AgentRunFinishedConfig {
             agent_id: agent.into(),
             chained_only,
+            ..Default::default()
         };
         assert!(ev.matches(&cfg("a", false)));
         assert!(!ev.matches(&cfg("b", false)));
         assert!(!ev.matches(&cfg("", true)));
+        let rule = AgentRunFinishedEvent {
+            agent_id: None,
+            recipe_id: Some("r".into()),
+            outcome: Some(RULE_BROKE.into()),
+            ..ev
+        };
+        let on = |recipe: &str, outcome: &str| AgentRunFinishedConfig {
+            recipe_id: recipe.into(),
+            outcome: outcome.into(),
+            ..Default::default()
+        };
+        assert!(rule.matches(&on("r", RULE_BROKE)));
+        assert!(rule.matches(&on("", "")));
+        assert!(!rule.matches(&on("r", RULE_PASSED)));
+        assert!(!rule.matches(&on("other", "")));
     }
 
     #[test]

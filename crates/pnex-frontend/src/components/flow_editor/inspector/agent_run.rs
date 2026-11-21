@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use super::helpers::*;
 use super::*;
 
+use super::site_recipe::RuleFields;
 use crate::components::ui::FIELD_LABEL;
 use pnex_core::agent_chains::{AgentRunFinishedConfig, AgentRunNodeConfig, ChainLimits};
 
@@ -10,8 +11,9 @@ use pnex_core::agent_chains::{AgentRunFinishedConfig, AgentRunNodeConfig, ChainL
 
 const INPUT: &str = "w-full px-2 py-1 border border-gray-300 rounded-lg text-sm";
 
-/// Agent run inspector: the agent, the message path of each of its declared inputs, the
-/// subject path and the bounds of the chain the node opens.
+/// Agent run inspector: what it runs (an agent or a website rule, D786); for an agent,
+/// the message path of each of its declared inputs, the subject path and the bounds of
+/// the chain the node opens.
 #[component]
 pub(super) fn AgentRunForm(
     mut cx: EditorCx,
@@ -24,6 +26,7 @@ pub(super) fn AgentRunForm(
             .map(|p| p.results)
             .unwrap_or_default()
     });
+    let mut rule = use_signal(|| !initial.recipe_id.is_empty());
     let mut agent_id = use_signal(|| initial.agent_id.clone());
     let mut inputs = use_signal(|| initial.inputs.clone());
     let mut subject = use_signal(|| initial.subject_from.clone());
@@ -34,6 +37,7 @@ pub(super) fn AgentRunForm(
             inputs: inputs(),
             subject_from: subject(),
             limits: limits(),
+            ..Default::default()
         };
         patch_selected(&mut cx, move |node: &mut FlowNode| {
             if let FlowNodeKind::AgentRun { config } = &mut node.kind {
@@ -101,63 +105,86 @@ pub(super) fn AgentRunForm(
         }
     };
     let current = limits();
+    let on_mode = move |e: Event<FormData>| {
+        rule.set(e.value() == "rule");
+        agent_id.set(String::new());
+        inputs.set(BTreeMap::new());
+        save();
+    };
 
     rsx! {
         div { class: "space-y-3",
-            p { class: "text-xs text-gray-500", {t!("flows-agent-run-help")} }
-            label { class: FIELD_LABEL, r#for: "agent-run-agent", {t!("flows-agent-run-agent")} }
+            label { class: FIELD_LABEL, r#for: "agent-run-mode", {t!("flows-agent-run-mode")} }
             select {
-                id: "agent-run-agent",
+                id: "agent-run-mode",
                 class: INPUT,
-                "data-testid": "agent-run-agent",
+                "data-testid": "agent-run-mode",
                 disabled: !can_write,
-                onchange: on_pick,
-                option { value: "", selected: agent_id().is_empty(), "—" }
-                for a in list {
-                    option {
-                        key: "{a.id}",
-                        selected: a.id == agent_id(),
-                        value: "{a.id}",
-                        "{a.name}"
+                onchange: on_mode,
+                option { value: "agent", selected: !rule(), {t!("flows-agent-run-mode-agent")} }
+                option { value: "rule", selected: rule(), {t!("flows-agent-run-mode-rule")} }
+            }
+            if rule() {
+                RuleFields { cx, initial: initial.clone(), can_write }
+            } else {
+                p { class: "text-xs text-gray-500", {t!("flows-agent-run-help")} }
+                label { class: FIELD_LABEL, r#for: "agent-run-agent", {t!("flows-agent-run-agent")} }
+                select {
+                    id: "agent-run-agent",
+                    class: INPUT,
+                    "data-testid": "agent-run-agent",
+                    disabled: !can_write,
+                    onchange: on_pick,
+                    option { value: "", selected: agent_id().is_empty(), "—" }
+                    for a in list {
+                        option {
+                            key: "{a.id}",
+                            selected: a.id == agent_id(),
+                            value: "{a.id}",
+                            "{a.name}"
+                        }
                     }
                 }
-            }
-            for (name, path) in declared {
-                label { key: "l-{name}", class: FIELD_LABEL, "{name}" }
+                for (name, path) in declared {
+                    label { key: "l-{name}", class: FIELD_LABEL, "{name}" }
+                    input {
+                        class: INPUT,
+                        disabled: !can_write,
+                        value: "{path}",
+                        onchange: move |e| {
+                            inputs.with_mut(|m| m.insert(name.clone(), e.value()));
+                            save();
+                        },
+                    }
+                }
+                p { class: "text-xs text-gray-500", {t!("flows-agent-run-inputs-help")} }
+                label { class: FIELD_LABEL, r#for: "agent-run-subject",
+                    {t!("flows-agent-run-subject")}
+                }
                 input {
+                    id: "agent-run-subject",
                     class: INPUT,
                     disabled: !can_write,
-                    value: "{path}",
-                    onchange: move |e| {
-                        inputs.with_mut(|m| m.insert(name.clone(), e.value()));
-                        save();
-                    },
+                    value: "{subject}",
+                    oninput: move |e| subject.set(e.value()),
+                    onchange: move |_| save(),
                 }
+                {limit_field(t!("flows-agent-run-runs-max").to_string(), 0, current.runs_max)}
+                {
+                    limit_field(
+                        t!("flows-agent-run-llm-calls-max").to_string(),
+                        1,
+                        current.llm_calls_max,
+                    )
+                }
+                {limit_field(t!("flows-agent-run-rounds-max").to_string(), 2, current.rounds_max)}
             }
-            p { class: "text-xs text-gray-500", {t!("flows-agent-run-inputs-help")} }
-            label { class: FIELD_LABEL, r#for: "agent-run-subject", {t!("flows-agent-run-subject")} }
-            input {
-                id: "agent-run-subject",
-                class: INPUT,
-                disabled: !can_write,
-                value: "{subject}",
-                oninput: move |e| subject.set(e.value()),
-                onchange: move |_| save(),
-            }
-            {limit_field(t!("flows-agent-run-runs-max").to_string(), 0, current.runs_max)}
-            {
-                limit_field(
-                    t!("flows-agent-run-llm-calls-max").to_string(),
-                    1,
-                    current.llm_calls_max,
-                )
-            }
-            {limit_field(t!("flows-agent-run-rounds-max").to_string(), 2, current.rounds_max)}
         }
     }
 }
 
-/// Run-finished trigger inspector: one agent or any, chained runs only or all.
+/// Run-finished trigger inspector: one agent or any, chained runs only or all; one
+/// website rule or any, and one outcome of it or any (D786).
 #[component]
 pub(super) fn AgentRunFinishedForm(
     mut cx: EditorCx,
@@ -170,12 +197,17 @@ pub(super) fn AgentRunFinishedForm(
             .map(|p| p.results)
             .unwrap_or_default()
     });
+    let recipes = use_resource(|| async { api::site_recipes::all().await.unwrap_or_default() });
     let mut agent_id = use_signal(|| initial.agent_id.clone());
     let mut chained = use_signal(|| initial.chained_only);
+    let mut recipe_id = use_signal(|| initial.recipe_id.clone());
+    let mut outcome = use_signal(|| initial.outcome.clone());
     let mut save = move || {
         let next = AgentRunFinishedConfig {
             agent_id: agent_id(),
             chained_only: chained(),
+            recipe_id: recipe_id(),
+            outcome: outcome(),
         };
         patch_selected(&mut cx, move |node: &mut FlowNode| {
             if let FlowNodeKind::AgentRunFinished { config } = &mut node.kind {
@@ -184,6 +216,21 @@ pub(super) fn AgentRunFinishedForm(
         });
     };
     let list = agents.read().clone().unwrap_or_default();
+    let rules = recipes.read().clone().unwrap_or_default();
+    let outcomes = [
+        (
+            pnex_core::agent_chains::RULE_PASSED,
+            t!("flows-agent-run-outcome-passed"),
+        ),
+        (
+            pnex_core::agent_chains::RULE_FAILED,
+            t!("flows-agent-run-outcome-failed"),
+        ),
+        (
+            pnex_core::agent_chains::RULE_BROKE,
+            t!("flows-agent-run-outcome-broke"),
+        ),
+    ];
 
     rsx! {
         div { class: "space-y-3",
@@ -224,6 +271,55 @@ pub(super) fn AgentRunFinishedForm(
                 }
                 {t!("flows-agent-run-finished-chained")}
             }
+            label { class: FIELD_LABEL, r#for: "agent-run-finished-rule",
+                {t!("flows-site-recipe-rule")}
+            }
+            select {
+                id: "agent-run-finished-rule",
+                class: INPUT,
+                "data-testid": "agent-run-finished-rule",
+                disabled: !can_write,
+                onchange: move |e| {
+                    recipe_id.set(e.value());
+                    save();
+                },
+                option { value: "", selected: recipe_id().is_empty(),
+                    {t!("flows-agent-run-finished-any-rule")}
+                }
+                for r in rules {
+                    option {
+                        key: "{r.id}",
+                        selected: r.id == recipe_id(),
+                        value: "{r.id}",
+                        "{r.site} · {r.name}"
+                    }
+                }
+            }
+            label { class: FIELD_LABEL, r#for: "agent-run-finished-outcome",
+                {t!("flows-agent-run-outcome")}
+            }
+            select {
+                id: "agent-run-finished-outcome",
+                class: INPUT,
+                "data-testid": "agent-run-finished-outcome",
+                disabled: !can_write,
+                onchange: move |e| {
+                    outcome.set(e.value());
+                    save();
+                },
+                option { value: "", selected: outcome().is_empty(),
+                    {t!("flows-agent-run-finished-any-outcome")}
+                }
+                for (value, label) in outcomes {
+                    option {
+                        key: "{value}",
+                        selected: outcome() == value,
+                        value: "{value}",
+                        "{label}"
+                    }
+                }
+            }
+            p { class: "text-xs text-gray-500", {t!("flows-agent-run-outcome-help")} }
         }
     }
 }

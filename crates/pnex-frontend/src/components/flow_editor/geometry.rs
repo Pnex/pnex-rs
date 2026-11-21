@@ -128,8 +128,6 @@ pub fn port_counts_of(node: &FlowNode) -> (usize, usize) {
         // Vision track: current tracks + appear/disappear events.
         FlowNodeKind::VisionTrack { .. } => (2, 0),
         FlowNodeKind::PagePdf { .. } => (2, 0),
-        // Site rule: passed, failed, broke.
-        FlowNodeKind::SiteRecipe { .. } => (pnex_core::site_recipe::NODE_PORT_COUNT, 0),
         // Web search: results, failed.
         FlowNodeKind::WebSearch { .. } => (pnex_core::web_search::NODE_PORT_COUNT, 0),
         // Agent run: started (or joined), refused.
@@ -206,11 +204,6 @@ pub fn predict_output_labels(kind: &FlowNodeKind) -> Vec<String> {
             t!("flows-weather-port-current").to_string(),
             t!("flows-weather-port-daily").to_string(),
             t!("flows-weather-port-hourly").to_string(),
-        ],
-        FlowNodeKind::SiteRecipe { .. } => vec![
-            t!("flows-site-recipe-port-ok").to_string(),
-            t!("flows-site-recipe-port-failed").to_string(),
-            t!("flows-site-recipe-port-broke").to_string(),
         ],
         FlowNodeKind::WebSearch { .. } => vec![
             t!("flows-web-search-port-ok").to_string(),

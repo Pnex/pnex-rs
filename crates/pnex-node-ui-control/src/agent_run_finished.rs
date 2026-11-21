@@ -35,6 +35,10 @@ struct NodeConfig {
     agent_id: String,
     #[serde(default)]
     chained_only: bool,
+    #[serde(default)]
+    recipe_id: String,
+    #[serde(default)]
+    outcome: String,
     /// Stamped by the deploy projection.
     #[serde(default)]
     pnex_org_id: i64,
@@ -53,6 +57,8 @@ impl NodeConfig {
         AgentRunFinishedConfig {
             agent_id: self.agent_id.clone(),
             chained_only: self.chained_only,
+            recipe_id: self.recipe_id.clone(),
+            outcome: self.outcome.clone(),
         }
     }
 }
@@ -191,6 +197,8 @@ mod tests {
             error: None,
             llm_calls: 2,
             outputs: BTreeMap::from([("patch".into(), "art1".into())]),
+            recipe_id: None,
+            extracts: BTreeMap::new(),
             ts_ms: 1,
         };
         let body = body_of(&ev);

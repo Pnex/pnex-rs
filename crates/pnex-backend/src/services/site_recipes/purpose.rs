@@ -29,6 +29,8 @@ pub enum Purpose {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         user: Option<i64>,
     },
+    /// A saved rule an `agent_run` node played (D786): its end goes to the flows.
+    Flow { recipe_id: String },
 }
 
 impl Purpose {
@@ -36,6 +38,7 @@ impl Purpose {
         match self {
             // The run's `trigger` holds 16 chars; runs are found by the tag.
             Self::Pipeline { .. } => "pipeline",
+            Self::Flow { .. } => "flow",
         }
     }
 }
@@ -111,6 +114,12 @@ pub async fn on_finished(ctx: &AppContext, org_id: i64, run_id: Uuid) {
         .unwrap_or_default();
     let ok = row.try_get::<String>("", "state").unwrap_or_default() == "succeeded";
     let outcome = match &purpose {
+        Purpose::Flow { recipe_id } => {
+            if let Ok(recipe_id) = Uuid::parse_str(recipe_id) {
+                super::flow_node::finished(ctx, org_id, run_id, recipe_id).await;
+            }
+            Ok(())
+        }
         Purpose::Pipeline {
             pipeline,
             item,

@@ -1,7 +1,7 @@
-//! `site_recipe` flow node (agents.md D327): the internal endpoint
-//! plays the rule of the deployed node only, answers on the passed /
-//! failed / broke ports, and the studio reads when the rule plays next
-//! from the deployed flows' cron.
+//! Website rules in flows (agents.md D327, D786): an `agent_run` node playing a
+//! rule starts it at once, its end is claimed for the `agent_run_finished` nodes
+//! with the passed / failed / broke outcome, and the studio reads when the rule
+//! plays next from the deployed flows' cron.
 //!
 //! Needs PostgreSQL (TEST_DATABASE_URL), database emptied between tests.
 
@@ -56,7 +56,7 @@ async fn deploy(db: &DatabaseConnection, org: i64, recipe_id: &str) -> i64 {
         graph: Set(json!({ "nodes": [
             {"id": "i", "kind": "inject", "config": {"cron": "0 6 * * *"},
              "outputs": [{"port": 0, "targets": ["s"]}]},
-            {"id": "s", "kind": "site_recipe", "config": {"recipe_id": recipe_id}}
+            {"id": "s", "kind": "agent_run", "config": {"recipe_id": recipe_id}}
         ] })),
         ..Default::default()
     }
@@ -72,7 +72,7 @@ async fn deploy(db: &DatabaseConnection, org: i64, recipe_id: &str) -> i64 {
 
 async fn play(server: &axum_test::TestServer, body: Value) -> (u16, Value) {
     let res = server
-        .post("/internal/flow/site-recipe")
+        .post("/internal/flow/agent-run")
         .add_header("x-pnex-flow-token", "tok-sr-1")
         .json(&body)
         .await;
@@ -124,14 +124,47 @@ async fn deployed_node_plays_its_rule_and_reports_when_it_breaks() {
         let (st, e) = play(&server, json!({"node": node("i")})).await;
         assert_eq!((st, e["code"].as_str()), (403, Some("flow-node-not-deployed")));
 
-        // No passing run before: a failure is just a failure.
+        // The node answers at once with the run; the run ends without a browser.
         let (st, r) = play(&server, json!({"node": node("s")})).await;
-        assert_eq!((st, r["port"].as_u64()), (200, Some(1)), "{r}");
-        assert_eq!(r["manifest"]["status"], "failed");
-        assert_eq!(r["manifest"]["reason"], pnex_core::site_recipe::reason::BROWSER);
-        let run = r["manifest"]["run"].as_str().unwrap().to_string();
+        assert_eq!((st, r["port"].as_u64()), (200, Some(0)), "{r}");
+        let run = r["run_id"].as_str().unwrap().to_string();
+        let run_id = uuid::Uuid::parse_str(&run).unwrap();
+        let mut claimed = false;
+        for _ in 0..100 {
+            let row = db
+                .query_one_raw(Statement::from_sql_and_values(
+                    DbBackend::Postgres,
+                    "SELECT finished_event_at IS NOT NULL AS c FROM agent_runs WHERE id = $1",
+                    [run_id.into()],
+                ))
+                .await
+                .unwrap()
+                .unwrap();
+            claimed = row.try_get::<bool>("", "c").unwrap();
+            if claimed {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
+        assert!(claimed, "the end of the run is claimed for the flows");
+        let recipe = uuid::Uuid::parse_str(&recipe_id).unwrap();
+        let outcome = |run: uuid::Uuid| {
+            let db = db.clone();
+            async move {
+                pnex_backend::services::site_recipes::flow_node::outcome(
+                    &db,
+                    org,
+                    recipe,
+                    run,
+                    pnex_core::site_recipe::RunStatus::Failed,
+                )
+                .await
+            }
+        };
+        // No passing run before: a failure is just a failure.
+        assert_eq!(outcome(run_id).await, "failed");
 
-        // The previous flow run passed: this failure is the break.
+        // The previous flow run passed: the next failure is the break.
         db.execute_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "WITH a AS (UPDATE agent_runs SET reason = NULL WHERE id = $1::uuid RETURNING job_id) \
@@ -141,15 +174,28 @@ async fn deployed_node_plays_its_rule_and_reports_when_it_breaks() {
         .await
         .unwrap();
         let (_, r) = play(&server, json!({"node": node("s")})).await;
-        assert_eq!(r["port"].as_u64(), Some(2), "{r}");
-        let (_, r) = play(&server, json!({"node": node("s")})).await;
-        assert_eq!(r["port"].as_u64(), Some(1), "only the first failure breaks");
+        let next = uuid::Uuid::parse_str(r["run_id"].as_str().unwrap()).unwrap();
+        assert_eq!(outcome(next).await, "broke");
 
-        // The deploy gate refuses an unset or unknown rule.
+        // A missing parameter is refused at once, on port 1.
+        let with_param = server
+            .post("/api/v1/site-recipes")
+            .add_header("Authorization", &auth)
+            .add_header("X-Org-Id", org.to_string())
+            .json(&json!({"yaml": "name: fiche\nsite: example.org\nparams: [code]\nsteps:\n  - open: \"/{{code}}\"\n"}))
+            .await;
+        assert_eq!(with_param.status_code().as_u16(), 201, "{}", with_param.text());
+        let other = deploy(&db, org, with_param.json::<Value>()["id"].as_str().unwrap()).await;
+        let other_node = json!({"org_id": org, "flow_id": other, "version": 1, "node_id": "s"});
+        let (_, r) = play(&server, json!({"node": other_node})).await;
+        assert_eq!((r["port"].as_u64(), r["code"].as_str()), (Some(1), Some("site-recipe-param-missing")), "{r}");
+        let (_, r) = play(&server, json!({"node": other_node, "params": {"code": "RS1"}})).await;
+        assert_eq!(r["port"].as_u64(), Some(0), "msg.params gives it: {r}");
+
+        // The deploy gate refuses an unknown rule.
         let graph: pnex_core::flow::FlowGraph = serde_json::from_value(json!({"nodes": [
-            {"id": "a", "kind": "site_recipe"},
-            {"id": "b", "kind": "site_recipe", "config": {"recipe_id": "6f1c2b7e-1d2a-4c3b-9e8f-0a1b2c3d4e5f"}},
-            {"id": "c", "kind": "site_recipe", "config": {"recipe_id": recipe_id}}
+            {"id": "b", "kind": "agent_run", "config": {"recipe_id": "6f1c2b7e-1d2a-4c3b-9e8f-0a1b2c3d4e5f"}},
+            {"id": "c", "kind": "agent_run", "config": {"recipe_id": recipe_id}}
         ]}))
         .unwrap();
         let v = pnex_backend::services::site_recipes::flow_node::deploy_violations(&db, org, &graph)
@@ -158,10 +204,7 @@ async fn deployed_node_plays_its_rule_and_reports_when_it_breaks() {
         let codes: Vec<_> = v.iter().map(|v| (v.node_id.clone(), v.code.clone())).collect();
         assert_eq!(
             codes,
-            vec![
-                (Some("a".to_string()), "site_recipe_config_unset".to_string()),
-                (Some("b".to_string()), "site_recipe_unknown".to_string()),
-            ]
+            vec![(Some("b".to_string()), "site_recipe_unknown".to_string())]
         );
     })
     .await;

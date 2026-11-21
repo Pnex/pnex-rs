@@ -55,7 +55,7 @@ config:
 ---
 flowchart LR
   h[humain] --> run[run]
-  f[flow : nœud agent_run ou site_recipe] --> run
+  f[flow : nœud agent_run] --> run
   a[assistant] --> run
   run --> sb[sandbox : bac chez un runner]
   run --> il[internal_llm : boucle du backend]
@@ -73,7 +73,7 @@ Seul `sandbox` est loué à un runner. `internal_llm` et `server_browser` tourne
 
 Le LLM vient en dernier (D785). Une tâche qu'une règle sait faire passe par une règle, pour une question de coût.
 
-Deux nœuds de flow lancent des runs : `agent_run` (agents) et `site_recipe` (règles). Les fusionner change la forme des sorties : la question reste ouverte (§7).
+Un seul nœud de flow lance des runs : `agent_run`, qui joue un agent ou une règle (D786). Il rend l'identifiant du run aussitôt. Le nœud `agent_run_finished` reçoit la fin du run.
 
 ### 3.2 Agent : identité, fiche, droits (D378, D379, D757, D761)
 
@@ -464,7 +464,7 @@ config:
 ---
 flowchart LR
   st[studio /web-sites/:site] -->|brouillon| run[passage]
-  fl[flow : nœud site_recipe] -->|dernière version| run
+  fl[flow : nœud agent_run] -->|dernière version| run
   run --> pre[préflight HTTP gardé : R8, robots, 2 s]
   pre --> cdp[navigateur CDP]
   cdp --> page[rule_page.js dans la page]
@@ -501,7 +501,13 @@ Studio (D324) : coquille d'éditeur commune et lecteur commun (D220). La capture
 - **Vue en direct** : capture du navigateur toutes les 1,5 s dans Valkey (`pnex:site-recipe:live:<run>`, 20 s de vie), servie par `GET /site-recipes/runs/{id}/live`.
 - **Assistant** : outils `list_site_recipes`, `get_site_recipe`, `get_site_recipe_run`, `try_site_recipe`, `propose_site_recipe`. Les extraits arrivent au modèle entre balises `<data>` (D208). Une proposition s'ouvre en brouillon non enregistré.
 
-Nœud de flow `site_recipe` (D327) : il joue la dernière version enregistrée, lue par le backend dans la version déployée du flow. Il attend la fin (20 min au plus). Ports : 0 réussi, 1 échec, 2 **cassé** (échec juste après un passage `flow` réussi). Une notification « une fois quand ça casse » se câble sur le port 2. `GET /site-recipes/{id}/schedule` donne les 5 prochaines dates depuis les inject en amont.
+Règle dans un flow (D327, D786) : le nœud `agent_run` porte `recipe_id` et `params` à la place d'un agent. Le backend lit la règle dans la version déployée du flow et joue sa dernière version enregistrée. Le nœud n'attend pas la fin : le port 0 rend le run, le port 1 rend un refus. À la fin du run, le nœud `agent_run_finished` reçoit son `outcome` :
+
+- `passed` : le passage a réussi.
+- `failed` : le passage a échoué.
+- `broke` : le passage a échoué juste après un passage `flow` réussi.
+
+Un filtre `recipe_id` et un filtre `outcome` choisissent les fins reçues. Une notification « une fois quand ça casse » se câble derrière un `agent_run_finished` filtré sur `broke`. Le message porte `extracts` (texte par extrait) et `outputs` (média par extrait). Un run de règle n'appartient à aucune chaîne. `GET /site-recipes/{id}/schedule` donne les 5 prochaines dates depuis les inject en amont.
 
 À chaque passage `flow` réussi, chaque extrait devient un média `document`. Une nouvelle version naît seulement si le SHA-256 change. Un pruner horaire supprime captures et PDF au-delà de la rétention `captures`. Étapes, extraits texte et journal restent.
 
@@ -656,7 +662,7 @@ Principes retenus par la proposition :
 | D324 | Studio `/web-sites/:site` : coquille, lecteur, versions, reprise, vue en direct, assistant | ✅ |
 | D325 | Navigateur du serveur Chrome headless-shell par CDP maison, navigateurs d'org configurables | ✅ |
 | D326 | Journal des passages. La table `site_recipe_runs` est remplacée par le run unifié (D781) | ✅ |
-| D327 | Nœud de flow `site_recipe`, port « cassé », dates à venir, extraits versés à la médiathèque | ✅ |
+| D327 | Règle jouée par un flow, issue « cassé », dates à venir, extraits versés à la médiathèque | ✅ |
 | D328 | Étape `llm_extract` optionnelle | ⬜ |
 | D378 | Niveaux de confinement interne, hébergé, libre, affichés tels quels | 🟡 `hosted` et `internal` seuls |
 | D379 | Agent = compte de service, token de run court, intersection des droits | ✅ (D757) |
@@ -746,7 +752,7 @@ Principes retenus par la proposition :
 | D783 | Tout est tenu côté serveur : plan scellé, contrôle au retour | ✅ |
 | D784 | Profil d'une personne par son nom. Levée partielle de D254 et D333. Devenue D788 | levée |
 | D785 | Le LLM en dernier recours : moteur `internal_llm` | ✅ |
-| D786 | Un nœud de flow, une page | 🟡 page faite, nœud ouvert |
+| D786 | Un nœud de flow (`agent_run` joue un agent ou une règle, réponse immédiate, issue reçue par `agent_run_finished`), une page | ✅ |
 | D787 | Canaux de communication d'un agent (mail, téléphone, messageries) | ⬜ plus tard |
 | D788 | Identifier une personne saisie par un commercial. Collecte en pipeline, score et écriture en flow (D998) | ✅ |
 | D789 | Une règle tape dans un champ de recherche, jamais dans un formulaire | ✅ |
@@ -815,7 +821,6 @@ Un admin plateforme les remplace dans la carte « Limites des agents hébergés 
 
 ## 7. Reste à faire
 
-- **D786** (décidé par Shan le 2026-11-20, à coder) : le nœud `site_recipe` se replie dans `agent_run`, avec les ports d'`agent_run` (*réussi / cassé / échoué* et extraits). Les flows qui utilisent `site_recipe` sont recâblés.
 - **Missions de l'extension** : `collect_value`, `collect_page`, `follow_account`, `watch_live`, `crawl_site`, `capture_proof` restent des types de mission (`MissionSpec`). Chacune doit devenir une étape ou une sortie déclarée d'une règle.
 - **Rôles de lien (D441)** : un rôle déclaré sur le type de lien par son pack, en un seul lot pour tous les couplages gelés de `tests/engine_genericity.rs`.
 - **Niveau libre (D378)** : non codé. L'extension est un moteur, pas un niveau d'agent.

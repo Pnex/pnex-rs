@@ -240,6 +240,8 @@ pub async fn claim_finished<C: ConnectionTrait>(
         error: r.try_get("", "error")?,
         llm_calls: r.try_get("", "llm_calls")?,
         outputs,
+        recipe_id: None,
+        extracts: BTreeMap::new(),
         ts_ms: chrono::Utc::now().timestamp_millis(),
     }))
 }
@@ -256,18 +258,30 @@ pub async fn publish_finished(
     let Some(event) = claim_finished(db, org_id, job).await? else {
         return Ok(());
     };
+    publish_event(valkey, org_id, &event).await;
+    Ok(())
+}
+
+/// Publishes one claimed run end on the org channel; a failure is logged.
+pub async fn publish_event(
+    valkey: Option<redis::aio::ConnectionManager>,
+    org_id: i64,
+    event: &AgentRunFinishedEvent,
+) {
+    let run = &event.run_id;
     let Some(mut conn) = valkey else {
-        tracing::warn!(org_id, %job, "run end not published: no valkey");
-        return Ok(());
+        tracing::warn!(org_id, %run, "run end not published: no valkey");
+        return;
     };
-    let frame = serde_json::to_string(&event).map_err(|e| DbErr::Custom(e.to_string()))?;
+    let Ok(frame) = serde_json::to_string(event) else {
+        return;
+    };
     let op = redis::AsyncCommands::publish::<_, _, i64>(&mut conn, finished_channel(org_id), frame);
     match tokio::time::timeout(VALKEY_TIMEOUT, op).await {
         Ok(Ok(_)) => {}
-        Ok(Err(e)) => tracing::warn!(org_id, %job, error = %e, "run end not published"),
-        Err(_) => tracing::warn!(org_id, %job, "run end not published: valkey timeout"),
+        Ok(Err(e)) => tracing::warn!(org_id, %run, error = %e, "run end not published"),
+        Err(_) => tracing::warn!(org_id, %run, "run end not published: valkey timeout"),
     }
-    Ok(())
 }
 
 /// One message of a deployed `agent_run` node (D713). The runtime is untrusted: the agent,

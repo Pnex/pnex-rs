@@ -74,7 +74,6 @@ pub fn routes() -> Routes {
         .add("/internal/flow/mail/ack", post(flow_mail_ack))
         .add("/internal/flow/mail/send", post(flow_mail_send))
         // Website navigation rules played by flows (agents.md D327).
-        .add("/internal/flow/site-recipe", post(flow_site_recipe))
         // Web search candidates of web_search nodes (web-presence.md D361).
         .add("/internal/flow/web-search", post(flow_web_search))
         .add("/internal/flow/org-resolve", post(flow_org_resolve))
@@ -833,41 +832,6 @@ async fn flow_ontology_upsert(
     ontology_reply(req.node.org_id, r)
 }
 
-/// `POST /internal/flow/site-recipe` — one run of a deployed
-/// `site_recipe` node, waited for. A failing run answers 200 on its port;
-/// only a forged or stale node is refused.
-async fn flow_site_recipe(
-    State(ctx): State<AppContext>,
-    headers: HeaderMap,
-    axum::Json(req): axum::Json<pnex_core::site_recipe::SiteRecipeNodeRequest>,
-) -> Result<Response> {
-    use crate::services::ontology::flow_nodes::NodeError;
-    if !flow_token_ok(&ctx, &headers) {
-        return Ok(StatusCode::UNAUTHORIZED.into_response());
-    }
-    if let Some(r) = fenced(&ctx, &headers, req.node.org_id).await {
-        return Ok(r);
-    }
-    match crate::services::site_recipes::flow_node::run(&ctx, &req).await {
-        Ok(reply) => Ok(axum::Json(reply).into_response()),
-        Err(NodeError::NotDeployed) => {
-            tracing::warn!(
-                org_id = req.node.org_id,
-                "flow site recipe call refused: node not deployed"
-            );
-            Ok((
-                StatusCode::FORBIDDEN,
-                axum::Json(serde_json::json!({ "code": "flow-node-not-deployed" })),
-            )
-                .into_response())
-        }
-        Err(e) => {
-            tracing::warn!(org_id = req.node.org_id, error = ?e, "flow site recipe failed");
-            Ok(StatusCode::INTERNAL_SERVER_ERROR.into_response())
-        }
-    }
-}
-
 /// `POST /internal/flow/web-search` — one query of a deployed `web_search`
 /// node. A failed search answers 200 on port 1; only a forged or stale
 /// node is refused.
@@ -1018,8 +982,16 @@ async fn flow_agent_run(
     if let Some(r) = fenced(&ctx, &headers, req.node.org_id).await {
         return Ok(r);
     }
-    let artifacts = crate::services::fabric_settings::artifacts(&ctx).await;
-    match crate::services::agent_chains::run_node(&ctx.db, artifacts, &req).await {
+    // The node plays a website rule, or else runs an agent (D786).
+    let reply = match crate::services::site_recipes::flow_node::start(&ctx, &req).await {
+        Ok(Some(reply)) => Ok(reply),
+        Ok(None) => {
+            let artifacts = crate::services::fabric_settings::artifacts(&ctx).await;
+            crate::services::agent_chains::run_node(&ctx.db, artifacts, &req).await
+        }
+        Err(e) => Err(e),
+    };
+    match reply {
         Ok(reply) => Ok(axum::Json(reply).into_response()),
         Err(NodeError::NotDeployed) => Ok((
             StatusCode::FORBIDDEN,

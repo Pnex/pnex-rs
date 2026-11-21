@@ -60,7 +60,10 @@ pub mod as_of;
 /// case proposals, signals and reads, tour mode and link kind, device type,
 /// agent key kind, firmware chip family, OTA state, document index status.
 /// An unknown tour mode or link kind is now refused at parse time.
-pub const CONTRACT: u32 = 11;
+/// 12 (2026-11-21, agents.md D786): `DeployFlow` loses `force` (no flow waits for a
+/// rule run any more, `flow-collecting` is gone); the `site_recipe` node folds into
+/// `agent_run`, whose ends `agent_run_finished` filters by rule and outcome.
+pub const CONTRACT: u32 = 12;
 
 /// Routes under this prefix act on the org of their `{id}`, which must also be
 /// the `X-Org-Id` (SEC-75): generated clients send the path org there instead

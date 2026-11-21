@@ -204,7 +204,7 @@ flowchart LR
 - **control-source** (D127, D133) : souscrit à `pnex:ctl:v1:{org}` et sort un port par contrôle. `emit_on_start` relit les dernières valeurs après l'abonnement. Le deploy refuse un contrôle absent (`control-unknown`). Un contrôle écouté ne peut pas être supprimé (`control-in-use`).
 - **display** (`pnex-node-display`) : sonde de passage qui publie la valeur brute au canal debug. L'éditeur l'affiche en badge sous le nœud.
 
-**Exécuter maintenant** : `POST /flows/{id}/nodes/{node}/run` publie un `RunNowEvent` sur `pnex:run-now:v1:{org}`. La projection donne à chaque `inject` un compagnon `pnex-inject-now` qui émet son message. Un deploy refuse de couper une règle de navigation en cours (`flow-collecting`), sauf avec `force`.
+**Exécuter maintenant** : `POST /flows/{id}/nodes/{node}/run` publie un `RunNowEvent` sur `pnex:run-now:v1:{org}`. La projection donne à chaque `inject` un compagnon `pnex-inject-now` qui émet son message.
 
 **Panneau Debug** : seulement en mode dev (`settings.flow.debug_tools`). En mode run, `GET /flows/{id}/debug` répond 403 `flow-debug-disabled` et l'éditeur cache les boutons. Le runtime attribue chaque événement à son flow (`src/attrib.rs`). Le superviseur garde un anneau par flow : 200 entrées, 64 flows, TTL 5 min. Une entrée sans attribution est jetée.
 

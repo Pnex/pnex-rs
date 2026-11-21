@@ -333,6 +333,8 @@ pub fn to_red_flows_json_with(
                 "type": "pnex-agent-run-finished",
                 "agent_id": config.agent_id,
                 "chained_only": config.chained_only,
+                "recipe_id": config.recipe_id,
+                "outcome": config.outcome,
                 "pnex_node_id": n.id,
                 "pnex_flow_id": meta.flow_id,
                 "pnex_version": meta.version_number,
@@ -438,17 +440,6 @@ pub fn to_red_flows_json_with(
                 "pnex_version": meta.version_number,
                 "pnex_org_id": meta.org_id,
             }),
-            // The backend reads the recipe from the deployed graph (D327).
-            FlowNodeKind::SiteRecipe { .. } => {
-                padded_ports = Some(crate::site_recipe::NODE_PORT_COUNT);
-                serde_json::json!({
-                    "type": "pnex-site-recipe",
-                    "pnex_node_id": n.id,
-                    "pnex_flow_id": meta.flow_id,
-                    "pnex_version": meta.version_number,
-                    "pnex_org_id": meta.org_id,
-                })
-            }
             // The backend reads the provider and options from the deployed graph (D361).
             FlowNodeKind::WebSearch { .. } => {
                 padded_ports = Some(crate::web_search::NODE_PORT_COUNT);

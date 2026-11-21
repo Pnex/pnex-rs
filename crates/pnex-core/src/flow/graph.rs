@@ -201,7 +201,8 @@ pub enum FlowNodeKind {
         #[serde(default)]
         config: crate::pipelines::DatasetTriggerConfig,
     },
-    /// Starts a run of a hosted agent and answers its id at once (D713).
+    /// Starts a run of a hosted agent, or plays a saved website rule, and answers its id
+    /// at once (D713, D786).
     AgentRun {
         #[serde(default)]
         config: crate::agent_chains::AgentRunNodeConfig,
@@ -258,12 +259,6 @@ pub enum FlowNodeKind {
     SheetWrite {
         #[serde(default)]
         config: crate::office::SheetWriteConfig,
-    },
-    /// Plays a saved site navigation rule on the server browser
-    /// (agents.md D327).
-    SiteRecipe {
-        #[serde(default)]
-        config: crate::site_recipe::SiteRecipeNodeConfig,
     },
     /// Candidates of a web search on an org provider; writes nothing
     /// (web-presence.md D361).
@@ -492,9 +487,6 @@ impl<'de> Deserialize<'de> for FlowNodeKind {
                     config: opt_config(config)?,
                 }),
                 "sheet_write" => Ok(Self::SheetWrite {
-                    config: opt_config(config)?,
-                }),
-                "site_recipe" => Ok(Self::SiteRecipe {
                     config: opt_config(config)?,
                 }),
                 "web_search" => Ok(Self::WebSearch {

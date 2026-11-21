@@ -1,7 +1,7 @@
 use super::*;
 
 /// Canonical list of the kinds offered for adding (mockup order).
-pub(crate) const PALETTE_KINDS: [PaletteKind; 58] = [
+pub(crate) const PALETTE_KINDS: [PaletteKind; 57] = [
     PaletteKind::Inject,
     PaletteKind::ControlSource,
     PaletteKind::ActionTrigger,
@@ -45,7 +45,6 @@ pub(crate) const PALETTE_KINDS: [PaletteKind; 58] = [
     PaletteKind::ObjectUpsert,
     PaletteKind::LinkUpsert,
     PaletteKind::CheckRecord,
-    PaletteKind::SiteRecipe,
     PaletteKind::WebSearch,
     PaletteKind::OrgResolve,
     PaletteKind::WebVisit,
@@ -115,7 +114,6 @@ pub(crate) fn kind_key(kind: PaletteKind) -> &'static str {
         PaletteKind::ObjectUpsert => "object-upsert",
         PaletteKind::LinkUpsert => "link-upsert",
         PaletteKind::CheckRecord => "check-record",
-        PaletteKind::SiteRecipe => "site-recipe",
         PaletteKind::WebSearch => "web-search",
         PaletteKind::OrgResolve => "org-resolve",
         PaletteKind::WebVisit => "web-visit",
@@ -189,7 +187,6 @@ pub(crate) fn kind_icon(kind: PaletteKind) -> (PaletteIcon, &'static str) {
         PaletteKind::ObjectUpsert => (PaletteIcon::Database, "bg-teal-50 text-teal-800"),
         PaletteKind::LinkUpsert => (PaletteIcon::Layers, "bg-teal-50 text-teal-700"),
         PaletteKind::CheckRecord => (PaletteIcon::Gauge, "bg-teal-50 text-teal-800"),
-        PaletteKind::SiteRecipe => (PaletteIcon::Globe, "bg-cyan-50 text-cyan-800"),
         PaletteKind::WebSearch => (PaletteIcon::Globe, "bg-cyan-50 text-cyan-700"),
         PaletteKind::OrgResolve => (PaletteIcon::Database, "bg-cyan-50 text-cyan-800"),
         PaletteKind::WebVisit => (PaletteIcon::Eye, "bg-cyan-50 text-cyan-800"),
@@ -256,7 +253,6 @@ pub(crate) fn kind_of(kind: &FlowNodeKind) -> PaletteKind {
         FlowNodeKind::ObjectUpsert { .. } => PaletteKind::ObjectUpsert,
         FlowNodeKind::LinkUpsert { .. } => PaletteKind::LinkUpsert,
         FlowNodeKind::CheckRecord { .. } => PaletteKind::CheckRecord,
-        FlowNodeKind::SiteRecipe { .. } => PaletteKind::SiteRecipe,
         FlowNodeKind::WebSearch { .. } => PaletteKind::WebSearch,
         FlowNodeKind::OrgResolve { .. } => PaletteKind::OrgResolve,
         FlowNodeKind::WebVisit { .. } => PaletteKind::WebVisit,
@@ -340,8 +336,7 @@ pub(crate) fn kind_category(kind: PaletteKind) -> PaletteCategory {
         | PaletteKind::ObjectUpsert
         | PaletteKind::LinkUpsert
         | PaletteKind::CheckRecord => PaletteCategory::Ontology,
-        PaletteKind::SiteRecipe
-        | PaletteKind::WebSearch
+        PaletteKind::WebSearch
         | PaletteKind::OrgResolve
         | PaletteKind::WebVisit
         | PaletteKind::SiteCrawl => PaletteCategory::Ingestion,
@@ -597,10 +592,6 @@ pub(crate) fn kind_labels(kind: PaletteKind) -> (String, String) {
         PaletteKind::SheetWrite => (
             t!("flows-palette-sheet-write").to_string(),
             t!("flows-palette-sheet-write-help").to_string(),
-        ),
-        PaletteKind::SiteRecipe => (
-            t!("flows-palette-site-recipe").to_string(),
-            t!("flows-palette-site-recipe-help").to_string(),
         ),
         PaletteKind::WebSearch => (
             t!("flows-palette-web-search").to_string(),

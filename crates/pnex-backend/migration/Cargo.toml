@@ -10,6 +10,7 @@ name = "pnex_migration"
 path = "src/lib.rs"
 
 [dependencies]
+serde_json = { workspace = true }
 
 [dependencies.sea-orm-migration]
 version = "2.0"

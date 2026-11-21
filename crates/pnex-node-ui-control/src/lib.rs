@@ -48,7 +48,6 @@ mod org_resolve;
 mod pipeline_ask;
 mod proxy;
 mod site_crawl;
-mod site_recipe;
 mod web_search;
 mod web_visit;
 

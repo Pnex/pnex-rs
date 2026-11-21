@@ -3,16 +3,16 @@ use super::*;
 
 use crate::app::Route;
 use crate::components::ui::FIELD_LABEL;
-use pnex_core::site_recipe::SiteRecipeNodeConfig;
+use pnex_core::agent_chains::AgentRunNodeConfig;
 
-// ─────────────── site recipe (agents.md D327) ───────────────
+// ─────────────── website rule of an agent run (agents.md D327, D786) ───────────────
 
-/// Website rule inspector: the saved rule played at each message and the
-/// values of its parameters.
+/// Rule fields of the `agent_run` inspector: the saved rule played at each message and
+/// the values of its parameters.
 #[component]
-pub(super) fn SiteRecipeForm(
+pub(super) fn RuleFields(
     mut cx: EditorCx,
-    initial: SiteRecipeNodeConfig,
+    initial: AgentRunNodeConfig,
     can_write: bool,
 ) -> Element {
     let recipes_res = use_resource(|| async { api::site_recipes::all().await.unwrap_or_default() });
@@ -27,25 +27,25 @@ pub(super) fn SiteRecipeForm(
         .map(|r| r.params.clone())
         .unwrap_or_default();
 
-    let mut set = move |next: SiteRecipeNodeConfig| {
+    let mut set = move |next: AgentRunNodeConfig| {
         config.set(next.clone());
         patch_selected(&mut cx, move |node: &mut FlowNode| {
-            if let FlowNodeKind::SiteRecipe { config } = &mut node.kind {
+            if let FlowNodeKind::AgentRun { config } = &mut node.kind {
                 *config = next;
             }
         });
     };
     let on_pick = move |event: Event<FormData>| {
-        set(SiteRecipeNodeConfig {
+        set(AgentRunNodeConfig {
             recipe_id: event.value(),
-            params: Default::default(),
+            ..Default::default()
         });
     };
 
     rsx! {
         div { class: "space-y-3",
             p { class: "text-xs text-gray-500", {t!("flows-site-recipe-help")} }
-            label { class: "block",
+            label { class: "block", "data-testid": "agent-run-rule",
                 span { class: FIELD_LABEL, {t!("flows-site-recipe-rule")} }
                 if loaded && recipes.is_empty() {
                     p { class: "text-xs text-amber-700", {t!("flows-site-recipe-none")} }

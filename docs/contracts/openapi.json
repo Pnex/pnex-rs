@@ -8434,10 +8434,6 @@
       "DeployFlow": {
         "description": "Explicit deployment of a version (projection + runtime reload).\nAbsent `version_number` = latest version.",
         "properties": {
-          "force": {
-            "description": "Deploy even while a `site_recipe` node of the flow waits for a run:\nits outcome is then lost (`flow-collecting` otherwise).",
-            "type": "boolean"
-          },
           "version_number": {
             "format": "int64",
             "type": [
@@ -30045,7 +30041,7 @@
         "type": "string"
       },
       "ScheduledFlow": {
-        "description": "A deployed flow that plays the recipe, and its triggers.",
+        "description": "A deployed flow that plays the recipe (an `agent_run` node), and its triggers.",
         "properties": {
           "cron": {
             "description": "Cron expressions of its inject nodes (UTC).",
@@ -63561,16 +63557,6 @@
             },
             "description": "Flow or version not found"
           },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorDetail"
-                }
-              }
-            },
-            "description": "A navigation rule this flow started is still running (`flow-collecting`, `args.runs`): its outcome would be lost; send `force` to deploy anyway"
-          },
           "503": {
             "content": {
               "application/json": {
@@ -63985,16 +63971,6 @@
               }
             },
             "description": "Flow or version not found"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorDetail"
-                }
-              }
-            },
-            "description": "A navigation rule this flow started is still running (`flow-collecting`, `args.runs`): its outcome would be lost; send `force` to deploy anyway"
           },
           "503": {
             "content": {

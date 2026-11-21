@@ -495,23 +495,27 @@ pub const NODE_DOCS: &[NodeDoc] = &[
     },
     NodeDoc {
         kind: "agent_run",
-        summary: "Starts one run of a hosted agent of the organization (Agents) and answers at once with its id: the flow never waits for the run. Two output ports: 0 started (or joined), 1 refused.",
+        summary: "Starts one run of a hosted agent of the organization (Agents), or plays a saved website rule (Web sites page), and answers at once with its id: the flow never waits for the run. Two output ports: 0 started (or joined), 1 refused.",
         config: &[
             ("agent_id", "id of an agent of the organization — checked at deploy, and the person who deploys must be allowed to run agents"),
+            ("recipe_id", "or the uuid of a saved website rule of the organization (never both); the latest saved version plays, on the server browser or on a browser agent when the rule needs a session"),
+            ("params", "values of the rule's parameters, e.g. {code: RS0101}; msg.params (an object of strings) overrides them"),
             ("inputs", "object: input name declared by the agent → dotted path in the message holding an artifact id, e.g. {\"ticket\": \"payload.ticket\"} or {\"patch\": \"run.outputs.patch\"} after agent_run_finished"),
             ("subject_from", "dotted path of a subject key (repository and ticket, object id) in the message; empty = no subject. One active chain per subject"),
             ("limits", "{runs_max (default 10), llm_calls_max (default 500, all runs together), rounds_max (default 3, runs of the same agent)} of the chain this node opens"),
         ],
-        notes: "Every run started here belongs to a chain: msg.chain_id joins that chain, else the node opens one with its limits and subject. Port 0: msg.run = {run_id, chain_id, joined}, msg.chain_id = chain id; joined = true means the subject already had an active chain, so no second run was started (repeated report). Port 1: msg.error = {code, args}: agent-chain-exhausted (args.reason runs|rounds|llm_calls: hand over to a person), agent-chain-busy (a run of the chain is still running), agent-chain-closed, agent-artifact-not-found, field-invalid (an input missing or undeclared). The run has the agent's rights, never more; a run takes no physical action. To chain, wire agent_run_finished to the next agent_run: its msg.chain_id and msg.run.outputs feed it. Deploying and stopping stay with a person.",
+        notes: "Every run started here belongs to a chain: msg.chain_id joins that chain, else the node opens one with its limits and subject. Port 0: msg.run = {run_id, chain_id, joined}, msg.chain_id = chain id; joined = true means the subject already had an active chain, so no second run was started (repeated report). Port 1: msg.error = {code, args}: agent-chain-exhausted (args.reason runs|rounds|llm_calls: hand over to a person), agent-chain-busy (a run of the chain is still running), agent-chain-closed, agent-artifact-not-found, field-invalid (an input missing or undeclared). The run has the agent's rights, never more; a run takes no physical action. To chain, wire agent_run_finished to the next agent_run: its msg.chain_id and msg.run.outputs feed it. Deploying and stopping stay with a person. A rule run belongs to no chain; it is refused on port 1 with site-recipe-not-found, site-recipe-invalid, site-recipe-param-missing (args.param), site-recipe-no-agent, site-recipe-daily-cap (args.max) or site-recipe-unavailable. Trigger a rule from an inject node with a cron (the studio lists those next runs); read its result with agent_run_finished filtered on the rule.",
     },
     NodeDoc {
         kind: "agent_run_finished",
-        summary: "Event source fed by the ended runs of hosted agents of the organization: one message per run, once, when it ends (succeeded, failed, stopped). One output port.",
+        summary: "Event source fed by the ended runs of hosted agents of the organization, and of the website rules flows played: one message per run, once, when it ends (succeeded, failed, stopped). One output port.",
         config: &[
             ("agent_id", "runs of this agent only; empty = any agent"),
             ("chained_only", "bool: runs that belong to a chain only (started by agent_run)"),
+            ("recipe_id", "runs of this website rule only (started by agent_run); empty = any"),
+            ("outcome", "rule runs of this outcome only: passed, failed (again) or broke (failed right after a passing run: wire it to a notify node to hear once when a site changes); empty = any"),
         ],
-        notes: "Message: payload = msg.run = {run_id, agent_id, chain_id, subject, state, outcome, exit_code, error, llm_calls, outputs: {output name → artifact id}}, msg.chain_id = chain id, topic = state. Route on payload.state / payload.exit_code with a switch, then start the next step with agent_run (inputs from \"run.outputs.<name>\"). Runs that end while the flow is stopped are not replayed.",
+        notes: "Message: payload = msg.run = {run_id, agent_id, chain_id, subject, state, outcome, exit_code, error, llm_calls, outputs: {output name → artifact id}}, msg.chain_id = chain id, topic = state. Route on payload.state / payload.exit_code with a switch, then start the next step with agent_run (inputs from \"run.outputs.<name>\"). Runs that end while the flow is stopped are not replayed. A rule run adds recipe_id, outcome (passed | failed | broke), extracts = {extract name: text} and outputs = {extract name: media id}: on a passing run each extract is also a document of the media library (one document per rule, parameters and extract, a new version only when the content changed; a PDF extract is the PDF file). A failure concludes nothing: never close or delete records on failed or broke.",
     },
     NodeDoc {
         kind: "mail_received",
@@ -599,15 +603,6 @@ pub const NODE_DOCS: &[NodeDoc] = &[
         summary: "Writes an xlsx workbook into the media library: one media per node and file name, a new version at each write. No setting. One output port.",
         config: &[],
         notes: "msg.payload = {name: file name, sheets: [{name (31 characters at most), cells: [{ref: \"B8\", value: text, bold?, wrap?}], merges: [\"B1:E1\"], widths: {B: 60}}]}. Every cell is text (no formula); 16 sheets and 20,000 cells at most. Output msg.payload = {media_id, version, filename}; link the media to an object with link_upsert (e.g. observed_in) to find it again.",
-    },
-    NodeDoc {
-        kind: "site_recipe",
-        summary: "Plays a saved website navigation rule (Web sites page) on the server browser at each message: one site, one rule, its steps journaled like a run started from the studio (trigger flow). Ports: 0 passed, 1 failed again, 2 broke (failed right after a passing run: wire it to a notify node to hear once when a site changes).",
-        config: &[
-            ("recipe_id", "uuid of a saved rule of the organisation (required to deploy); the latest saved version is played"),
-            ("params", "values of the rule's parameters, e.g. {code: RS0101}; msg.params (an object of strings) overrides them"),
-        ],
-        notes: "Trigger it from an inject node with a cron (the studio lists those next runs). msg.payload = {extract name: text}; msg.manifest = {site, recipe, version, run, status, failed_step?, outputs: [{name, kind, sha256, chars, changed, from?, media?, media_version?}]} where changed compares with the previous run that brought the same extract back. On a passing run each extract is also a document of the media library (media = its id; one document per rule, parameters and extract, a new version only when the content changed; a PDF extract is the PDF file). A run takes up to 10 minutes and the node handles one message at a time. A failure concludes nothing: never close or delete records on port 1 or 2. A missing rule or parameter answers on port 1 with msg.error = {code, args}.",
     },
     NodeDoc {
         kind: "web_search",

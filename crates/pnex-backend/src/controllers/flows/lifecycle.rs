@@ -345,6 +345,10 @@ pub(crate) async fn agent_runs_for_deploy(
     let mut violations = Vec::new();
     for n in &candidate_graph.nodes {
         let agent = match &n.kind {
+            // A rule node is checked by the site rules gate (D786).
+            pnex_core::FlowNodeKind::AgentRun { config } if !config.recipe_id.is_empty() => {
+                continue
+            }
             pnex_core::FlowNodeKind::AgentRun { config } => {
                 if let Some((code, message)) = config.check_deployable() {
                     violations.push(pnex_core::FlowViolation::new(
@@ -747,7 +751,6 @@ pub(crate) async fn pin_write_owners_by_device(
     responses(
         (status = 200, body = FlowDeployResult),
         (status = 400, description = "Deploy gate or engine pre-flight violations (pin/recorder exclusivity, unknown controls, actions, streams, taxonomies, range scopes, unresolved functions, unreadable graph, `engine_load`)", body = crate::openapi::ErrorDetail),
-        (status = 409, description = "A navigation rule this flow started is still running (`flow-collecting`, `args.runs`): its outcome would be lost; send `force` to deploy anyway", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Flow or version not found", body = crate::openapi::ErrorDetail),
         (status = 503, description = "The flow runtime did not acknowledge (`flow-runtime`, `args.detail`); database unchanged", body = crate::openapi::ErrorDetail)
     ),
@@ -779,7 +782,6 @@ pub(super) async fn deploy(
     responses(
         (status = 200, body = FlowDeployResult),
         (status = 400, description = "Deploy gate or engine pre-flight violations (pin/recorder exclusivity, unknown controls, actions, streams, taxonomies, range scopes, unresolved functions, unreadable graph, `engine_load`)", body = crate::openapi::ErrorDetail),
-        (status = 409, description = "A navigation rule this flow started is still running (`flow-collecting`, `args.runs`): its outcome would be lost; send `force` to deploy anyway", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Flow or version not found", body = crate::openapi::ErrorDetail),
         (status = 503, description = "The flow runtime did not acknowledge (`flow-runtime`, `args.detail`); database unchanged", body = crate::openapi::ErrorDetail)
     ),
@@ -810,21 +812,6 @@ async fn deploy_version(
         return Err(Error::NotFound);
     };
     let body = body.map(|Json(p)| p);
-    let force = body.as_ref().is_some_and(|p| p.force);
-    // A new deployment drops the flow's nodes: a site_recipe node waiting for
-    // a browser run would never hand its outcome on.
-    if !force && flow.status == pnex_core::FLOW_STATUS_DEPLOYED {
-        let runs = crate::services::site_recipes::flow_collecting(&ctx.db, org.org.id, flow.id)
-            .await
-            .map_err(|_| Error::InternalServerError)?;
-        if runs > 0 {
-            return Err(super::error::conflict_args(
-                "flow-collecting",
-                "A navigation rule of this flow is still running; deploy after it ends or with force.",
-                serde_json::json!({ "runs": runs.to_string() }),
-            ));
-        }
-    }
     let version_number = match body.and_then(|p| p.version_number) {
         Some(n) => n,
         // Version absent → last deployed version by default.
@@ -1180,7 +1167,6 @@ async fn start_stopped(ctx: AppContext, org: OrgContext, flow: flows::Model) -> 
         flow.id,
         Some(Json(pnex_core::DeployFlow {
             version_number: Some(version.version_number),
-            force: false,
         })),
     )
     .await

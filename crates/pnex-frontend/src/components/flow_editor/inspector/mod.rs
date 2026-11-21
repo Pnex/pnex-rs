@@ -238,9 +238,6 @@ fn kind_form(node: &FlowNode, cx: EditorCx, can_write: bool, flow_id: i64) -> El
         FlowNodeKind::SheetWrite { .. } => rsx! {
             p { class: "text-xs text-gray-500", {t!("flows-sheet-write-help")} }
         },
-        FlowNodeKind::SiteRecipe { config } => rsx! {
-            SiteRecipeForm { cx, initial: config.clone(), can_write }
-        },
         FlowNodeKind::WebSearch { config } => rsx! {
             WebSearchForm { cx, initial: config.clone(), can_write }
         },
@@ -378,7 +375,6 @@ use range_upsert::RangeUpsertForm;
 use reg::{RegPidForm, RegTtForm};
 use simple::{DebugForm, DisplayForm, MetricForm};
 use site_crawl::SiteCrawlForm;
-use site_recipe::SiteRecipeForm;
 use text_decide::TextDecideForm;
 use topic_classify::TopicClassifyForm;
 use value::{CalcForm, ValueForm};

@@ -911,26 +911,6 @@ pub async fn hand_to_extension(db: &DatabaseConnection, org_id: i64, run_id: Uui
     moved
 }
 
-/// Runs a flow's `site_recipe` nodes still wait for: deploying that flow
-/// again would drop the node and lose their outcome.
-pub async fn flow_collecting(
-    db: &impl ConnectionTrait,
-    org_id: i64,
-    flow_id: i64,
-) -> Result<i64, sea_orm::DbErr> {
-    let row = db
-        .query_one_raw(stmt(
-            "SELECT count(*) AS n FROM agent_runs a JOIN runner_jobs j ON j.id = a.job_id \
-             WHERE a.org_id = $1 AND a.trigger = 'flow' AND a.plan->'flow'->>'id' = $2 \
-               AND j.state IN ('queued', 'running')",
-            vec![org_id.into(), flow_id.to_string().into()],
-        ))
-        .await?;
-    Ok(row
-        .and_then(|r| r.try_get::<i64>("", "n").ok())
-        .unwrap_or(0))
-}
-
 /// Waits for the end of a run played elsewhere (a browser agent), up to
 /// `limit`; `Running` when it is still not over.
 pub async fn wait_finished(

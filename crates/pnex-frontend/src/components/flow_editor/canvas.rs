@@ -417,7 +417,6 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
         pnex_core::FlowNodeKind::CheckRecord { .. } => kind_labels(PaletteKind::CheckRecord),
         pnex_core::FlowNodeKind::DocumentText { .. } => kind_labels(PaletteKind::DocumentText),
         pnex_core::FlowNodeKind::SheetWrite { .. } => kind_labels(PaletteKind::SheetWrite),
-        pnex_core::FlowNodeKind::SiteRecipe { .. } => kind_labels(PaletteKind::SiteRecipe),
         pnex_core::FlowNodeKind::WebSearch { .. } => kind_labels(PaletteKind::WebSearch),
         pnex_core::FlowNodeKind::MailSend { .. } => kind_labels(PaletteKind::MailSend),
         pnex_core::FlowNodeKind::OrgResolve { .. } => kind_labels(PaletteKind::OrgResolve),
@@ -511,7 +510,6 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
         | pnex_core::FlowNodeKind::CheckRecord { .. }
         | pnex_core::FlowNodeKind::DocumentText { .. }
         | pnex_core::FlowNodeKind::SheetWrite { .. }
-        | pnex_core::FlowNodeKind::SiteRecipe { .. }
         | pnex_core::FlowNodeKind::WebSearch { .. }
         | pnex_core::FlowNodeKind::MailSend { .. }
         | pnex_core::FlowNodeKind::OrgResolve { .. }
@@ -730,7 +728,6 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
         pnex_core::FlowNodeKind::Anomaly { .. }
         | pnex_core::FlowNodeKind::Forecast { .. }
         | pnex_core::FlowNodeKind::Weather { .. }
-        | pnex_core::FlowNodeKind::SiteRecipe { .. }
         | pnex_core::FlowNodeKind::WebSearch { .. }
         | pnex_core::FlowNodeKind::AgentRun { .. }
         | pnex_core::FlowNodeKind::PipelineAsk { .. }
@@ -1374,6 +1371,11 @@ fn node_subtitle(node: &FlowNode) -> String {
             "" => "—".into(),
             p => p.to_string(),
         },
+        // A rule's name lives in the org: the subtitle shows its parameters.
+        pnex_core::FlowNodeKind::AgentRun { config } if !config.recipe_id.is_empty() => {
+            let values: Vec<_> = config.params.values().cloned().collect();
+            format!("⌘ {}", values.join(", "))
+        }
         pnex_core::FlowNodeKind::AgentRun { config } if config.agent_id.is_empty() => "—".into(),
         pnex_core::FlowNodeKind::AgentRun { config } => format!("⇢ {}", config.inputs.len()),
         pnex_core::FlowNodeKind::AgentRunFinished { config } if config.agent_id.is_empty() => {
@@ -1426,13 +1428,6 @@ fn node_subtitle(node: &FlowNode) -> String {
         | pnex_core::FlowNodeKind::DocumentText { .. }
         | pnex_core::FlowNodeKind::SheetWrite { .. } => String::new(),
         pnex_core::FlowNodeKind::SiteCrawl { config } => format!("{} max", config.max_pages),
-        pnex_core::FlowNodeKind::SiteRecipe { config } if config.recipe_id.is_empty() => "—".into(),
-        pnex_core::FlowNodeKind::SiteRecipe { config } => config
-            .params
-            .values()
-            .cloned()
-            .collect::<Vec<_>>()
-            .join(", "),
         pnex_core::FlowNodeKind::Weather { config } => format!(
             "{:.2}, {:.2} · {} min",
             config.latitude, config.longitude, config.interval_min
