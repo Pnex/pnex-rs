@@ -206,6 +206,9 @@ function loaded(id, timeoutMs) {
 export async function agent_tab(id, url) {
   let tab = null;
   if (id >= 0) tab = await api.tabs.get(id).catch(() => null);
+  // The caller's id map dies with the agent session (reconnect, worker restart):
+  // reuse the tab this agent already opened on the same site instead of leaking one.
+  tab ??= await ownTabOn(url);
   const wait = (tabId) => loaded(tabId, 30000);
   if (tab) {
     const ready = wait(tab.id);
@@ -216,8 +219,42 @@ export async function agent_tab(id, url) {
   tab = await api.tabs.create({ url, active: false });
   const ready = wait(tab.id);
   await groupTab(tab.id);
+  await remember(tab.id);
   await ready;
   return tab.id;
+}
+
+const hostOf = (url) => {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return "";
+  }
+};
+
+/** Ids of the tabs this agent opened; storage.session outlives the worker, not the browser (like tab ids). */
+async function ownTabs() {
+  const { "pnex.tabs": ids } = await api.storage.session.get("pnex.tabs");
+  return ids ?? [];
+}
+
+async function remember(tabId) {
+  await api.storage.session.set({ "pnex.tabs": [...(await ownTabs()), tabId] });
+}
+
+/** A still-open tab of this agent on the host of `url`; forgets the closed ones. */
+async function ownTabOn(url) {
+  const host = hostOf(url);
+  const alive = [];
+  let found = null;
+  for (const id of await ownTabs()) {
+    const tab = await api.tabs.get(id).catch(() => null);
+    if (!tab) continue;
+    alive.push(id);
+    if (!found && host && hostOf(tab.url ?? tab.pendingUrl ?? "") === host) found = tab;
+  }
+  await api.storage.session.set({ "pnex.tabs": alive });
+  return found;
 }
 
 async function groupTab(tabId) {
