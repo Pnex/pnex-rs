@@ -25,6 +25,7 @@ pub mod camera;
 pub mod cmd_acks;
 /// Per-pod concurrency caps (CoolProp, vision, runtime checks, uploads).
 pub mod compute_limits;
+pub mod connection_shares;
 pub mod connectors;
 pub mod controls;
 pub mod crawl;

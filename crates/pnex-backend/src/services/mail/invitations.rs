@@ -35,7 +35,7 @@ impl From<sea_orm::DbErr> for InviteError {
 
 /// The person objects that use `address` as an identifier, those the
 /// caller sees (`hide`); none when the org has no such types.
-async fn people(
+pub(crate) async fn people(
     db: &DatabaseConnection,
     org_id: i64,
     address: &str,

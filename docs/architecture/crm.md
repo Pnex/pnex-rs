@@ -216,14 +216,17 @@ PneX ne surveille aucun profil et ne parcourt aucun graphe social (D254). Chaque
 - **Liste des salariés** (D779) : seule la page des salariés d'une entreprise est admise (`browser_agent::people_page_of`, sinon `ext-target-not-people-page`). L'agent fait défiler 5 écrans. Plafond : 10 listes par jour et par org (`ext-people-daily-cap`). Le flow `captured employee lists` écrit un `list_contact` par personne nommée et propose `contact_of`. Aucune `person` n'est créée.
 - **Export de profils réseau** : l'import *Network profiles export (file)* crée une personne par `profile_url` (unique, point de contact). Un flow cherche l'employeur au registre et le propose.
 - **Relations du membre connecté** : un pipeline du pack lit les relations directes du membre qui déploie le flow, 50 pages par jour. Chaque relation devient une personne de clé `profile_url`. Le flow `employers from profiles` la rattache à sa société.
-- **Partage des relations du membre (choix de Shan, 2026-11-20 et 2026-11-21, à coder)** : les relations restent par défaut dans l'org personnelle du membre. Un interrupteur par réseau, sur son profil, les partage avec une org d'équipe. Au premier partage, PneX crée ou trouve par son adresse mail une personne liée au compte du membre. Les liens `knows` partent de cette personne et nourrissent les chemins d'introduction. Couper le partage ferme ses liens `knows`, historique gardé. Une personne que nul autre membre ne connaît, et qui ne porte aucune autre donnée, devient une proposition d'effacement à valider.
+- **Partage des relations du membre (D999, choix de Shan du 2026-11-20 et du 2026-11-21)** : les relations restent par défaut dans l'org où le flow du membre les lit (son org personnelle). Un interrupteur par réseau, sur la page Profil, les partage avec l'org courante. Seul LinkedIn existe. Le pipeline déclare `share: linkedin` sur son écriture `objects`. Le fonctionnement est le suivant :
+  - **Activer** : PneX trouve la personne qui utilise l'adresse mail du membre comme identifiant. Sinon, PneX crée une personne au nom du membre. La table `connection_shares` garde l'interrupteur et cette personne.
+  - **Pendant le partage** : chaque ligne du run du membre arrive aussi dans l'org d'équipe, avec la même clé, et un lien `knows` part de la personne du membre. Une personne déjà là garde ses valeurs. Le serveur relit à chaque écriture que le membre a `ontology:write` dans l'org (R2). Ces liens nourrissent les chemins d'introduction.
+  - **Couper** : les liens `knows` du partage se ferment, historique gardé. Une personne amenée par un partage reçoit une proposition d'effacement si trois conditions sont vraies : aucun lien ouvert, aucun lien fermé hors partage, aucune modification depuis sa création (version 1).
 - **Recherche d'une personne** (D788, `agents.md`) : action `find_profile` sur la fiche, ou flow horaire pour les comptes cibles et prospects.
 
 Le texte capturé est purgé après 30 jours. Une personne opposée n'est ni capturée ni lue (`prospecting-opposed`).
 
 **Relations d'un contact (D976–D977) : gardées (Shan, 2026-11-20).** Le retrait du 2026-11-18 est annulé. La capture passe de la règle `connections_capture` à un pipeline du pack `prospecting_b2b` (PE5.4, en cours, `pipelines.md`). Le code lit les relations d'un contact déclaré en relation avec le membre. Il garde seulement les personnes d'une organisation qui porte l'étiquette du réglage `connections_keep_label`. Il écrit `knows` et propose `employs`. Le code actuel, avant PE5.4 :
 
-- la table `network_connections` (migration `m20261114_000152_network_connections`) et `services/network_connections.rs`.
+- la table `network_connections` (migration `m20261114_000152_network_connections`) et `services/network_connections.rs`, `services/connection_shares.rs`.
 - les routes `GET`/`PUT /api/v1/extension/people/{id}/connection` et `GET`/`POST …/connections-captures`.
 - la règle par défaut `connections_capture` (`pnex-core` `default_rules.rs`, code `ext-connections-hidden`).
 - le réglage `connections_keep_label` de `prospecting_b2b` et le panneau de la fiche (`pages/ontology/profile_capture.rs`).
@@ -466,13 +469,14 @@ Routes (sous `/api/v1`) :
 | `GET`/`POST /extension/organizations/{id}/people-captures` | `extension:read` / `extension:write` | listes de salariés |
 | `GET`/`POST /extension/people/{id}/opposition` | `extension:read` / `extension:write` | opposition |
 | `GET`/`PUT /extension/people/{id}/connection`, `GET`/`POST …/connections-captures` | `extension:read` / `extension:write` | D976–D977 |
+| `GET`/`PUT /extension/connection-shares/{network}` | `ontology:read` / `ontology:write` | partage des relations du membre (D999) |
 
 - **Packs** : `crates/pnex-backend/packs/{companies,companies_fr,prospecting_b2b,prospecting_b2b_fr,crm}.yaml`. Pipelines dans `packs/prospecting_b2b/pipelines/` et `packs/prospecting_b2b_fr/pipelines/`.
 - **Noyau** : `pnex_core::{fold, org_resolve, browser_agent}`, `ontology::{schema, page_render, aggregate, flow, api}`.
-- **Backend** : `services/ontology/{redact, erase, opposition, transitions, changes}.rs`, `services/profiles.rs`, `services/org_resolve.rs`, `services/network_connections.rs`.
-- **Tables** : `objects.erased_at` (migration 000057), `prospecting_oppositions` (000041), `object_imports.per_object_cursor` (000045), `network_connections` (000152). Stream O2 `object_transitions`.
+- **Backend** : `services/ontology/{redact, erase, opposition, transitions, changes}.rs`, `services/profiles.rs`, `services/org_resolve.rs`, `services/network_connections.rs`, `services/connection_shares.rs`.
+- **Tables** : `objects.erased_at` (migration 000057), `prospecting_oppositions` (000041), `object_imports.per_object_cursor` (000045), `network_connections` (000152), `connection_shares` (000165). Stream O2 `object_transitions`.
 - **Erreurs** : `prospecting-opposed`, `ontology-erased`, `ext-target-not-profile`, `ext-profile-daily-cap`, `ext-target-not-people-page`, `ext-people-daily-cap`, `ext-login-required`, `ext-challenge`, `ext-connections-hidden`.
-- **Assistant** : fiches `assistant-kb/sales-follow-up.md`, `personal-data.md`, `company-groups.md`.
+- **Assistant** : fiches `assistant-kb/sales-follow-up.md`, `personal-data.md`, `company-groups.md`, `profile.md`.
 - **Tests** : `tests/crm.rs`, `tests/personal_data.rs`, `tests/partner_watch.rs`, `tests/org_resolve.rs`, `tests/extension.rs`, `tests/mail.rs`, `pnex-node-starlark/tests/pack_rules.rs`, `e2e/tests/crm.spec.ts`.
 
 ## 7. Reste à faire

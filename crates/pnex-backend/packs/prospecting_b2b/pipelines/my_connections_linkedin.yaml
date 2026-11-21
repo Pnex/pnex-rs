@@ -28,6 +28,7 @@ steps:
   - write:
       from: people
       objects:
+        share: linkedin
         objects:
           - as: person
             type: person

@@ -850,9 +850,14 @@ impl Sink for DatasetSink<'_> {
             &Uuid::NAMESPACE_URL,
             format!("pipeline:{}", self.pipeline).as_bytes(),
         );
+        // D999: the member's own connections also go to the orgs they share them with.
+        let shared = match (&target.share, self.user) {
+            (Some(network), Some(user)) => Some((network, user, rows.clone())),
+            _ => None,
+        };
         let rows: Vec<Value> = rows.into_iter().map(Value::Object).collect();
         let source_ref = format!("pipeline:{}", self.pipeline);
-        crate::services::ontology::imports::write_rows(
+        let n = crate::services::ontology::imports::write_rows(
             self.db, self.org, provenance, &source_ref, &mapping, &rows,
         )
         .await
@@ -860,7 +865,14 @@ impl Sink for DatasetSink<'_> {
         .map_err(|e| {
             tracing::info!(org = self.org, pipeline = self.pipeline, error = %e, "pipeline objects not written");
             fail("objects_refused", Value::Null)
-        })
+        })?;
+        if let Some((network, user, rows)) = shared {
+            crate::services::connection_shares::fan_out(
+                self.db, self.org, user, network, target, &rows,
+            )
+            .await;
+        }
+        Ok(n)
     }
 
     async fn model(

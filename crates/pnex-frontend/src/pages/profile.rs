@@ -9,7 +9,7 @@ use dioxus_i18n::t;
 use crate::api;
 use crate::components::icons;
 use crate::components::ui::BTN_PRIMARY;
-use crate::components::ui::{FIELD_LABEL, INPUT};
+use crate::components::ui::{FIELD_HELP, FIELD_LABEL, INPUT};
 use crate::i18n;
 use crate::state::{session, toasts};
 
@@ -208,6 +208,7 @@ pub fn Profile() -> Element {
                             button { class: BTN_PRIMARY, r#type: "submit", {t!("common-save")} }
                         }
                     }
+                    ConnectionShareCard {}
                 }
 
                 // Account actions.
@@ -273,5 +274,50 @@ fn normalize_theme(theme: &str) -> String {
     match theme.to_ascii_lowercase().as_str() {
         "light" | "dark" => theme.to_ascii_lowercase(),
         _ => "auto".into(),
+    }
+}
+
+/// The caller's own LinkedIn connections shared with the current org (D999).
+#[component]
+fn ConnectionShareCard() -> Element {
+    let org_id = crate::state::org::current();
+    let org_name = session::user()
+        .and_then(|u| u.orgs.into_iter().find(|m| Some(m.id) == org_id))
+        .map(|m| m.name)
+        .unwrap_or_default();
+    let can_write = crate::state::access::can("ontology:write");
+    // Reads the current org: fetched again when the member switches org.
+    let mut share = use_resource(move || {
+        let _ = crate::state::org::current();
+        async move { api::extension::connection_share("linkedin").await.ok() }
+    });
+    let shared = share.cloned().flatten().is_some_and(|s| s.shared);
+    rsx! {
+        div { class: "bg-white rounded-lg border border-line",
+            div { class: "p-6 border-b border-gray-200",
+                h2 { class: "text-lg font-semibold text-gray-900", {t!("profile-sharing")} }
+            }
+            div { class: "p-6",
+                label { class: "flex items-center gap-2 text-sm text-ink",
+                    input {
+                        r#type: "checkbox",
+                        checked: shared,
+                        disabled: !can_write,
+                        onchange: move |e| {
+                            let on = e.checked();
+                            spawn(async move {
+                                match api::extension::set_connection_share("linkedin", on).await {
+                                    Ok(_) => toasts::success("toast-saved"),
+                                    Err(err) => toasts::error(err),
+                                }
+                                share.restart();
+                            });
+                        },
+                    }
+                    {t!("profile-share-linkedin", org : org_name)}
+                }
+                p { class: FIELD_HELP, {t!("profile-share-linkedin-help")} }
+            }
+        }
     }
 }

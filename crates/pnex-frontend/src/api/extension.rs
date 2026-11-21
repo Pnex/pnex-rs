@@ -179,6 +179,31 @@ pub async fn set_connection(
     .await
 }
 
+/// `GET /api/v1/extension/connection-shares/{network}` (D999): the caller's own.
+pub async fn connection_share(
+    network: &str,
+) -> Result<pnex_core::browser_agent::ConnectionShare, ApiError> {
+    client::request(
+        reqwest::Method::GET,
+        &format!("/api/v1/extension/connection-shares/{network}"),
+        None,
+    )
+    .await
+}
+
+/// `PUT /api/v1/extension/connection-shares/{network}` (D999).
+pub async fn set_connection_share(
+    network: &str,
+    shared: bool,
+) -> Result<pnex_core::browser_agent::ConnectionShare, ApiError> {
+    client::request(
+        reqwest::Method::PUT,
+        &format!("/api/v1/extension/connection-shares/{network}"),
+        body(&pnex_core::browser_agent::ConnectionShareInput { shared }),
+    )
+    .await
+}
+
 /// `GET /api/v1/extension/people/{id}/connections-captures` (D976).
 pub async fn connections_captures(
     person_id: &str,

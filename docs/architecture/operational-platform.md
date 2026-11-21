@@ -174,6 +174,7 @@ Tableau des écarts :
 | `markets/sec_subsidiaries` pose `subsidiary_of` depuis l'Exhibit 21 | lien affirmé par la source (le groupe déclare ses filiales) : admis | à garder |
 | `prospecting_b2b/profile_capture_*` posent `uses_identifier` vers le profil capté | adresse donnée par un humain sur la fiche de la personne : décision humaine, admis | à garder |
 | Relations d'un contact (D976, PE5.4) : seules les personnes nommant une organisation de la sélection sont gardées, à la collecte | **minimisation** (D254, D341) : une personne hors sélection n'est jamais écrite. `knows` est affirmé par le réseau | **justifié le 2026-11-20** : D976 gardé (Shan), le retrait du 2026-11-18 est annulé. La capture passe dans un pipeline du pack `prospecting_b2b` (PE5.4, en cours) |
+| Partage des relations du membre (D999, `crm.md` §3.6) : la collecte pose `knows` de la personne du membre vers chaque relation, dans l'org d'équipe | `knows` est affirmé par le réseau. Le membre choisit lui-même le partage et sa personne (interrupteur). Une personne trouvée par l'adresse mail du membre est une correspondance exacte d'identifiant : admis | à garder |
 
 Décision sur Q-D998-1 (Q-D998-2 : voir la ligne presse du tableau des écarts) :
 

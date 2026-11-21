@@ -193,6 +193,9 @@ profile-theme-auto = Automatique
 profile-account = Compte
 profile-change-password = Changer de mot de passe
 profile-theme-note = Automatique suit le réglage clair ou sombre de votre système.
+profile-sharing = Partage des relations
+profile-share-linkedin = Partager mes relations LinkedIn avec { $org }
+profile-share-linkedin-help = Vos relations restent dans votre organisation personnelle par défaut. Activé : celles que lit votre propre flow arrivent aussi dans cette organisation, reliées à votre personne par « connaît ». Désactivé : ces liens se ferment, l'historique reste, et chaque personne que nul autre ne connaît devient une proposition d'effacement.
 
 # Pages en attente de phase
 empty-phase = Arrive en phase { $phase }

@@ -2214,3 +2214,116 @@ async fn a_contacts_connections_keep_only_people_at_the_chosen_organizations() {
     })
     .await;
 }
+
+#[tokio::test]
+#[serial]
+async fn a_member_shares_their_own_connections_with_a_team_org_and_stops() {
+    use pnex_backend::services::connection_shares;
+    use pnex_backend::services::pipeline_engine::store::shipped;
+    use sea_orm::{ConnectionTrait, Statement};
+    with_app(|server, env| async move {
+        let mine = personal_org(&server, &env.alice).await;
+        let bobs = personal_org(&server, &env.bob).await;
+        let team: Value = server.post("/api/v1/orgs").add_header("Authorization", format!("Bearer {}", env.bob))
+            .json(&json!({ "name": "Team" })).await.json();
+        let team = team["id"].as_i64().unwrap();
+        for pack in ["investigation", "companies", "prospecting_b2b"] {
+            let (s, e) = call(&server, "POST", &format!("/api/v1/ontology/packs/{pack}/install"), &env.bob, team, None).await;
+            assert_eq!(s, 200, "{pack} {e}");
+        }
+        common::join_org(&server, &env.bob, &env.alice, team, "alice@example.com", "member").await;
+        let q = |sql: &str| Statement::from_string(sea_orm::DatabaseBackend::Postgres, sql.to_string());
+        let alice: i64 = env.db.query_one_raw(q("SELECT id FROM users WHERE email = 'alice@example.com'")).await
+            .unwrap().unwrap().try_get("", "id").unwrap();
+        let obj = |type_key: &str, title: &str, props: Value| json!({ "type_key": type_key, "title": title, "properties": props });
+        let id_of = |v: &Value| v["id"].as_str().unwrap().to_string();
+        let new = |t: &'static str, title: &'static str, props: Value| {
+            let (server, bob) = (&server, env.bob.clone());
+            async move {
+                let (s, v) = call(server, "POST", "/api/v1/ontology/objects", &bob, team, Some(obj(t, title, props))).await;
+                assert_eq!(s, 201, "{v}");
+                id_of(&v)
+            }
+        };
+        let link = |t: &'static str, from: String, to: String| {
+            let (server, bob) = (&server, env.bob.clone());
+            async move {
+                let (s, v) = call(server, "POST", "/api/v1/ontology/links", &bob, team,
+                    Some(json!({ "link_type": t, "source_id": from, "target_id": to }))).await;
+                assert_eq!(s, 201, "{v}");
+            }
+        };
+        // The team already knows Alice by her e-mail, and Ada.
+        let alice_person = new("person", "Alice A.", json!({})).await;
+        let mail = new("identifier", "alice mail", json!({ "kind": "email", "value": "alice@example.com" })).await;
+        link("uses_identifier", alice_person.clone(), mail).await;
+        let ada = new("person", "Ada Example", json!({ "profile_url": "https://www.linkedin.com/in/ada" })).await;
+        let bob_person = new("person", "Bob", json!({})).await;
+
+        let sp = shipped().iter().find(|s| s.id() == "prospecting_b2b/my_connections_linkedin").unwrap();
+        let target = sp.doc.steps.iter().find_map(|s| match s {
+            pnex_core::pipeline::Step::Write(w) => w.objects.clone(),
+            _ => None,
+        }).unwrap();
+        assert_eq!(target.share.as_deref(), Some("linkedin"));
+        let rows: Vec<serde_json::Map<String, Value>> = [("ada", "Ada Example"), ("cleo", "Cleo Test"), ("dan", "Dan Demo")]
+            .iter()
+            .map(|(k, n)| json!({ "url": format!("https://www.linkedin.com/in/{k}"), "name": n, "position": "", "company": "", "place": "" })
+                .as_object().unwrap().clone())
+            .collect();
+        let person_by_url = |k: &'static str| {
+            let db = env.db.clone();
+            async move {
+                db.query_one_raw(q(&format!("SELECT id::text AS id FROM objects WHERE org_id = {team} AND valid_to IS NULL \
+                    AND properties ->> 'profile_url' = 'https://www.linkedin.com/in/{k}'"))).await.unwrap()
+                    .map(|r| r.try_get::<String>("", "id").unwrap())
+            }
+        };
+        let share = "/api/v1/extension/connection-shares/linkedin";
+
+        // Private by default: the member's run writes nothing into the team.
+        let (s, c) = call(&server, "GET", share, &env.alice, team, None).await;
+        assert_eq!((s, c["shared"].as_bool()), (200, Some(false)), "{c}");
+        connection_shares::fan_out(&env.db, mine, alice, "linkedin", &target, &rows).await;
+        assert!(person_by_url("cleo").await.is_none(), "nothing shared yet");
+
+        // Nobody shares into an org they are not a member of; nor an unknown network.
+        let (s, _) = call(&server, "PUT", share, &env.alice, bobs, Some(json!({ "shared": true }))).await;
+        assert_eq!(s, 403);
+        let (s, _) = call(&server, "PUT", "/api/v1/extension/connection-shares/x", &env.alice, team, Some(json!({ "shared": true }))).await;
+        assert_eq!(s, 400);
+
+        // On: Alice's person is found by her e-mail; her connections land with `knows`.
+        let (s, c) = call(&server, "PUT", share, &env.alice, team, Some(json!({ "shared": true }))).await;
+        assert_eq!((s, c["shared"].as_bool(), c["person_id"].as_str()), (200, Some(true), Some(alice_person.as_str())), "{c}");
+        connection_shares::fan_out(&env.db, mine, alice, "linkedin", &target, &rows).await;
+        connection_shares::fan_out(&env.db, mine, alice, "linkedin", &target, &rows).await;
+        let (cleo, dan) = (person_by_url("cleo").await.expect("cleo shared"), person_by_url("dan").await.expect("dan shared"));
+        assert_eq!(person_by_url("ada").await.as_deref(), Some(ada.as_str()), "the team's Ada is reused");
+        let knows = |open: bool| {
+            let (db, p) = (env.db.clone(), alice_person.clone());
+            async move {
+                db.query_one_raw(q(&format!("SELECT count(*) AS n FROM resource_edges WHERE org_id = {team} AND relation = 'knows' \
+                    AND source_object_id = '{p}' AND (valid_to IS NULL) = {open}"))).await.unwrap().unwrap()
+                    .try_get::<i64>("", "n").unwrap()
+            }
+        };
+        assert_eq!(knows(true).await, 3, "one open knows per connection, written once");
+        // Bob knows Cleo too.
+        link("knows", bob_person, cleo.clone()).await;
+
+        // Off: links closed, history kept; only Dan, known by nobody else, is proposed for erasure.
+        let (s, c) = call(&server, "PUT", share, &env.alice, team, Some(json!({ "shared": false }))).await;
+        assert_eq!((s, c["shared"].as_bool()), (200, Some(false)), "{c}");
+        assert_eq!((knows(true).await, knows(false).await), (0, 3));
+        let (_, inbox) = call(&server, "GET", "/api/v1/proposals?limit=50", &env.bob, team, None).await;
+        let erase: Vec<String> = inbox["results"].as_array().unwrap().iter()
+            .filter(|p| p["kind"] == "object_erase" && p["origin"] == "share:linkedin")
+            .map(|p| p.to_string()).collect();
+        assert_eq!(erase.len(), 1, "{inbox}");
+        assert!(erase[0].contains(&dan) && !erase[0].contains(&cleo) && !erase[0].contains(&ada), "{}", erase[0]);
+        connection_shares::fan_out(&env.db, mine, alice, "linkedin", &target, &rows).await;
+        assert_eq!(knows(true).await, 0, "nothing shared once off");
+    })
+    .await;
+}

@@ -6518,6 +6518,38 @@
         ],
         "type": "object"
       },
+      "ConnectionShare": {
+        "description": "Whether the caller shares their own connections of a network with the\norg (crm.md D999). Off by default.",
+        "properties": {
+          "person_id": {
+            "description": "The person of the org that stands for the caller, once shared.",
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "shared": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "shared"
+        ],
+        "type": "object"
+      },
+      "ConnectionShareInput": {
+        "description": "Body of `PUT …/connection-shares/{network}`.",
+        "properties": {
+          "shared": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "shared"
+        ],
+        "type": "object"
+      },
       "ConnectionState": {
         "description": "Where the caller's own network account stands with a person (D977):\ndeclared by the user on the person's page, set to `connected`… by them\nonly. A connections list is explored only for `connected`.",
         "enum": [
@@ -59699,6 +59731,181 @@
           }
         ],
         "summary": "Rename a browser agent, change its mode or share it",
+        "tags": [
+          "extension"
+        ]
+      }
+    },
+    "/api/v1/extension/connection-shares/{network}": {
+      "get": {
+        "description": "Whether the caller shares their own connections of this network (`linkedin`) with the org (D999), and the person of the org that stands for them. Off by default. Each user has their own. Any member.",
+        "operationId": "extension_connection_share_get",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Network: `linkedin`",
+            "in": "path",
+            "name": "network",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionShare"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`network`: unknown network"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation · `access-denied` (`args.permission` = `ontology:read`): the caller's role does not grant it"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Read whether the caller shares their own connections with the org",
+        "tags": [
+          "extension"
+        ],
+        "x-pnex-as-of": "current_only"
+      },
+      "put": {
+        "description": "Turns on or off the sharing of the caller's own connections of this network (`linkedin`) with the org (D999). On: the org gets a person standing for the caller (the person using the caller's e-mail as an identifier, else a new one), and each connection the caller's own run reads lands in the org too, linked by `knows` from that person. Off: those links close, history kept, and each person nobody else knows that carries nothing else gets an erasure proposal to validate. Requires the right to write objects in the org.",
+        "operationId": "extension_connection_share_update",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Network: `linkedin`",
+            "in": "path",
+            "name": "network",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConnectionShareInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionShare"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`network`: unknown network"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation · `access-denied` (`args.permission` = `ontology:write`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`ontology-not-found`: the org has no person type"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Share the caller's own connections with the org, or stop",
         "tags": [
           "extension"
         ]

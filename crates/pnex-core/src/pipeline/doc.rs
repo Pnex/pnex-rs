@@ -833,6 +833,11 @@ pub struct ObjectsTarget {
     /// `snapshot` closes the objects absent from the rows.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub snapshot: bool,
+    /// The rows are the run member's own connections on this network
+    /// (crm.md D999): also written into each team org where the member
+    /// shares them, with a `knows` link from the member's person.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub share: Option<String>,
 }
 
 /// A replay test (D945): recorded answers, and what must come out.

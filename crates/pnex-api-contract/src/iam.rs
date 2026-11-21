@@ -754,6 +754,14 @@ pub const OPERATIONS: &[(&str, Access)] = &[
         Access::Org("extension:write"),
     ),
     (
+        "extension_connection_share_get",
+        Access::Org("ontology:read"),
+    ),
+    (
+        "extension_connection_share_update",
+        Access::Org("ontology:write"),
+    ),
+    (
         "extension_connections_captures_list",
         Access::Org("extension:read"),
     ),

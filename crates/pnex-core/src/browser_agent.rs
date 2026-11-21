@@ -603,6 +603,25 @@ pub struct PersonConnectionInput {
     pub state: ConnectionState,
 }
 
+/// Whether the caller shares their own connections of a network with the
+/// org (crm.md D999). Off by default.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ConnectionShare {
+    pub shared: bool,
+    /// The person of the org that stands for the caller, once shared.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
+    pub person_id: Option<String>,
+}
+
+/// Body of `PUT …/connection-shares/{network}`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ConnectionShareInput {
+    pub shared: bool,
+}
+
 /// A profile capture asked for a person, with where it stands (D333).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]

@@ -152,6 +152,7 @@ pub const EXPOSED: &[&str] = &[
     "extension_missions_list",
     "extension_people_captures_list",
     "extension_person_connection_get",
+    "extension_connection_share_get",
     "extension_connections_captures_list",
     "extension_profile_captures_list",
     "extension_videos_list",
@@ -674,6 +675,8 @@ pub const EXCLUDED: &[(&str, &[&str])] = &[
             "orgs_invitations_create",
             "orgs_invitations_list",
             "orgs_members_update",
+            // Sharing one's own connections with an org is the member's consent (D999).
+            "extension_connection_share_update",
         ],
     ),
     (

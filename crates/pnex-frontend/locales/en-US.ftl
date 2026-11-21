@@ -193,6 +193,9 @@ profile-theme-auto = Auto
 profile-account = Account
 profile-change-password = Change password
 profile-theme-note = Auto follows the light or dark setting of your system.
+profile-sharing = Connections sharing
+profile-share-linkedin = Share my LinkedIn connections with { $org }
+profile-share-linkedin-help = Your connections stay in your personal organization by default. On: the ones your own flow reads also land in this organization, linked to your person by “knows”. Off: those links close, history kept, and each person nobody else knows becomes an erasure proposal.
 
 # Pages en attente de phase
 empty-phase = Comes in phase { $phase }

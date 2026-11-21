@@ -81,6 +81,10 @@ pub fn routes() -> Routes {
             "/people/{id}/connections-captures",
             get(connections_captures).post(capture_connections),
         )
+        .add(
+            "/connection-shares/{network}",
+            get(connection_share).put(set_connection_share),
+        )
         .add("/missions", get(missions).post(create_mission))
         .add(
             "/missions/{id}",
@@ -123,7 +127,9 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
         person_connection,
         set_person_connection,
         connections_captures,
-        capture_connections
+        capture_connections,
+        connection_share,
+        set_connection_share
     ))]
     struct Doc;
     <Doc as utoipa::OpenApi>::openapi()
@@ -1605,5 +1611,77 @@ async fn capture_connections(
     match network_connections::request(&ctx, org.org.id, org.auth.user.id, id).await {
         Ok(m) => Ok((StatusCode::CREATED, format::json(m)).into_response()),
         Err(e) => extension_error(e),
+    }
+}
+
+/// `GET /api/v1/extension/connection-shares/{network}` — every member.
+#[utoipa::path(
+    get,
+    path = "/api/v1/extension/connection-shares/{network}",
+    tag = "extension",
+    operation_id = "extension_connection_share_get",
+    summary = "Read whether the caller shares their own connections with the org",
+    description = "Whether the caller shares their own connections of this network (`linkedin`) with the org (D999), and the person of the org that stands for them. Off by default. Each user has their own. Any member.",
+    params(("network" = String, Path, description = "Network: `linkedin`")),
+    responses(
+        (status = 200, body = pnex_core::browser_agent::ConnectionShare),
+        (status = 400, description = "`network`: unknown network", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn connection_share(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path(network): Path<String>,
+) -> Result<Response> {
+    use crate::services::connection_shares;
+    match connection_shares::get(&ctx.db, org.org.id, org.auth.user.id, &network).await {
+        Ok(c) => format::json(c),
+        Err(e) => crate::controllers::ontology::onto_error(e),
+    }
+}
+
+/// `PUT /api/v1/extension/connection-shares/{network}` — `ontology:write`.
+#[utoipa::path(
+    put,
+    path = "/api/v1/extension/connection-shares/{network}",
+    tag = "extension",
+    operation_id = "extension_connection_share_update",
+    summary = "Share the caller's own connections with the org, or stop",
+    description = "Turns on or off the sharing of the caller's own connections of this network (`linkedin`) with the org (D999). On: the org gets a person standing for the caller (the person using the caller's e-mail as an identifier, else a new one), and each connection the caller's own run reads lands in the org too, linked by `knows` from that person. Off: those links close, history kept, and each person nobody else knows that carries nothing else gets an erasure proposal to validate. Requires the right to write objects in the org.",
+    params(("network" = String, Path, description = "Network: `linkedin`")),
+    request_body = pnex_core::browser_agent::ConnectionShareInput,
+    responses(
+        (status = 200, body = pnex_core::browser_agent::ConnectionShare),
+        (status = 404, description = "`ontology-not-found`: the org has no person type", body = crate::openapi::ErrorDetail),
+        (status = 400, description = "`network`: unknown network", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn set_connection_share(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path(network): Path<String>,
+    Json(input): Json<pnex_core::browser_agent::ConnectionShareInput>,
+) -> Result<Response> {
+    use crate::services::connection_shares;
+    let hide = match crate::controllers::ontology::redaction(&ctx, &org).await {
+        Ok(h) => h,
+        Err(e) => return crate::controllers::ontology::onto_error(e),
+    };
+    let actor = crate::controllers::ontology::actor(&org);
+    match connection_shares::set(
+        &ctx.db,
+        org.org.id,
+        &actor,
+        &org.auth.user,
+        &hide,
+        &network,
+        input.shared,
+    )
+    .await
+    {
+        Ok(c) => format::json(c),
+        Err(e) => crate::controllers::ontology::onto_error(e),
     }
 }
