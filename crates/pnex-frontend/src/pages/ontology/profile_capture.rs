@@ -49,11 +49,8 @@ pub fn ProfileCaptureDialog(
     } else {
         t!("profile-capture-title")
     };
-    let placeholder = if people {
-        "https://www.linkedin.com/company/…/people/"
-    } else {
-        "https://www.linkedin.com/in/…"
-    };
+    // The engine names no network: the profile's site is a rule of a pack.
+    let placeholder = "https://…";
 
     rsx! {
         FormDialog {

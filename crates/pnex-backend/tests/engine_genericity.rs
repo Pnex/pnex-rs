@@ -343,11 +343,6 @@ const HOST_DEBT: &[(&str, &[&str], &str)] = &[
         "profile networks of the browser agents, to become rules of a pack (PE5)",
     ),
     (
-        "pnex-frontend/src/pages/ontology/profile_capture.rs",
-        &["www.linkedin.com"],
-        "placeholder of the profile capture form (PE5)",
-    ),
-    (
         "pnex-extension/src/",
         &["www.tiktok.com", "www.youtube.com", "x.com"],
         "site adapters of the extension, to become rules (agents.md D780)",
