@@ -255,11 +255,11 @@ pub async fn find_by_key<C: ConnectionTrait>(
 async fn check_claim<C: ConnectionTrait>(
     db: &C,
     org_id: i64,
-    type_key: &str,
+    def: &ObjectTypeDef,
     claim: Option<Uuid>,
     props: &Map<String, Value>,
 ) -> Result<()> {
-    if type_key != CLAIM || props.get("status").and_then(Value::as_str) != Some(CORROBORATED) {
+    if !is_claim(def) || props.get("status").and_then(Value::as_str) != Some(CORROBORATED) {
         return Ok(());
     }
     let Some(claim) = claim else {
@@ -296,7 +296,10 @@ pub(crate) fn claim_note(props: &Map<String, Value>) -> Option<String> {
         .map(String::from)
 }
 
-const CLAIM: &str = "claim";
+/// The type carrying the claim role (D441) keeps the corroboration rule.
+fn is_claim(def: &ObjectTypeDef) -> bool {
+    def.role.as_deref() == Some(pnex_core::ontology::roles::CLAIM)
+}
 const CLAIM_NOTE: &str = "corroboration_note";
 const CORROBORATED: &str = "corroborated";
 
@@ -345,7 +348,7 @@ pub async fn create_with<C: ConnectionTrait>(
     let mut props = check_properties(db, org_id, def, &input.properties).await?;
     stamp(def, None, &mut props);
     check_unique(db, org_id, def, &props, None).await?;
-    check_claim(db, org_id, &def.key, None, &props).await?;
+    check_claim(db, org_id, def, None, &props).await?;
     let id = Uuid::new_v4();
     let row = objects::ActiveModel {
         id: Set(id),
@@ -450,7 +453,7 @@ pub async fn update_in_with<C: ConnectionTrait>(
         .filter(|_| concluded)
         .map(String::from);
     if status_changed {
-        check_claim(db, org_id, &def.key, Some(id), &props).await?;
+        check_claim(db, org_id, def, Some(id), &props).await?;
     }
     let now = sea_orm::prelude::DateTimeWithTimeZone::from(chrono::Utc::now());
     let done = objects::Entity::update_many()
@@ -687,7 +690,7 @@ pub async fn create_many_with<C: ConnectionTrait>(
             return Err(OntologyError::SystemReadOnly);
         }
         require_role(def, actor)?;
-        if def.key == CLAIM {
+        if is_claim(def) {
             let v = create_with(db, s, org_id, actor, input).await?;
             ids[i] = Uuid::parse_str(&v.id).map_err(|_| OntologyError::NotFound)?;
             continue;
@@ -779,7 +782,7 @@ pub async fn update_many_with<C: ConnectionTrait>(
         let Some(expected) = input.expected_version else {
             return Err(super::invalid("expected_version", FIELD_REQUIRED));
         };
-        if def.key == CLAIM || def.key == KIND_CASE {
+        if is_claim(def) || def.key == KIND_CASE {
             update_in_with(db, s, org_id, actor, *id, input).await?;
             continue;
         }

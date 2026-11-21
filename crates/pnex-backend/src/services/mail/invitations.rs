@@ -41,15 +41,25 @@ async fn people(
     address: &str,
     hide: &Redaction,
 ) -> Vec<String> {
+    use pnex_core::ontology::roles;
+    let Ok(s) = crate::services::ontology::schema(db, org_id).await else {
+        return Vec::new();
+    };
+    let (Some(identifier), Some(uses)) = (
+        s.type_key(roles::IDENTIFIER),
+        s.link_key(roles::USES_IDENTIFIER),
+    ) else {
+        return Vec::new();
+    };
     let q = OntologyQuery {
-        type_key: Some("identifier".into()),
+        type_key: Some(identifier.into()),
         filters: vec![PropertyFilter {
             key: "value".into(),
             op: FilterOp::Eq,
             value: json!(address),
         }],
         traverse: vec![Hop {
-            link_type: "uses_identifier".into(),
+            link_type: uses.into(),
             direction: Direction::In,
         }],
         limit: Some(5),

@@ -39,6 +39,7 @@ const KINDS: &[&str] = &[
 
 fn blank(key: &str) -> ObjectTypeDef {
     ObjectTypeDef {
+        role: None,
         names: Default::default(),
         key: key.to_string(),
         name: String::new(),

@@ -264,11 +264,17 @@ async fn keep_set(
         Some((n, v)) => (n.trim().to_string(), Some(v.trim().to_string())),
         None => (label, None),
     };
+    let s = ontology::schema(db, org_id)
+        .await
+        .map_err(|e| ExtensionError::Db(sea_orm::DbErr::Custom(e.to_string())))?;
+    let Some(organization) = s.type_key(pnex_core::ontology::roles::ORGANIZATION) else {
+        return Ok(Vec::new());
+    };
     let ids: Vec<Uuid> = crate::services::resources::labels::ids_with_label(
         db,
         org_id,
         &[filter],
-        Some("organization"),
+        Some(organization),
     )
     .await?
     .into_iter()

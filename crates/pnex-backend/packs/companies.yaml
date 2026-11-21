@@ -26,10 +26,11 @@
 # Since 2.0.0 every identifier is English (breaking).
 # Since 2.2.0 an establishment carries its postal address, as the register
 # publishes it (one line).
+# Since 2.4.0 `manages` declares its role (D441).
 key: companies
 name: Companies
 names: {fr: "Entreprises"}
-version: "2.3.0"
+version: "2.4.0"
 requires: [investigation]
 description: Legal units of any country, their establishments on the map and their officers by mandate; country packs add the local registers.
 descriptions: {fr: "Unités légales de tout pays, leurs établissements sur la carte et leurs dirigeants par mandat ; les packs par pays ajoutent les registres locaux."}
@@ -77,6 +78,7 @@ link_types:
     to_types: [organization]
     one_target: true
   - key: manages
+    role: manages
     name: directs
     names: {fr: "dirige"}
     inverse_name: is directed by

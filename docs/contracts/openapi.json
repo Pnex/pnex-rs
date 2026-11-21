@@ -14376,6 +14376,13 @@
             "description": "Erasing a source whose title is personal proposes erasing the targets\nof these links, open or closed: they are shared with other people, so\na person decides (crm.md D610).",
             "type": "boolean"
           },
+          "role": {
+            "description": "Shared concept this link type stands for (D441, [`roles::LINK`]).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "system": {
             "type": "boolean"
           },
@@ -18586,6 +18593,13 @@
               "$ref": "#/components/schemas/PropertyDef"
             },
             "type": "array"
+          },
+          "role": {
+            "description": "Shared concept this type stands for (D441, [`roles::OBJECT`]): the engine\nfinds the type by it, never by its key.",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "system": {
             "description": "System types are native tables exposed through an adapter (D177);\nthey cannot be deleted.",

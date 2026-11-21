@@ -2782,3 +2782,35 @@ async fn declared_knowledge_time_hides_later_facts() {
     })
     .await;
 }
+
+/// external-apps.md D441: a type or link type declares the role of a shared
+/// concept; an unknown role is refused, and a role names one type of the org.
+#[tokio::test]
+#[serial]
+async fn a_role_names_one_type_of_the_org() {
+    with_app(|server, env| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let post = |path: &'static str, body: Value| {
+            let (server, token) = (&server, env.alice.clone());
+            async move { call(server, "POST", path, &token, org, Some(body)).await }
+        };
+        let ty = |key: &str, role: &str| json!({"def": {"key": key, "name": key, "role": role}});
+        let (st, t) = post("/api/v1/ontology/types", ty("contact", "person")).await;
+        assert_eq!(st, 201, "{t}");
+        assert_eq!(t["def"]["role"], "person");
+        let (st, e) = post("/api/v1/ontology/types", ty("human", "person")).await;
+        assert_eq!((st, e["errors"]["fields"]["role"].as_str()), (400, Some("unique")), "{e}");
+        let (st, e) = post("/api/v1/ontology/types", ty("thing", "nope")).await;
+        assert_eq!((st, e["errors"]["fields"]["role"].as_str()), (400, Some("invalid")), "{e}");
+        let link = |key: &str, role: &str| {
+            json!({"key": key, "name": key, "role": role, "from_types": ["contact"], "to_types": ["contact"]})
+        };
+        let (st, l) = post("/api/v1/ontology/link-types", link("acquainted", "knows")).await;
+        assert_eq!(st, 201, "{l}");
+        let (st, e) = post("/api/v1/ontology/link-types", link("met", "knows")).await;
+        assert_eq!((st, e["errors"]["fields"]["role"].as_str()), (400, Some("unique")), "{e}");
+        let (st, e) = post("/api/v1/ontology/link-types", link("likes", "person")).await;
+        assert_eq!((st, e["errors"]["fields"]["role"].as_str()), (400, Some("invalid")), "{e}");
+    })
+    .await;
+}

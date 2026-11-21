@@ -9,7 +9,7 @@ use pnex_core::media_analysis::{AnalysisStep, MediaAnalysis};
 use pnex_core::media_ingest::{AsrModel, AsrProfile, AsrTask, AsrTestResult};
 use pnex_core::ontology::api::{ObjectView, QueryResult};
 use pnex_core::vision::ModelCheckStatus;
-use pnex_core::voice_id::{VoiceProfileInput, VoiceProfileView, VoiceTestResult, PERSON_TYPE};
+use pnex_core::voice_id::{VoiceProfileInput, VoiceProfileView, VoiceTestResult};
 use pnex_core::{OrgMembership, Paginated, TokenResponse, UserInfo};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -607,10 +607,24 @@ impl Session {
             }
             None => {
                 let title = self.email.clone();
+                // The org's type carrying the person role (D441).
+                let types: Value = self
+                    .org_json(org, |h, u| {
+                        h.get(format!("{u}/api/v1/ontology/types?limit=500"))
+                    })
+                    .await?;
+                let person_type = types["results"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .find(|t| t["def"]["role"] == pnex_core::ontology::roles::PERSON)
+                    .and_then(|t| t["def"]["key"].as_str())
+                    .ok_or(ApiError::NotPnex)?
+                    .to_string();
                 let person: Value = self
                     .org_json(org, |h, u| {
                         h.post(format!("{u}/api/v1/ontology/objects"))
-                            .json(&json!({"type_key": PERSON_TYPE, "title": title}))
+                            .json(&json!({"type_key": person_type, "title": title}))
                     })
                     .await?;
                 let object_id = person["id"].as_str().ok_or(ApiError::NotPnex)?.to_owned();

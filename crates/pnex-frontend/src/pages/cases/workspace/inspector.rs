@@ -783,13 +783,14 @@ fn PathFinder(id: String, workspace: CaseWorkspace) -> Element {
             p.set(Vec::new());
             return;
         }
-        let links: &[&str] = if people_only() {
-            pnex_core::ontology::api::INTRODUCTION_LINKS
+        let keys: Vec<String> = if people_only() {
+            crate::state::roles::link_keys(pnex_core::ontology::api::INTRODUCTION_LINKS)
         } else {
-            &[]
+            Vec::new()
         };
         ws.spawn(async move {
-            match crate::api::ontology::path(&from, &to, links).await {
+            let links: Vec<&str> = keys.iter().map(String::as_str).collect();
+            match crate::api::ontology::path(&from, &to, &links).await {
                 Ok(steps) => p.set(steps),
                 Err(e) if e.status == Some(404) => {
                     p.set(Vec::new());
@@ -912,7 +913,10 @@ fn Ownership(id: String) -> Element {
         .clone()
         .unwrap_or_default()
         .into_iter()
-        .filter(|l| l.link_type == "owns" && l.valid_to.is_none())
+        .filter(|l| {
+            l.link_type == crate::state::roles::link_key(pnex_core::ontology::roles::OWNS)
+                && l.valid_to.is_none()
+        })
         .collect();
     if links.is_empty() {
         return rsx! {};
@@ -993,8 +997,12 @@ fn Ownership(id: String) -> Element {
                 ul { class: "space-y-0.5 text-sm",
                     for st in owners {
                         {
-                            let flag = types.get(&st.id).is_some_and(|t| t == "person")
-                                && st.percent >= BENEFICIAL_OWNER_PERCENT;
+                            let flag = types
+                                .get(&st.id)
+                                .is_some_and(|t| crate::state::roles::is(
+                                    t,
+                                    pnex_core::ontology::roles::PERSON,
+                                )) && st.percent >= BENEFICIAL_OWNER_PERCENT;
                             row(st, flag)
                         }
                     }

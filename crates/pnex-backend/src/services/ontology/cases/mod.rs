@@ -43,6 +43,7 @@ use pnex_core::ontology::api::{
     CaseOpenInput, CasePlace, CaseWorkspace, CaseZone, LinkInput, ObjectInput, ObjectRef,
     ObjectView,
 };
+use pnex_core::ontology::roles;
 use pnex_core::ontology::{
     CASE_LEGAL_BASIS, CASE_STATUS, EVENT_OCCURRED, EVENT_ORIGIN, INVOLVES_DETAIL, INVOLVES_ROLE,
     KIND_CASE, KIND_EVENT, KIND_NOTE, REL_INVOLVES, REL_IN_CASE,
@@ -55,26 +56,27 @@ use sea_orm::{
 use serde_json::{Map, Value};
 use uuid::Uuid;
 
-use super::{invalid, links, objects, parse_instant, schema, Actor, OntologyError, Result};
+use super::{
+    invalid, links, objects, parse_instant, schema, Actor, OntologyError, OrgSchema, Result,
+};
 use crate::models::_entities::{map_pins, objects as object_rows, resource_edges};
 use crate::services::resources::containment;
 
-/// Pack types the case logic knows by key (packs/investigation.yaml); an org
-/// without the pack simply never meets them.
-pub(crate) const T_PERSON: &str = "person";
-const T_ORGANIZATION: &str = "organization";
-pub(crate) const T_PLACE: &str = "place";
-const T_HYPOTHESIS: &str = "hypothesis";
-
-/// Role proposed when an object is attached (K21), changeable afterwards.
-pub fn default_role(type_key: &str) -> &'static str {
-    match type_key {
-        T_PERSON | T_ORGANIZATION => "actor",
-        KIND_MAP_PIN | T_PLACE => "context",
-        KIND_NOTE | T_HYPOTHESIS => "hypothesis",
-        KIND_FLOW => "source",
+/// Role proposed when an object is attached (K21), changeable afterwards:
+/// from the role of its type (D441), else from its native kind.
+pub fn default_role(type_role: Option<&str>, type_key: &str) -> &'static str {
+    match (type_role, type_key) {
+        (Some(roles::PERSON | roles::ORGANIZATION), _) => "actor",
+        (Some(roles::PLACE), _) | (_, KIND_MAP_PIN) => "context",
+        (Some(roles::HYPOTHESIS), _) | (_, KIND_NOTE) => "hypothesis",
+        (_, KIND_FLOW) => "source",
         _ => "evidence",
     }
+}
+
+/// Is the object's type the one carrying `role` in the org (D441)?
+pub(crate) fn has_role(s: &OrgSchema, type_key: &str, role: &str) -> bool {
+    s.type_role(type_key) == Some(role)
 }
 
 /// Open links of a case, as read inside the current transaction.
@@ -200,13 +202,13 @@ fn parse_id(field: &str, raw: &str) -> Result<Uuid> {
 }
 
 /// K38: a person joins a case only once its processing basis is declared.
-fn guard_person(case: &object_rows::Model, obj: &object_rows::Model) -> Result<()> {
+fn guard_person(s: &OrgSchema, case: &object_rows::Model, obj: &object_rows::Model) -> Result<()> {
     let declared = case
         .properties
         .get(CASE_LEGAL_BASIS)
         .and_then(Value::as_str)
         .is_some_and(|b| !b.trim().is_empty());
-    if obj.type_key == T_PERSON && !declared {
+    if has_role(s, &obj.type_key, roles::PERSON) && !declared {
         return Err(OntologyError::CaseLegalBasisRequired);
     }
     Ok(())
@@ -433,7 +435,8 @@ async fn attach_in<C: ConnectionTrait>(
     if obj.valid_to.is_some() || obj.id == case_id {
         return Err(OntologyError::NotFound);
     }
-    guard_person(&m.case, &obj)?;
+    let s = schema(db, org_id).await?;
+    guard_person(&s, &m.case, &obj)?;
     let Some(raw) = &input.event_id else {
         // Undated piece, or an existing event joining the case.
         let member = m.is_event(obj_id) || m.attached(obj_id) || m.undated_link(obj_id).is_some();
@@ -479,11 +482,10 @@ async fn attach_in<C: ConnectionTrait>(
     if open.is_none() || changed {
         let mut attrs = Map::new();
         let kept_role = current.as_ref().and_then(|(r, _)| r.clone());
-        let role = input
-            .role
-            .clone()
-            .or(kept_role)
-            .unwrap_or_else(|| default_role(&obj.type_key).to_string());
+        let role =
+            input.role.clone().or(kept_role).unwrap_or_else(|| {
+                default_role(s.type_role(&obj.type_key), &obj.type_key).to_string()
+            });
         attrs.insert(INVOLVES_ROLE.into(), role.into());
         let detail = if input.detail.is_some() {
             wanted_detail
@@ -786,11 +788,12 @@ mod tests {
 
     #[test]
     fn default_roles_follow_the_object_type() {
-        assert_eq!(default_role(T_PERSON), "actor");
-        assert_eq!(default_role(KIND_MAP_PIN), "context");
-        assert_eq!(default_role(KIND_NOTE), "hypothesis");
-        assert_eq!(default_role(KIND_FLOW), "source");
-        assert_eq!(default_role("media_asset"), "evidence");
+        assert_eq!(default_role(Some(roles::PERSON), "contact"), "actor");
+        assert_eq!(default_role(None, KIND_MAP_PIN), "context");
+        assert_eq!(default_role(Some(roles::PLACE), "site"), "context");
+        assert_eq!(default_role(None, KIND_NOTE), "hypothesis");
+        assert_eq!(default_role(None, KIND_FLOW), "source");
+        assert_eq!(default_role(None, "media_asset"), "evidence");
     }
 
     #[test]

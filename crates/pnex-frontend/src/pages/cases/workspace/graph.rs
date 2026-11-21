@@ -11,6 +11,7 @@
 //! Drawn by Sigma.js when the browser can (cases.md, bridge in
 //! `graph_viewer.rs`), by the SVG below otherwise.
 
+use pnex_core::ontology::roles as r;
 use std::collections::{HashMap, HashSet};
 
 use dioxus::prelude::*;
@@ -58,17 +59,25 @@ pub(super) struct GNode {
     pub evidence: usize,
 }
 
-/// Colour family of an object type in the graph (cases.md GS6).
+/// Colour family of an object type in the graph (cases.md GS6), from the role
+/// of the type (D441); a family is named by its role word.
 pub(super) fn family(type_key: &str) -> &'static str {
-    match type_key {
-        "person" => "person",
-        // An outlet or a party is an organization for the reader (media_coverage).
-        "organization" | "media" | "party" => "organization",
-        "place" => "place",
-        "piece" => "piece",
-        "claim" | "hypothesis" | "statement" => "claim",
-        "identifier" => "identifier",
-        _ => "other",
+    let is = |role| crate::state::roles::is(type_key, role);
+    if is(r::PERSON) {
+        r::PERSON
+    // An outlet or a party is an organization for the reader (media_coverage).
+    } else if is(r::ORGANIZATION) || is(r::PARTY) || type_key == "media" {
+        r::ORGANIZATION
+    } else if is(r::PLACE) {
+        r::PLACE
+    } else if is(r::PIECE) {
+        r::PIECE
+    } else if is(r::CLAIM) || is(r::HYPOTHESIS) || is(r::STATEMENT) {
+        r::CLAIM
+    } else if is(r::IDENTIFIER) {
+        r::IDENTIFIER
+    } else {
+        "other"
     }
 }
 
@@ -212,13 +221,13 @@ pub(super) fn build(
 /// Families the graph can hide; `piece` and `claim` go together as the
 /// evidence layer, hidden by default (K49).
 pub(super) const FAMILIES: [&str; 7] = [
-    "person",
-    "organization",
+    r::PERSON,
+    r::ORGANIZATION,
     // Hideable like the others: thousands of imported contracts can fill
     // the whole graph.
     "event",
-    "place",
-    "identifier",
+    r::PLACE,
+    r::IDENTIFIER,
     "other",
     EVIDENCE,
 ];
@@ -227,9 +236,9 @@ pub(super) const EVIDENCE: &str = "evidence";
 /// Colour token of a family chip: the same as its nodes in graph.js.
 fn family_token(family: &str) -> &'static str {
     match family {
-        "person" => "signal",
-        "organization" => "ok",
-        "place" | "identifier" => "warn",
+        r::PERSON => "signal",
+        r::ORGANIZATION => "ok",
+        r::PLACE | r::IDENTIFIER => "warn",
         EVIDENCE => "mark",
         "event" => "ink",
         _ => "idle",
@@ -237,7 +246,7 @@ fn family_token(family: &str) -> &'static str {
 }
 
 fn is_evidence(family: &str) -> bool {
-    matches!(family, "piece" | "claim")
+    matches!(family, r::PIECE | r::CLAIM)
 }
 
 /// The graph without the hidden families. A hidden piece or claim is not

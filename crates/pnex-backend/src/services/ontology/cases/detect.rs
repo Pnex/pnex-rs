@@ -34,8 +34,9 @@ use uuid::Uuid;
 use super::super::{invalid, links, parse_instant, proposals, ts, Actor, OntologyError, Result};
 use super::signals::events_span;
 use super::tracks::{load, MAX_SPAN_DAYS};
-use super::{create_event_in, membership, workspace, zones_of, T_PLACE};
+use super::{create_event_in, has_role, membership, workspace, zones_of};
 use crate::services::openobserve::Client;
+use pnex_core::ontology::roles;
 
 const CO_PRESENCE: &str = "co_presence@1";
 const STOP: &str = "stop@1";
@@ -596,6 +597,7 @@ pub(crate) async fn event_of<C: ConnectionTrait>(
     }
     // Tracked members act; the area of a visit is context.
     let types = links::refs(db, org_id, refs.iter().copied()).await?;
+    let s = super::super::schema(db, org_id).await?;
     let event = CaseEventInput {
         title: title.to_string(),
         occurred: occurred(from_ms, vals.get("to_ms").and_then(Value::as_i64)),
@@ -603,9 +605,9 @@ pub(crate) async fn event_of<C: ConnectionTrait>(
         attach: refs
             .iter()
             .map(|r| {
-                let place = types
-                    .get(r)
-                    .is_some_and(|o| o.type_key == KIND_MAP_PIN || o.type_key == T_PLACE);
+                let place = types.get(r).is_some_and(|o| {
+                    o.type_key == KIND_MAP_PIN || has_role(&s, &o.type_key, roles::PLACE)
+                });
                 CaseAttachInput {
                     object_id: r.to_string(),
                     role: Some(if place { "context" } else { "actor" }.into()),
@@ -691,13 +693,17 @@ async fn causal_event<C: ConnectionTrait>(
     }
     // Investigation pack installed: a hypothesis the hops support.
     let s = super::super::schema(db, org_id).await?;
-    if s.object_type("hypothesis").is_some() && s.object_type("claim").is_some() {
+    if let (Some(t_hypothesis), Some(t_claim), Some(l_supports)) = (
+        s.type_key(roles::HYPOTHESIS),
+        s.type_key(roles::CLAIM),
+        s.link_key(roles::SUPPORTS),
+    ) {
         let hypothesis = super::super::objects::create(
             db,
             org_id,
             actor,
             &pnex_core::ontology::api::ObjectInput {
-                type_key: "hypothesis".into(),
+                type_key: t_hypothesis.into(),
                 title: title.to_string(),
                 properties: json!({ "statement": title, "status": "open" })
                     .as_object()
@@ -713,7 +719,7 @@ async fn causal_event<C: ConnectionTrait>(
                 org_id,
                 actor,
                 &pnex_core::ontology::api::ObjectInput {
-                    type_key: "claim".into(),
+                    type_key: t_claim.into(),
                     title: line.chars().take(200).collect(),
                     properties: json!({ "statement": line, "status": "unverified" })
                         .as_object()
@@ -728,7 +734,7 @@ async fn causal_event<C: ConnectionTrait>(
                 org_id,
                 actor,
                 &pnex_core::ontology::api::LinkInput {
-                    link_type: "supports".into(),
+                    link_type: l_supports.into(),
                     source_id: claim.id.clone(),
                     target_id: hypothesis.id.clone(),
                     ..Default::default()

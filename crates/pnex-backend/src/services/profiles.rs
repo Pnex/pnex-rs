@@ -9,6 +9,7 @@
 use loco_rs::app::AppContext;
 use pnex_core::browser_agent as ba;
 use pnex_core::err_codes;
+use pnex_core::ontology::roles;
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
 use uuid::Uuid;
 
@@ -36,8 +37,11 @@ pub(crate) async fn person(
     org_id: i64,
     id: Uuid,
 ) -> Result<(), ExtensionError> {
+    let s = ontology::schema(db, org_id)
+        .await
+        .map_err(|e| ExtensionError::Db(sea_orm::DbErr::Custom(e.to_string())))?;
     match ontology::objects::find(db, org_id, id).await {
-        Ok(o) if o.type_key == "person" && o.valid_to.is_none() => Ok(()),
+        Ok(o) if s.type_role(&o.type_key) == Some(roles::PERSON) && o.valid_to.is_none() => Ok(()),
         Ok(_) | Err(ontology::OntologyError::NotFound) => Err(ExtensionError::PersonNotFound),
         Err(e) => Err(ExtensionError::Db(sea_orm::DbErr::Custom(e.to_string()))),
     }
@@ -106,7 +110,8 @@ async fn oppose_by(
         .await
         .map_err(onto_err)?;
     let has_date = s
-        .object_type("person")
+        .type_key(roles::PERSON)
+        .and_then(|k| s.object_type(k))
         .is_some_and(|t| t.properties.iter().any(|p| p.key == OPPOSED_ON));
     if has_date && row.properties.get(OPPOSED_ON).is_none() {
         // Written in place: a date stamp, not an edit of the person.
@@ -230,7 +235,7 @@ pub async fn before_erase(
             forget_mail(&ctx.db, org_id, addr).await?;
         }
     }
-    if row.type_key != "person" {
+    if s.type_role(&row.type_key) != Some(roles::PERSON) {
         return Ok(Vec::new());
     }
     oppose_by(&ctx.db, org_id, actor.user_id, row.id).await?;
@@ -591,10 +596,10 @@ const RETENTION_SETTING: &str = "prospecting_b2b.retention_months";
 const RETENTION_MONTHS: i64 = 36;
 /// People proposed per org and per run.
 const RETENTION_BATCH: i64 = 200;
-/// Types the queue proposes: a person, and what names one before they are in
-/// the graph, a lead (crm.md D514) or a contact from a list (D610). A type
-/// missing from the org matches nothing.
-const RETENTION_TYPES: [&str; 3] = ["person", "lead", "list_contact"];
+/// Types the queue proposes besides the person role: what names one before
+/// they are in the graph, a lead (crm.md D514) or a contact from a list (D610).
+/// A type missing from the org matches nothing.
+const RETENTION_TYPES: [&str; 2] = ["lead", "list_contact"];
 
 /// The retention queue (crm.md D445): in each org where the prospecting
 /// pack is installed, a live person with no change, no link opened or
@@ -629,6 +634,11 @@ pub async fn propose_erasures_in(
     org_id: i64,
     months: i64,
 ) -> Result<u64, ExtensionError> {
+    let s = ontology::schema(db, org_id)
+        .await
+        .map_err(|e| ExtensionError::Db(sea_orm::DbErr::Custom(e.to_string())))?;
+    let mut types: Vec<String> = RETENTION_TYPES.map(String::from).to_vec();
+    types.extend(s.type_key(roles::PERSON).map(str::to_string));
     let rows = db
         .query_all_raw(stmt(
             "WITH activity AS (
@@ -658,7 +668,7 @@ pub async fn propose_erasures_in(
                 org_id.into(),
                 (months as i32).into(),
                 RETENTION_BATCH.into(),
-                RETENTION_TYPES.map(String::from).to_vec().into(),
+                types.into(),
             ],
         ))
         .await?;

@@ -144,7 +144,7 @@ pub fn OntologyObject(id: String) -> Element {
         tabs.insert(4, ("position", t!("onto-tab-position")));
     }
     // Consented voice profile of a person (media.md §3.12).
-    if o.type_key == pnex_core::voice_id::PERSON_TYPE {
+    if crate::state::roles::is(&o.type_key, pnex_core::ontology::roles::PERSON) {
         tabs.push(("voice", t!("onto-tab-voice")));
     }
     // D305: hierarchies come with packs; no tab without one.
@@ -197,7 +197,9 @@ pub fn OntologyObject(id: String) -> Element {
                         }
                     }
                 }
-                if can_capture && !closed && o.type_key == pnex_core::voice_id::PERSON_TYPE {
+                if can_capture && !closed
+                    && crate::state::roles::is(&o.type_key, pnex_core::ontology::roles::PERSON)
+                {
                     button {
                         class: BTN,
                         "data-testid": "profile-capture",
@@ -341,7 +343,9 @@ pub fn OntologyObject(id: String) -> Element {
                     crate::components::voice_id::VoiceProfilePanel { object_id: o.id.clone() }
                 } else {
                     PropertiesPanel { object: o.clone(), type_view: tv.clone() }
-                    if o.type_key == pnex_core::voice_id::PERSON_TYPE || has_people {
+                    if crate::state::roles::is(&o.type_key, pnex_core::ontology::roles::PERSON)
+                        || has_people
+                    {
                         super::profile_capture::ProfileCaptures {
                             key: "{o.id}",
                             person_id: o.id.clone(),
@@ -349,7 +353,7 @@ pub fn OntologyObject(id: String) -> Element {
                             reload: captures_reload,
                         }
                     }
-                    if o.type_key == pnex_core::voice_id::PERSON_TYPE {
+                    if crate::state::roles::is(&o.type_key, pnex_core::ontology::roles::PERSON) {
                         super::profile_capture::PersonConnection {
                             key: "c{o.id}",
                             person_id: o.id.clone(),
@@ -1305,8 +1309,9 @@ fn IntroFinder(id: String, link_types: Vec<LinkTypeView>) -> Element {
         }
         let to = id.clone();
         spawn(async move {
-            let links = pnex_core::ontology::api::INTRODUCTION_LINKS;
-            match api::ontology::path_from_links(&[key.as_str()], &to, links).await {
+            let keys = crate::state::roles::link_keys(pnex_core::ontology::api::INTRODUCTION_LINKS);
+            let links: Vec<&str> = keys.iter().map(String::as_str).collect();
+            match api::ontology::path_from_links(&[key.as_str()], &to, &links).await {
                 Ok(p) => found.set(Some(p)),
                 Err(e) if e.status == Some(404) => found.set(Some(Vec::new())),
                 Err(e) => toasts::error(e),

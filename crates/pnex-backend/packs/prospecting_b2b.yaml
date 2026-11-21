@@ -71,10 +71,11 @@
 # `captured_text`, kept by the pack's navigation pipelines (D996).
 # Since 4.6.0 a contact's connections are read by the pipeline
 # `connections_capture_linkedin` (D976, PE5.4).
+# Since 4.7.0 `recommended` declares its role (D441).
 key: prospecting_b2b
 name: B2B account mapping
 names: {fr: "Cartographie commerciale"}
-version: "4.6.0"
+version: "4.7.0"
 requires: [companies, web_presence, watch]
 description: "Accounts as a dated network: group and subsidiaries, sites with their commercial status, contacts by persona, who recommended whom. Questions: which subsidiaries of this group have no contact yet? Who follows this account? Which sites are customers?"
 descriptions: {fr: "Les comptes vus comme un réseau daté : groupe et filiales, sites avec leur statut commercial, contacts par persona, qui a recommandé qui. Questions : quelles filiales de ce groupe n'ont encore aucun contact ? Qui suit ce compte ? Quels sites sont clients ?"}
@@ -215,6 +216,7 @@ link_types:
     from_types: [person, organization]
     to_types: [media_asset]
   - key: recommended
+    role: recommended
     name: recommends
     names: {fr: "recommande"}
     inverse_name: is recommended by

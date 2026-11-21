@@ -306,6 +306,7 @@ fn LinkTypeForm(
     let choices_to = choices.clone();
     let on_submit = move |_| {
         let def = LinkTypeDef {
+            role: None,
             inverse_names: Default::default(),
             names: Default::default(),
             key: key().trim().to_string(),

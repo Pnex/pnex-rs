@@ -12,11 +12,7 @@ use uuid::Uuid;
 use super::super::{links, objects, schema, OntologyError, OrgSchema, Result};
 use super::membership;
 
-const T_HYPOTHESIS: &str = "hypothesis";
-const T_CLAIM: &str = "claim";
-const L_SUPPORTS: &str = "supports";
-const L_CONTRADICTS: &str = "contradicts";
-const L_SOURCED_BY: &str = "sourced_by";
+use pnex_core::ontology::roles;
 
 fn status_of(o: &ObjectView) -> Option<String> {
     o.properties
@@ -41,7 +37,8 @@ async fn claim_row(
     let sources = links::for_object(db, org_id, id, None, None, false)
         .await?
         .iter()
-        .filter(|l| l.link_type == L_SOURCED_BY && l.source.id == claim.id)
+        .filter(|l| s.link_key(roles::SOURCED_BY) == Some(l.link_type.as_str()))
+        .filter(|l| l.source.id == claim.id)
         .count();
     let row = BoardClaim {
         claim: claim.clone(),
@@ -63,7 +60,9 @@ pub async fn board(db: &DatabaseConnection, org_id: i64, case_id: Uuid) -> Resul
     for id in ids {
         let Some(o) = objs.get(&id) else { continue };
         let r = links::object_ref(o);
-        if o.type_key == T_HYPOTHESIS {
+        let supports = s.link_key(roles::SUPPORTS);
+        let contradicts = s.link_key(roles::CONTRADICTS);
+        if super::has_role(&s, &o.type_key, roles::HYPOTHESIS) {
             let mut h = BoardHypothesis {
                 hypothesis: r.clone(),
                 status: status_of(&objects::view(o, &s)),
@@ -71,18 +70,18 @@ pub async fn board(db: &DatabaseConnection, org_id: i64, case_id: Uuid) -> Resul
                 contradicts: Vec::new(),
             };
             for l in links::for_object(db, org_id, id, None, None, false).await? {
-                if l.target.id != r.id || l.source.type_key != T_CLAIM {
+                if l.target.id != r.id || !super::has_role(&s, &l.source.type_key, roles::CLAIM) {
                     continue;
                 }
-                let side = match l.link_type.as_str() {
-                    L_SUPPORTS => &mut h.supports,
-                    L_CONTRADICTS => &mut h.contradicts,
+                let side = match Some(l.link_type.as_str()) {
+                    k if k == supports => &mut h.supports,
+                    k if k == contradicts => &mut h.contradicts,
                     _ => continue,
                 };
                 side.push(claim_row(db, org_id, &s, &l.source, &mut seen).await?);
             }
             board.hypotheses.push(h);
-        } else if o.type_key == T_CLAIM {
+        } else if super::has_role(&s, &o.type_key, roles::CLAIM) {
             let row = claim_row(db, org_id, &s, &r, &mut seen).await?;
             if row.sources == 0 {
                 board.unsourced.push(row.clone());
@@ -90,7 +89,7 @@ pub async fn board(db: &DatabaseConnection, org_id: i64, case_id: Uuid) -> Resul
             let contradicted = links::for_object(db, org_id, id, None, None, false)
                 .await?
                 .iter()
-                .any(|l| l.link_type == L_CONTRADICTS && l.target.id == r.id);
+                .any(|l| Some(l.link_type.as_str()) == contradicts && l.target.id == r.id);
             if contradicted {
                 board.contradicted.push(row);
             }

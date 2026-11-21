@@ -822,7 +822,6 @@ Un admin plateforme les remplace dans la carte « Limites des agents hébergés 
 ## 7. Reste à faire
 
 - **Missions de l'extension** : `collect_value`, `collect_page`, `follow_account`, `watch_live`, `crawl_site`, `capture_proof` restent des types de mission (`MissionSpec`). Chacune doit devenir une étape ou une sortie déclarée d'une règle.
-- **Rôles de lien (D441)** : un rôle déclaré sur le type de lien par son pack, en un seul lot pour tous les couplages gelés de `tests/engine_genericity.rs`.
 - **Niveau libre (D378)** : non codé. L'extension est un moteur, pas un niveau d'agent.
 - **Non codé** : D389, D390, D395, D397, D399, D400, D401, l'interrupteur global de D382, D328 (`llm_extract`), le contenu LLM chiffré de D709.
 - **Forge** : GitLab et Forgejo. Un push refusé laisse le run « réussi ». Le titre de la demande de fusion est générique. La fermeture du sujet à la fusion (D767) attend la forge.

@@ -6,7 +6,7 @@
 use dioxus::prelude::*;
 use dioxus_i18n::t;
 use pnex_core::ontology::api::{ObjectView, OntologyQuery};
-use pnex_core::voice_id::{VoiceProfileView, PERSON_TYPE};
+use pnex_core::voice_id::VoiceProfileView;
 
 use crate::api;
 use crate::app::Route;
@@ -150,7 +150,9 @@ fn PersonPicker(on_close: Callback<()>) -> Element {
     let navigator = use_navigator();
     let persons = use_resource(|| async {
         let q = OntologyQuery {
-            type_key: Some(PERSON_TYPE.to_string()),
+            type_key: Some(crate::state::roles::type_key(
+                pnex_core::ontology::roles::PERSON,
+            )),
             limit: Some(500),
             ..Default::default()
         };

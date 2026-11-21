@@ -292,6 +292,13 @@ async fn sync_appearance<C: ConnectionTrait>(
     asset_id: Uuid,
     person: Uuid,
 ) -> Result<(), AttributionError> {
+    let Some(appears_in) = crate::services::ontology::schema(db, org_id)
+        .await?
+        .link_key(pnex_core::ontology::roles::APPEARS_IN)
+        .map(str::to_string)
+    else {
+        return Ok(());
+    };
     let confirmed = db
         .query_one_raw(stmt(
             "SELECT 1 AS one FROM speech_attributions
@@ -318,7 +325,7 @@ async fn sync_appearance<C: ConnectionTrait>(
                AND target_object_id = $4 AND valid_to IS NULL",
             vec![
                 org_id.into(),
-                APPEARS_IN.into(),
+                appears_in.clone().into(),
                 person.into(),
                 media.into(),
             ],
@@ -331,7 +338,7 @@ async fn sync_appearance<C: ConnectionTrait>(
             attributes.insert("kind".into(), "speaking".into());
             attributes.insert("origin".into(), AttributionOrigin::Manual.wire().into());
             let input = pnex_core::ontology::api::LinkInput {
-                link_type: APPEARS_IN.into(),
+                link_type: appears_in.clone(),
                 source_id: person.to_string(),
                 target_id: media.to_string(),
                 attributes,
@@ -358,9 +365,6 @@ async fn sync_appearance<C: ConnectionTrait>(
         }
     }
 }
-
-/// Link type of a person appearing in a media file (investigation pack).
-const APPEARS_IN: &str = "appears_in";
 
 /// Replaces the voice proposals of an asset (D275, D983): one proposed span
 /// per stretch where a person was recognized, except where a person already

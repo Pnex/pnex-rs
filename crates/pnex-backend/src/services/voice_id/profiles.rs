@@ -8,7 +8,7 @@ use loco_rs::app::AppContext;
 use pnex_core::err_codes::{FIELD_INVALID, FIELD_MAX_LENGTH, FIELD_REQUIRED};
 use pnex_core::voice_id::{
     VoiceProfileInput, VoiceProfileView, VoiceSampleView, CONSENT_PROOF_MAX, CONSENT_SCOPE_MAX,
-    PERSON_TYPE, STATUS_DRAFT, STATUS_READY,
+    STATUS_DRAFT, STATUS_READY,
 };
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, IntoActiveModel, ModelTrait,
@@ -41,11 +41,16 @@ pub async fn find_by_object(
 
 /// A live Person object of the org (archived persons take no new profile).
 async fn person(db: &DatabaseConnection, org_id: i64, id: Uuid) -> Result<objects::Model> {
+    let s = crate::services::ontology::schema(db, org_id).await?;
+    let person = s
+        .type_key(pnex_core::ontology::roles::PERSON)
+        .unwrap_or_default()
+        .to_string();
     objects::Entity::find_by_id(id)
         .filter(objects::Column::OrgId.eq(org_id))
         .one(db)
         .await?
-        .filter(|o| o.type_key == PERSON_TYPE && o.valid_to.is_none())
+        .filter(|o| o.type_key == person && o.valid_to.is_none())
         .ok_or(VoiceIdError::NotPerson)
 }
 

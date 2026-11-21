@@ -517,7 +517,9 @@ fn SelectionBar(
     let mut new_name = use_signal(String::new);
     let all = use_resource(move || async move {
         let q = pnex_core::ontology::api::OntologyQuery {
-            type_key: Some("person".into()),
+            type_key: Some(crate::state::roles::type_key(
+                pnex_core::ontology::roles::PERSON,
+            )),
             limit: Some(500),
             ..Default::default()
         };
@@ -541,7 +543,7 @@ fn SelectionBar(
         }
         spawn(async move {
             let input = pnex_core::ontology::api::ObjectInput {
-                type_key: "person".into(),
+                type_key: crate::state::roles::type_key(pnex_core::ontology::roles::PERSON),
                 title,
                 ..Default::default()
             };
@@ -899,7 +901,7 @@ fn BlockView(
                 props.insert("context_before".into(), clip(&before, 1_000).into());
                 props.insert("context_after".into(), clip(&after, 1_000).into());
                 let input = pnex_core::ontology::api::ObjectInput {
-                    type_key: "statement".into(),
+                    type_key: crate::state::roles::type_key(pnex_core::ontology::roles::STATEMENT),
                     title: clip(&quote, 120),
                     properties: props,
                     ..Default::default()
@@ -911,7 +913,9 @@ fn BlockView(
                     let mut attributes = serde_json::Map::new();
                     attributes.insert("origin".into(), "manual".into());
                     let link = pnex_core::ontology::api::LinkInput {
-                        link_type: "said_by".into(),
+                        link_type: crate::state::roles::link_key(
+                            pnex_core::ontology::roles::SAID_BY,
+                        ),
                         source_id: obj.id.clone(),
                         target_id: pid.to_string(),
                         attributes,

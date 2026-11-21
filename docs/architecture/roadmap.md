@@ -119,7 +119,7 @@ PE5.4 est le seul lot en cours au 2026-11-20 (`pipelines.md`). D801 et les garde
 | Dossiers | C0–C7, espace de travail, argent, chaînes causales. | `cases.md` §7 | Enquête média, navigation et argent | P2.19 |
 | Création assistée | D225–D237, C1 livré. | `assisted-creation.md` | C2 → C7 | P2.22 |
 | Assistant IA | Registre fermé d'outils (`ai-assistant.md` §4), D142–D145. | `ai-assistant.md` | Suit chaque fonctionnalité (D142) | — |
-| Agents, environnements | D700–D720, U1–U5, porte OP9 livrés. | `agents.md` §7 | D786, U4b, D441, forge GitLab et Forgejo | P1.6, P2.7, P2.29 |
+| Agents, environnements | D700–D720, U1–U5, porte OP9 livrés. | `agents.md` §7 | U4b, forge GitLab et Forgejo | P1.6, P2.7, P2.29 |
 | Agents navigateur | v2 codée (L0–L5, D254–D284). | `browser-agents.md` §7 | Campagne de test réelle, publication, D268 | P2.1 |
 | Analyse | AN1–AN3 livrés (D825–D832). | `analysis.md` | AN4, règle qui propose (D829) | P2.36 |
 | Propositions | P0–P4 codés. | `proposals.md` | Acceptation automatique (D377) | — |

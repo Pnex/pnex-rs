@@ -45,6 +45,7 @@ fn ShellContent() -> Element {
     });
     // Rights of the current org, reloaded on every org change (iam.md §9).
     crate::state::access::use_permissions();
+    crate::state::roles::use_roles();
     #[cfg(feature = "e2e")]
     use_e2e_navigation();
     // Reactive global signal: content and sidebar re-render on toggle.

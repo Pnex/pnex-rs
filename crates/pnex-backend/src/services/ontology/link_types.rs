@@ -23,6 +23,16 @@ pub async fn list(db: &DatabaseConnection, org_id: i64) -> Result<Vec<LinkTypeVi
         .collect())
 }
 
+/// A role names one link type of the org (D441).
+fn role_free(s: &super::OrgSchema, def: &LinkTypeDef) -> Result<()> {
+    match def.role.as_deref() {
+        Some(role) if s.link_key(role).is_some_and(|k| k != def.key) => {
+            Err(super::invalid("role", pnex_core::err_codes::FIELD_UNIQUE))
+        }
+        _ => Ok(()),
+    }
+}
+
 pub async fn create(
     db: &DatabaseConnection,
     org_id: i64,
@@ -34,6 +44,7 @@ pub async fn create(
         return Err(OntologyError::KeyTaken);
     }
     def.check(&|k| s.knows(k))?;
+    role_free(&s, def)?;
     link_types::ActiveModel {
         id: Set(Uuid::new_v4()),
         org_id: Set(org_id),
@@ -79,6 +90,7 @@ pub async fn update(
         return Err(OntologyError::SystemReadOnly);
     }
     input.def.check(&|k| s.knows(k))?;
+    role_free(&s, &input.def)?;
     let Some(expected) = input.expected_version else {
         return Err(super::invalid(
             "expected_version",

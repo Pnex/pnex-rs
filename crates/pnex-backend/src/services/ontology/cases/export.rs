@@ -15,10 +15,10 @@ use serde_json::Value;
 use uuid::Uuid;
 
 use super::super::{invalid, links, objects, schema, ts, Actor, OntologyError, Result};
-use super::{attach_in, board, create_event_in, membership, workspace, T_PERSON};
+use super::{attach_in, board, create_event_in, has_role, membership, workspace};
+use pnex_core::ontology::roles;
 
 pub const SCHEMA: &str = "pnex.case/1";
-const T_PIECE: &str = "piece";
 
 pub async fn export(db: &DatabaseConnection, org_id: i64, case_id: Uuid) -> Result<CaseExport> {
     let workspace = workspace(db, org_id, case_id).await?;
@@ -32,10 +32,10 @@ pub async fn export(db: &DatabaseConnection, org_id: i64, case_id: Uuid) -> Resu
     let mut persons = 0;
     for id in &ids {
         let Some(o) = objs.get(id) else { continue };
-        if o.type_key == T_PERSON {
+        if has_role(&s, &o.type_key, roles::PERSON) {
             persons += 1;
         }
-        if o.type_key == T_PIECE {
+        if has_role(&s, &o.type_key, roles::PIECE) {
             let v = objects::view(o, &s);
             pieces.push(PieceEntry {
                 id: v.id,

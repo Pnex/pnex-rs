@@ -4,6 +4,7 @@
 //! that goes back up the chain is a dashed loop above, never dropped. A
 //! click on a band lists its payments, on a node selects the object.
 
+use pnex_core::ontology::roles;
 use std::collections::HashMap;
 
 use dioxus::prelude::*;
@@ -152,9 +153,9 @@ pub(super) fn Money(workspace: CaseWorkspace) -> Element {
         .nodes
         .iter()
         .map(|n| match kinds.get(&n.id).map(|k| family(k)) {
-            Some("person") => "var(--color-signal)",
-            Some("organization") => "var(--color-ok)",
-            Some("place" | "identifier") => "var(--color-warn)",
+            Some(roles::PERSON) => "var(--color-signal)",
+            Some(roles::ORGANIZATION) => "var(--color-ok)",
+            Some(roles::PLACE | roles::IDENTIFIER) => "var(--color-warn)",
             _ => "var(--color-idle)",
         })
         .collect();

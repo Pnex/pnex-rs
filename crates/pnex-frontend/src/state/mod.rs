@@ -11,6 +11,8 @@ pub mod functions;
 pub mod map;
 pub mod media;
 pub mod org;
+/// Roles of the org's types and link types (D441).
+pub mod roles;
 pub mod session;
 pub mod theme;
 pub mod toasts;

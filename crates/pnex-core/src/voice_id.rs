@@ -6,9 +6,6 @@
 
 use serde::{Deserialize, Serialize};
 
-/// Object type a voice profile attaches to (pack `investigation`).
-pub const PERSON_TYPE: &str = "person";
-
 /// Sample rate of the decoded audio (same as the transcription chain).
 pub const SAMPLE_RATE: usize = 16_000;
 /// Length of one embedding window: a clip is cut into windows and each one

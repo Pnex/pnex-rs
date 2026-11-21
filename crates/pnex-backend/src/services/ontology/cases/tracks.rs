@@ -21,11 +21,11 @@ use uuid::Uuid;
 use super::super::{invalid, links, parse_instant, ts, Result};
 use super::detect::Thresholds;
 use super::reads::{self, Reader};
-use super::T_PERSON;
 use super::{imports, membership};
 use crate::models::_entities::device_registries;
 use crate::services::openobserve::Client;
 use crate::services::pois::position_log;
+use pnex_core::ontology::roles;
 
 /// Widest window served in one request.
 pub(super) const MAX_SPAN_DAYS: i64 = pnex_core::track::MAX_WINDOW_DAYS;
@@ -225,9 +225,10 @@ pub(super) async fn load(
         .filter(|(_, _, segs)| !segs.is_empty())
         .collect();
     // K38: a read that holds a person is logged.
+    let s = super::super::schema(db, org_id).await?;
     let persons: Vec<Uuid> = tracks
         .iter()
-        .filter(|(o, _, _)| o.type_key == T_PERSON)
+        .filter(|(o, _, _)| super::has_role(&s, &o.type_key, roles::PERSON))
         .filter_map(|(o, _, _)| Uuid::parse_str(&o.id).ok())
         .collect();
     if !persons.is_empty() {

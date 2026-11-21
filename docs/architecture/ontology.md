@@ -339,7 +339,8 @@ Un pack est un YAML versionné dans `crates/pnex-backend/packs/`. Il déclare de
 liens, des actions, des réglages, des fonctions, des modèles de flows et des modèles de pages. Le
 noyau ne connaît aucun métier. Une fonction utile à un seul pack va dans le pack. La garde
 `tests/engine_genericity.rs` refuse tout nom de type, de lien ou de pack dans le code du moteur
-(D441, `external-apps.md` D432).
+(D441, `external-apps.md` D432). Un concept partagé passe par un rôle que le pack déclare sur son type
+(`role: person`) : le moteur cherche le rôle, jamais la clé (D441).
 
 ```mermaid
 ---

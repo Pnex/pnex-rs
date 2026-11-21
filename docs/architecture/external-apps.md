@@ -15,6 +15,7 @@ PneX est une plateforme de données générique. Le moteur ne connaît aucun mé
 - **Flux des changements** : table `ontology_changes`, lue par un curseur sans trou.
 - **Curseur** : position `<txid>.<seq>` dans le flux. `0` veut dire « le début ».
 - **Lien de preuve** : type de lien déclaré `evidence: true` par son pack.
+- **Rôle** : concept partagé qu'un pack déclare sur un type d'objet ou un type de lien (`role: person`). Le moteur cherche le type par son rôle, jamais par sa clé. Un rôle désigne un seul type d'une org.
 - **Miroir** : copie locale SQLite du périmètre, tenue par la crate `pnex-mirror`.
 - **Projection** : code de l'application, appelé par le miroir à chaque page appliquée.
 - **Ontologie inventée** : types `article`, `auteur` et lien `ecrit_par`. Les exemples et les tests du SDK l'utilisent, jamais un pack livré.
@@ -174,7 +175,7 @@ Le test bloquant `crates/pnex-backend/tests/engine_genericity.rs` lit les clés 
 - `ENGINE_WORDS` : mots du moteur qu'un pack emploie aussi (`media`, `site`, `line`…).
 - `COUPLED` : couplages existants, gelés, avec fichier, clés et raison. Chaque ligne est une dette.
 
-Les couplages gelés viennent surtout du pack `investigation` : dossiers d'enquête, profils des agents navigateur, attributions de médias, relecture média, profils vocaux, chemins d'introduction (D329). Les rôles de lien de D441 doivent les remplacer. Un second test (`engine_names_no_data_source_host`) refuse un hôte de source de données dans le moteur.
+Les rôles (D441) ont remplacé les couplages des concepts partagés : personnes, organisations, lieux, identités, déclarations, affirmations, hypothèses, pièces, et les liens entre eux. Le vocabulaire vit dans `pnex_core::ontology::roles`. Le front lit les rôles de l'org par `state::roles`. Les couplages restants appartiennent à une fonction d'un seul pack (marchés, maintenance, fabrique). Un second test (`engine_names_no_data_source_host`) refuse un hôte de source de données dans le moteur.
 
 ## 4. Exigences
 
@@ -228,7 +229,7 @@ Proposée, non codée. Les actions D183 et des actions de base (`object.create`,
 
 ### D441 — Une garde refuse le métier dans le moteur
 
-La garde est livrée. Les rôles de lien sont en cours : un rôle déclaré par le pack sur le type de lien, que le moteur lit au lieu d'un nom, comme `evidence`. Un seul lot doit traiter tous les couplages de liens gelés.
+Livrée. Le pack déclare un rôle sur un type d'objet ou de lien (`role`), et le moteur lit ce rôle au lieu d'une clé, comme `evidence`. Les rôles reprennent les mots des clés (choix de Shan, 2026-11-21). Un rôle inconnu ou déjà porté par un autre type de l'org est refusé (`role: invalid`, `role: unique`). La migration 000163 a posé les rôles sur les types déjà installés. Une fonction propre à un seul pack garde ses clés, avec sa raison, dans `COUPLED`.
 
 ## 6. Interfaces
 
@@ -259,7 +260,6 @@ Miroir SQLite : `objects`, `links`, `media`, état du curseur. `rusqlite` 0.32 (
 - D440 : route d'actions, assouplissement des comptes d'application, exemple `upload_by_action`.
 - Push du flux en SSE (`/ontology/changes/stream`, curseurs seulement) : proposé, non codé.
 - D438 : exemples `follow_changes`, `object_evidence` et `object_set` dans `crates/pnex-mirror/examples/`.
-- D441 : rôles de lien, en cours dans une autre session.
 - Connecteurs propres à un pays (`org_resolve`, mode d'import `datagouv`) : à ranger en connecteurs déclarés, chantier séparé.
 - Des tests dans `src` et un test du front incluent `quali_watch.yaml` : à migrer vers l'ontologie inventée au prochain passage.
 - Nouvelle version de média hors du flux : à reprendre si le nombre de médias le justifie.

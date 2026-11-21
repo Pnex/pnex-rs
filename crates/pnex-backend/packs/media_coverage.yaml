@@ -9,10 +9,11 @@
 # member_of): installing this pack installs it first.
 # Since 1.1.0 links carry `planned_end`: an end announced but still to
 # come (a term, a budget year) — `valid_to` is only ever a past instant.
+# Since 1.3.0 `party` declares its role (D441).
 key: media_coverage
 name: Media coverage
 names: {fr: "Couverture médiatique"}
-version: "1.2.0"
+version: "1.3.0"
 requires: [investigation]
 description: Media outlets, programmes, parties and mandates — ownership, funding, hosts and office holders, every link sourced.
 descriptions: {fr: "Médias, émissions, partis et mandats — propriété, financement, présentateurs et élus, chaque lien sourcé."}
@@ -48,6 +49,7 @@ types:
       - { key: wikidata, name: Wikidata, names: {fr: "Wikidata"}, kind: text, max_len: 32, indexed: true }
       - { key: notes, name: Notes, names: {fr: "Notes"}, kind: text, max_len: 2000 }
   - key: party
+    role: party
     name: Political party
     names: {fr: "Parti politique"}
     icon: flag

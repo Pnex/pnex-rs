@@ -76,7 +76,8 @@ pub async fn import(
         }
         let obj = objects::find(db, org_id, object_id).await?;
         // K38: a person's movements are personal data, as its attachment is.
-        guard_person(&m.case, &obj)?;
+        let s = super::super::schema(db, org_id).await?;
+        guard_person(&s, &m.case, &obj)?;
         let format = Format::parse(&input.format).ok_or_else(|| invalid("format", FIELD_INVALID))?;
         let file_name = input.file_name.trim();
         if file_name.is_empty() {

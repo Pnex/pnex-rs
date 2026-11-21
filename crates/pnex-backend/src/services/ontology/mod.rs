@@ -165,6 +165,31 @@ impl OrgSchema {
         self.links.iter().map(|(l, _, _)| l).find(|l| l.key == key)
     }
 
+    /// Key of the org's type carrying `role` (D441).
+    pub fn type_key(&self, role: &str) -> Option<&str> {
+        pnex_core::ontology::roles::key_of(
+            self.types
+                .iter()
+                .map(|(t, _, _)| (t.key.as_str(), t.role.as_deref())),
+            role,
+        )
+    }
+
+    /// Key of the org's link type carrying `role` (D441).
+    pub fn link_key(&self, role: &str) -> Option<&str> {
+        pnex_core::ontology::roles::key_of(
+            self.links
+                .iter()
+                .map(|(l, _, _)| (l.key.as_str(), l.role.as_deref())),
+            role,
+        )
+    }
+
+    /// Role of the type `key`, if it declares one.
+    pub fn type_role(&self, key: &str) -> Option<&str> {
+        self.object_type(key).and_then(|t| t.role.as_deref())
+    }
+
     pub fn knows(&self, key: &str) -> bool {
         self.object_type(key).is_some()
     }

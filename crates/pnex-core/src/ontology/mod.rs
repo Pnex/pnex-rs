@@ -19,6 +19,7 @@ pub mod ownership;
 pub mod page_render;
 pub mod proposal;
 pub mod recurrence;
+pub mod roles;
 pub mod schema;
 pub mod trigger;
 
@@ -147,6 +148,10 @@ pub struct ObjectTypeDef {
     /// says when it is true in the world, which one when it became known.
     #[serde(default, skip_serializing_if = "FactTimes::is_empty")]
     pub times: FactTimes,
+    /// Shared concept this type stands for (D441, [`roles::OBJECT`]): the engine
+    /// finds the type by it, never by its key.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub role: Option<String>,
     /// Types an object of this one is never linked to, whatever the link
     /// type, the actor or the pack declaring it (markets-research.md D933:
     /// a platform pseudonym is never tied to a person). The type need not
@@ -250,6 +255,9 @@ pub struct LinkTypeDef {
     /// open at the instant of the cause.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub propagates_failure: bool,
+    /// Shared concept this link type stands for (D441, [`roles::LINK`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub role: Option<String>,
     /// Attributes carried by each link (scalar properties only).
     #[serde(default)]
     pub attributes: Vec<PropertyDef>,
@@ -318,6 +326,13 @@ impl ObjectTypeDef {
         check_set("may_be_contained_in", &self.may_be_contained_in, known)?;
         if self.never_linked_to.iter().any(|k| !schema::valid_key(k)) {
             return Err(("never_linked_to".into(), FIELD_INVALID.into()));
+        }
+        if self
+            .role
+            .as_deref()
+            .is_some_and(|r| !roles::OBJECT.contains(&r))
+        {
+            return Err(("role".into(), FIELD_INVALID.into()));
         }
         schema::check_defs(&self.properties, "properties", known)?;
         let kind_of = |key: &Option<String>| {
@@ -393,6 +408,13 @@ impl LinkTypeDef {
         if self.attributes.iter().any(|a| a.kind.is_temporal()) {
             return Err(("attributes".into(), FIELD_INVALID.into()));
         }
+        if self
+            .role
+            .as_deref()
+            .is_some_and(|r| !roles::LINK.contains(&r))
+        {
+            return Err(("role".into(), FIELD_INVALID.into()));
+        }
         schema::check_defs(&self.attributes, "attributes", known)
     }
 }
@@ -413,6 +435,7 @@ pub fn system_object_types() -> Vec<ObjectTypeDef> {
         actions: Vec::new(),
         title_classification: Default::default(),
         times: Default::default(),
+        role: None,
         never_linked_to: Vec::new(),
     };
     vec![
@@ -686,6 +709,7 @@ pub fn system_link_types() -> Vec<LinkTypeDef> {
         propose_erase_targets: false,
         member_only: false,
         propagates_failure: false,
+        role: None,
         attributes: Vec::new(),
     };
     vec![

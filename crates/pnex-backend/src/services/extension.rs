@@ -1535,13 +1535,19 @@ pub(crate) async fn link_publisher_as(
     let Some(media_object) = media_object else {
         return;
     };
+    let Some(published_by) = ontology::schema(&ctx.db, org_id).await.ok().and_then(|s| {
+        s.link_key(pnex_core::ontology::roles::PUBLISHED_BY)
+            .map(str::to_string)
+    }) else {
+        return;
+    };
     let actor = ontology::Actor {
         user_id: None,
         role: crate::models::_entities::sea_orm_active_enums::OrgMemberRole::Member,
         source_ref: source_ref.to_string(),
     };
     let input = pnex_core::ontology::api::LinkInput {
-        link_type: "published_by".into(),
+        link_type: published_by,
         source_id: media_object.to_string(),
         target_id: publisher.to_string(),
         attributes: serde_json::Map::new(),

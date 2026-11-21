@@ -1026,9 +1026,12 @@ fn PublisherPicker(selected: Signal<String>) -> Element {
     let mut selected = selected;
     let objects = use_resource(|| async {
         let mut all = Vec::new();
-        for type_key in ["person", "organization"] {
+        for role in [
+            pnex_core::ontology::roles::PERSON,
+            pnex_core::ontology::roles::ORGANIZATION,
+        ] {
             let q = pnex_core::ontology::api::OntologyQuery {
-                type_key: Some(type_key.into()),
+                type_key: Some(crate::state::roles::type_key(role)),
                 limit: Some(500),
                 ..Default::default()
             };

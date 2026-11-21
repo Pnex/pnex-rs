@@ -31,14 +31,17 @@
 # Since 2.0.0 the `personal` classification value is English (breaking).
 # Since 2.3.0 `knows` says where it was learnt: `source`, `retrieved_on`,
 # and `explored_by` (the user whose network showed it, D976).
+# Since 2.4.0 the shared concepts declare their role (D441): the engine
+# finds people, identities, statements, evidence and links by role.
 key: investigation
 name: Investigation
 names: {fr: "Enquête"}
-version: "2.3.0"
+version: "2.4.0"
 description: People, organizations, events with approximate dates, sourced claims and hypotheses — for cases, newsrooms and root-cause analyses.
 descriptions: {fr: "Personnes, organisations, événements datés au plus juste, affirmations sourcées et hypothèses — pour les enquêtes, les rédactions et les analyses de cause racine."}
 types:
   - key: person
+    role: person
     name: Person
     names: {fr: "Personne"}
     icon: user
@@ -50,6 +53,7 @@ types:
       - { key: wikidata, name: Wikidata, names: {fr: "Wikidata"}, kind: text, max_len: 32, indexed: true }
       - { key: notes, name: Notes, names: {fr: "Notes"}, kind: text, max_len: 2000, classification: personal }
   - key: organization
+    role: organization
     name: Organization
     names: {fr: "Organisation"}
     icon: building
@@ -65,6 +69,7 @@ types:
       - { key: wikidata, name: Wikidata, names: {fr: "Wikidata"}, kind: text, max_len: 32, indexed: true, unique: true }
       - { key: notes, name: Notes, names: {fr: "Notes"}, kind: text, max_len: 2000 }
   - key: place
+    role: place
     name: Place
     names: {fr: "Lieu"}
     icon: map-pin
@@ -75,6 +80,7 @@ types:
       - { key: zone, name: Zone, names: {fr: "Zone"}, kind: geo_area }
       - { key: notes, name: Notes, names: {fr: "Notes"}, kind: text, max_len: 2000 }
   - key: piece
+    role: piece
     name: Piece
     names: {fr: "Pièce"}
     icon: book
@@ -85,6 +91,7 @@ types:
       - { key: sha256, name: SHA-256, names: {fr: "SHA-256"}, kind: text, max_len: 64 }
       - { key: notes, name: Notes, names: {fr: "Notes"}, kind: text, max_len: 2000 }
   - key: claim
+    role: claim
     name: Claim
     names: {fr: "Affirmation"}
     icon: tag
@@ -113,6 +120,7 @@ types:
         labels: {"1": {fr: "1 — confirmée", en: "1 — confirmed"}, "2": {fr: "2 — probable", en: "2 — probably true"}, "3": {fr: "3 — possible", en: "3 — possibly true"}, "4": {fr: "4 — douteuse", en: "4 — doubtful"}, "5": {fr: "5 — improbable", en: "5 — improbable"}, "6": {fr: "6 — invérifiable", en: "6 — cannot be judged"}}
       - { key: corroboration_note, name: Corroboration justification, names: {fr: "Justification de la corroboration"}, kind: text, max_len: 1000 }
   - key: hypothesis
+    role: hypothesis
     name: Hypothesis
     names: {fr: "Hypothèse"}
     icon: globe
@@ -128,6 +136,7 @@ types:
         required: true
         indexed: true
   - key: statement
+    role: statement
     name: Statement
     names: {fr: "Déclaration"}
     icon: radio
@@ -145,6 +154,7 @@ types:
         values: [for, against, nuanced, none]
         labels: {for: {fr: "Pour", en: "For"}, against: {fr: "Contre", en: "Against"}, nuanced: {fr: "Nuancé", en: "Nuanced"}, none: {fr: "Aucune", en: "None"}}
   - key: identifier
+    role: identifier
     name: Identifier
     names: {fr: "Identifiant"}
     icon: tag
@@ -190,6 +200,7 @@ link_types:
     from_types: [event]
     to_types: [event]
   - key: member_of
+    role: member_of
     name: is a member of
     names: {fr: "est membre de"}
     inverse_name: has as member
@@ -202,6 +213,7 @@ link_types:
       - { key: retrieved_on, name: Retrieved on, names: {fr: "Consulté le"}, kind: date }
       - { key: note, name: Note, names: {fr: "Note"}, kind: text, max_len: 2000 }
   - key: employs
+    role: employs
     name: employs
     names: {fr: "emploie"}
     inverse_name: works for
@@ -214,6 +226,7 @@ link_types:
       - { key: retrieved_on, name: Retrieved on, names: {fr: "Consulté le"}, kind: date }
       - { key: note, name: Note, names: {fr: "Note"}, kind: text, max_len: 2000, classification: personal }
   - key: owns
+    role: owns
     name: owns
     names: {fr: "possède"}
     inverse_name: is owned by
@@ -227,6 +240,7 @@ link_types:
       - { key: retrieved_on, name: Retrieved on, names: {fr: "Consulté le"}, kind: date }
       - { key: note, name: Note, names: {fr: "Note"}, kind: text, max_len: 2000 }
   - key: knows
+    role: knows
     name: knows
     names: {fr: "connaît"}
     inverse_name: is known by
@@ -238,6 +252,7 @@ link_types:
       - { key: retrieved_on, name: Retrieved on, names: {fr: "Consulté le"}, kind: date }
       - { key: explored_by, name: Explored by (user), names: {fr: "Exploré par (utilisateur)"}, kind: number }
   - key: uses_identifier
+    role: uses_identifier
     name: uses
     names: {fr: "utilise"}
     inverse_name: is used by
@@ -253,6 +268,7 @@ link_types:
     to_types: "*"
     one_target: true
   - key: said_by
+    role: said_by
     name: is said by
     names: {fr: "dite par"}
     inverse_name: said
@@ -264,6 +280,7 @@ link_types:
       - { key: origin, name: Origin, names: {fr: "Origine"}, kind: enum, values: [manual, voice, transcript, grid], labels: {manual: {fr: "Manuelle", en: "Manual"}, voice: {fr: "Voix", en: "Voice"}, transcript: {fr: "Transcription", en: "Transcript"}, grid: {fr: "Grille", en: "Grid"}} }
       - { key: confidence, name: Confidence, names: {fr: "Confiance"}, kind: number }
   - key: appears_in
+    role: appears_in
     name: appears in
     names: {fr: "apparaît dans"}
     inverse_name: shows
@@ -275,6 +292,7 @@ link_types:
       - { key: origin, name: Origin, names: {fr: "Origine"}, kind: enum, values: [manual, voice, transcript, grid], labels: {manual: {fr: "Manuelle", en: "Manual"}, voice: {fr: "Voix", en: "Voice"}, transcript: {fr: "Transcription", en: "Transcript"}, grid: {fr: "Grille", en: "Grid"}} }
       - { key: confidence, name: Confidence, names: {fr: "Confiance"}, kind: number }
   - key: published_by
+    role: published_by
     name: is published by
     names: {fr: "publié par"}
     inverse_name: published
@@ -291,6 +309,7 @@ link_types:
     attributes:
       - { key: link, name: Link, names: {fr: "Lien"}, kind: number }
   - key: sourced_by
+    role: sourced_by
     name: is sourced by
     names: {fr: "a pour source"}
     inverse_name: sources
@@ -300,6 +319,7 @@ link_types:
     attributes:
       - { key: locator, name: Locator, names: {fr: "Repère"}, kind: text, max_len: 255 }
   - key: supports
+    role: supports
     name: supports
     names: {fr: "étaye"}
     inverse_name: is supported by
@@ -307,6 +327,7 @@ link_types:
     from_types: [claim]
     to_types: [hypothesis, claim]
   - key: contradicts
+    role: contradicts
     name: contradicts
     names: {fr: "contredit"}
     inverse_name: is contradicted by

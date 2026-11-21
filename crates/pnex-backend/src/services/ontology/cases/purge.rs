@@ -16,10 +16,11 @@ use uuid::Uuid;
 
 use super::super::changes::{self, Change};
 use super::super::{invalid, objects, role_allows, schema, Actor, OntologyError, Result};
-use super::{case_of, T_PERSON};
+use super::case_of;
+use pnex_core::ontology::roles;
 
-/// Types holding personal data that a case retention purges.
-const PERSONAL: [&str; 2] = [T_PERSON, "identifier"];
+/// Roles of the types holding personal data that a case retention purges.
+const PERSONAL: [&str; 2] = [roles::PERSON, roles::IDENTIFIER];
 
 /// Personal objects held by this case only. The case holds an object that
 /// is (or was) one of its undated pieces or attached to one of its events.
@@ -32,6 +33,8 @@ pub async fn candidates(
     case_id: Uuid,
 ) -> Result<Vec<ObjectRef>> {
     case_of(db, org_id, case_id).await?;
+    let s = schema(db, org_id).await?;
+    let personal = PERSONAL.map(|r| s.type_key(r).unwrap_or_default().to_string());
     let rows = db
         .query_all_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
@@ -59,8 +62,8 @@ pub async fn candidates(
             [
                 org_id.into(),
                 case_id.into(),
-                PERSONAL[0].into(),
-                PERSONAL[1].into(),
+                personal[0].clone().into(),
+                personal[1].clone().into(),
             ],
         ))
         .await?;

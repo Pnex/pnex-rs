@@ -125,6 +125,7 @@ pub fn PacksTab(tabs: Element) -> Element {
                                             toasts::info(kept_message(&view.kept));
                                         }
                                         reload.with_mut(|r| *r += 1);
+                                        crate::state::roles::reload();
                                     }
                                     Err(e) => toasts::error(e),
                                 }

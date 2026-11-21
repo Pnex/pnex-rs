@@ -20,24 +20,28 @@ const TIGHT: f64 = 16.0;
 const BOTTOM: f64 = 170.0;
 /// Threads shown before "show all".
 const TOP_ACTORS: usize = 12;
-/// Context objects, not actors: they never get a thread.
-const NOT_ACTORS: [&str; 8] = [
-    "place",
-    "piece",
-    "claim",
-    "hypothesis",
-    "identifier",
-    "map_pin",
-    "doc",
-    "demand",
+/// Context objects, not actors: they never get a thread. Roles of types (D441),
+/// then native kinds.
+const NOT_ACTOR_ROLES: [&str; 5] = [
+    pnex_core::ontology::roles::PLACE,
+    pnex_core::ontology::roles::PIECE,
+    pnex_core::ontology::roles::CLAIM,
+    pnex_core::ontology::roles::HYPOTHESIS,
+    pnex_core::ontology::roles::IDENTIFIER,
 ];
+const NOT_ACTORS: [&str; 3] = ["map_pin", "doc", "demand"];
 
 /// Actors of the case by number of events, most present first.
 fn actors(w: &CaseWorkspace) -> Vec<(ObjectRef, usize)> {
     let mut count: HashMap<String, (ObjectRef, usize)> = HashMap::new();
     for e in &w.events {
         for a in &e.attachments {
-            if NOT_ACTORS.contains(&a.object.type_key.as_str()) {
+            let key = a.object.type_key.as_str();
+            if NOT_ACTORS.contains(&key)
+                || NOT_ACTOR_ROLES
+                    .iter()
+                    .any(|r| crate::state::roles::is(key, r))
+            {
                 continue;
             }
             count

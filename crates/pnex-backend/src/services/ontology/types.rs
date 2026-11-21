@@ -114,7 +114,14 @@ async fn check_new_unique<C: ConnectionTrait>(
 /// as known, so a type may contain or reference itself).
 fn check(s: &OrgSchema, def: &ObjectTypeDef) -> Result<()> {
     let known = |k: &str| k == def.key || s.knows(k);
-    def.check(&known).map_err(Into::into)
+    def.check(&known)?;
+    // A role names one type of the org (D441).
+    if let Some(role) = def.role.as_deref() {
+        if s.type_key(role).is_some_and(|k| k != def.key) {
+            return Err(super::invalid("role", pnex_core::err_codes::FIELD_UNIQUE));
+        }
+    }
+    Ok(())
 }
 
 /// Creates an org type at version 1. `pack_key` marks a pack install.
