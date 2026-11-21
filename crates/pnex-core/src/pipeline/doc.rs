@@ -813,6 +813,14 @@ pub struct TableTarget {
     /// rows). Append only.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub key: Vec<String>,
+    /// Blocking checks of the rows about to be written, as a transform's
+    /// (D576): one that fails writes nothing. `max_drop_pct` needs `replace`.
+    #[serde(default, skip_serializing_if = "crate::pipelines::Checks::is_empty")]
+    pub checks: crate::pipelines::Checks,
+    /// Days a replaced version stays readable through `as_of`, from 1 to
+    /// 3650, as a transform's `retain_days`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retain_days: Option<u16>,
 }
 
 /// The ontology sync (D577) of the D301 mapping.
@@ -1536,6 +1544,15 @@ fn step_violations(
                 {
                     bad(format!("{at}.table.key"), "invalid");
                 }
+                t.checks.violations(&format!("{at}.table.checks"), bad);
+                if !t.replace && t.checks.max_drop_pct.is_some() {
+                    bad(format!("{at}.table.checks.max_drop_pct"), "invalid");
+                }
+                if t.retain_days
+                    .is_some_and(|d| d == 0 || d > crate::pipelines::RETAIN_DAYS_MAX)
+                {
+                    bad(format!("{at}.table.retain_days"), "invalid");
+                }
             }
             if w.objects.as_ref().is_some_and(|o| o.objects.is_empty()) {
                 bad(format!("{at}.objects"), "required");
@@ -1645,6 +1662,36 @@ mod tests {
         assert!(t.contains(
             &"steps.2.write one_of:table,objects,time_ranges,proposals,media,ask".into()
         ));
+    }
+
+    #[test]
+    fn table_checks_and_retention_are_checked_as_a_transform_s() {
+        let write = |table: serde_json::Value| {
+            doc(json!([
+                {"sql": {"as": "rows", "sql": "SELECT 1 AS n"}},
+                {"write": {"from": "rows", "table": table}}
+            ]))
+        };
+        let ok = write(
+            json!({"name": "t", "replace": true, "retain_days": 30, "checks": {
+            "min_rows": 1, "max_rows": 10, "unique": ["n"], "max_empty_pct": {"n": 0},
+            "max_drop_pct": 20, "same_columns": true}}),
+        );
+        assert_eq!(tokens(&ok), Vec::<String>::new());
+        let bad = write(json!({"name": "t", "retain_days": 0, "checks": {
+            "min_rows": 5, "max_rows": 1, "max_empty_pct": {"n": 101}, "max_drop_pct": 10}}));
+        let t = tokens(&bad);
+        for want in [
+            "steps.1.write.table.checks.min_rows invalid",
+            "steps.1.write.table.checks.max_empty_pct.n invalid",
+            // A drop compares a whole table: an append is no whole table.
+            "steps.1.write.table.checks.max_drop_pct invalid",
+            "steps.1.write.table.retain_days invalid",
+        ] {
+            assert!(t.contains(&want.to_string()), "{want}: {t:?}");
+        }
+        let far = write(json!({"name": "t", "retain_days": 3651}));
+        assert_eq!(tokens(&far), ["steps.1.write.table.retain_days invalid"]);
     }
 
     #[test]

@@ -240,3 +240,78 @@ async fn a_pipeline_writes_objects_without_preview() {
     })
     .await;
 }
+
+/// D934 parity with a transform (D571): a table write keeps the org tables
+/// its `sql` steps read (D574), sets its retention, and its checks compare
+/// with the current version (D576).
+#[tokio::test]
+#[serial]
+async fn a_table_write_keeps_lineage_retention_and_checks() {
+    with_app(|server, ctx, token| async move {
+        let worker = common::spawn_pipeline_worker();
+        let org = server
+            .get("/api/v1/user-info")
+            .add_header("Authorization", format!("Bearer {token}"))
+            .await
+            .json::<Value>()["orgs"][0]["id"]
+            .as_i64()
+            .unwrap();
+        let store = pnex_backend::services::datasets::store_of(&ctx.config).unwrap();
+        let net = Fixtures { calls: AtomicUsize::new(0) };
+        let run = |steps: &str| {
+            let doc: pnex_core::pipeline::doc::Document =
+                serde_saphyr::from_str(&format!("key: t\nsteps:\n{steps}")).unwrap();
+            assert!(doc.violations().is_empty(), "{:?}", doc.violations());
+            let sp = pnex_backend::services::pipeline_engine::store::Shipped {
+                pack: "companies".into(),
+                doc,
+            };
+            let (db, store, net) = (&ctx.db, &store, &net);
+            async move { run_for_org(db, store, org, &sp, net, Utc::now(), None).await.unwrap() }
+        };
+        let out = run(
+            "- sql: { as: rows, sql: \"SELECT 'a' AS k UNION ALL SELECT 'b' AS k\" }\n\
+             - write: { from: rows, table: { name: src, replace: true } }\n",
+        )
+        .await;
+        assert!(out.failure.is_none(), "{:?}", out.failure);
+        let derived = |filter: &str| {
+            format!(
+                "- sql: {{ as: rows, tables: {{ s: src }}, sql: \"SELECT k FROM s {filter}\" }}\n\
+                 - write: {{ from: rows, table: {{ name: derived, replace: true, retain_days: 30, \
+                   checks: {{ max_drop_pct: 10, same_columns: true }} }} }}\n"
+            )
+        };
+        let out = run(&derived("")).await;
+        assert!(out.failure.is_none(), "{:?}", out.failure);
+        assert_eq!(out.written, 2);
+        let row = ctx
+            .db
+            .query_one_raw(Statement::from_sql_and_values(
+                sea_orm::DatabaseBackend::Postgres,
+                "SELECT d.retain_days, \
+                   (SELECT count(*) FROM dataset_transaction_inputs i \
+                    JOIN dataset_transactions o ON o.id = i.transaction_id \
+                    JOIN dataset_transactions it ON it.id = i.input_transaction_id \
+                    JOIN datasets s ON s.id = it.dataset_id \
+                    WHERE o.dataset_id = d.id AND s.name = 'src' AND i.pipeline_id IS NULL) AS inputs \
+                 FROM datasets d WHERE d.org_id = $1 AND d.name = 'derived'",
+                vec![org.into()],
+            ))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(row.try_get::<Option<i32>>("", "retain_days").unwrap(), Some(30));
+        assert_eq!(row.try_get::<i64>("", "inputs").unwrap(), 1);
+        // Half the rows gone: the current version stays.
+        let out = run(&derived("WHERE k = 'a'")).await;
+        let f = out.failure.expect("the drop is refused");
+        assert_eq!(f.code, pnex_core::err_codes::PIPELINE_CHECK_FAILED);
+        assert_eq!(
+            f.args,
+            json!({ "output": "derived", "check": "max_drop_pct", "column": null, "value": "50", "limit": "10" })
+        );
+        worker.abort();
+    })
+    .await;
+}

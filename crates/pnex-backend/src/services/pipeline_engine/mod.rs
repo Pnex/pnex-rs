@@ -149,14 +149,21 @@ pub struct Req {
 /// Where a `write` puts its rows: the org's tables, or memory.
 #[allow(async_fn_in_trait)]
 pub trait Sink {
-    /// Appends the batches to the table as one transaction; the rows written.
-    /// `replace`: the transaction is the whole table from its commit on.
+    /// Appends the batches to the target's table as one transaction; the
+    /// rows written. `replace`: the transaction is the whole table from its
+    /// commit on. `read`: the org tables the rows come from (lineage, D574).
     async fn append(
         &mut self,
-        table: &str,
-        replace: bool,
+        target: &pnex_core::pipeline::doc::TableTarget,
         batches: Vec<Arc<blob::Batches>>,
+        read: &std::collections::BTreeSet<String>,
     ) -> Result<u64, Failure>;
+
+    /// Rows and column names of the table's current version, if it has one
+    /// (the checks `max_drop_pct` and `same_columns`).
+    async fn shape(&mut self, _table: &str) -> Result<Option<(i64, Vec<String>)>, Failure> {
+        Ok(None)
+    }
 
     /// Whether the org holds this table already.
     async fn has_table(&mut self, table: &str) -> Result<bool, Failure>;
@@ -609,6 +616,8 @@ pub struct Exec<'a, T, S, Q> {
     pub ahead: HashMap<String, Table>,
     /// Key of the tracked row the pass runs for (a navigation's resume).
     pub item: Option<String>,
+    /// Org tables the pass's `sql` steps read: the inputs of its table writes.
+    pub read: std::collections::BTreeSet<String>,
 }
 
 impl<T: Transport, S: Sink, Q: sql::SqlRunner> Exec<'_, T, S, Q> {
@@ -710,6 +719,126 @@ impl<T: Transport, S: Sink, Q: sql::SqlRunner> Exec<'_, T, S, Q> {
             .run(&sql, vec![("pnex_fresh".to_string(), file)], &tables)
             .await?;
         Ok(out.into_iter().collect())
+    }
+
+    /// D576: the checks of a table write, measured on the rows about to be
+    /// written as the worker measures a transform's; one that fails stops
+    /// the write with its outcome.
+    async fn check(
+        &mut self,
+        t: &pnex_core::pipeline::doc::TableTarget,
+        files: &[Arc<blob::Batches>],
+    ) -> Result<(), Failure> {
+        use pnex_core::pipelines::{check, duplicates_sql, empty_sql, percent};
+        let c = &t.checks;
+        if c.is_empty() {
+            return Ok(());
+        }
+        let rows: i64 = files.iter().map(|f| f.rows as i64).sum();
+        // No file: no row and no column to look at.
+        let result = match files.len() {
+            0 => None,
+            1 => Some(files[0].clone()),
+            _ => {
+                let files = files.to_vec();
+                Some(blocking(move || blob::merged(&files)).await?)
+            }
+        };
+        let columns: Vec<String> = result
+            .iter()
+            .flat_map(|f| f.schema.fields().iter().map(|f| f.name().clone()))
+            .collect();
+        let sql = self.sql;
+        let count = |query: String| {
+            let staged = result
+                .clone()
+                .map(|f| ("result".to_string(), f))
+                .into_iter()
+                .collect();
+            async move {
+                if rows == 0 {
+                    return Ok(0);
+                }
+                let out = sql
+                    .run(&query, staged, &std::collections::BTreeMap::new())
+                    .await?;
+                let first = blocking(move || records_of(&out.into_iter().collect::<Vec<_>>()))
+                    .await?
+                    .into_iter()
+                    .next();
+                // Values come back as text; a count that does not read stops the write.
+                first
+                    .and_then(|r| r.values().next()?.as_str()?.parse::<i64>().ok())
+                    .ok_or_else(|| fail("storage", json!({ "what": "checks" })))
+            }
+        };
+        let mut out = Vec::new();
+        if let Some(min) = c.min_rows {
+            out.push(check("min_rows", None, rows >= min as i64, rows, min));
+        }
+        if let Some(max) = c.max_rows {
+            out.push(check("max_rows", None, rows <= max as i64, rows, max));
+        }
+        let has = |k: &String| result.is_none() || columns.contains(k);
+        if !c.unique.is_empty() {
+            let label = c.unique.join(", ");
+            let n = if c.unique.iter().all(has) {
+                count(duplicates_sql(&c.unique)).await?
+            } else {
+                // A column it does not have identifies nothing.
+                -1
+            };
+            out.push(check("unique", Some(label), n == 0, n, 0));
+        }
+        for (column, limit) in &c.max_empty_pct {
+            let pct = match has(column) {
+                true => percent(count(empty_sql(column)).await?, rows),
+                false => 100,
+            };
+            let passed = has(column) && pct <= *limit as i64;
+            out.push(check(
+                "max_empty_pct",
+                Some(column.clone()),
+                passed,
+                pct,
+                limit,
+            ));
+        }
+        if c.max_drop_pct.is_some() || c.same_columns {
+            let current = self.sink.shape(&t.name).await?;
+            if let (Some(limit), Some((before, _))) = (c.max_drop_pct, &current) {
+                let drop = percent((before - rows).max(0), *before);
+                out.push(check(
+                    "max_drop_pct",
+                    None,
+                    drop <= limit as i64,
+                    drop,
+                    limit,
+                ));
+            }
+            if let (true, Some((_, before)), Some(_)) = (c.same_columns, &current, &result) {
+                out.push(check(
+                    "same_columns",
+                    None,
+                    *before == columns,
+                    columns.join(", "),
+                    before.join(", "),
+                ));
+            }
+        }
+        match out.into_iter().find(|r| !r.passed) {
+            None => Ok(()),
+            Some(r) => Err(fail(
+                pnex_core::err_codes::PIPELINE_CHECK_FAILED,
+                json!({
+                    "output": t.name,
+                    "check": r.check,
+                    "column": r.column,
+                    "value": r.value,
+                    "limit": r.limit,
+                }),
+            )),
+        }
     }
 
     async fn fetch(&mut self, f: &Fetch, input: Vec<Row>) -> Result<Vec<Row>, Failure> {
@@ -1216,8 +1345,9 @@ impl<T: Transport, S: Sink, Q: sql::SqlRunner> Exec<'_, T, S, Q> {
                         true => batches,
                         false => self.unseen(t, batches).await?,
                     };
+                    self.check(t, &batches).await?;
                     if batches.iter().any(|b| b.rows > 0) {
-                        *written += self.sink.append(&t.name, t.replace, batches).await?;
+                        *written += self.sink.append(t, batches, &self.read).await?;
                     }
                 } else if w.time_ranges.is_some() {
                     let rows = blocking(move || records_of(&batches)).await?;
@@ -1286,6 +1416,7 @@ impl<T: Transport, S: Sink, Q: sql::SqlRunner> Exec<'_, T, S, Q> {
                         staged.push((alias.clone(), file));
                     } else if self.sink.has_table(name).await? {
                         org_tables.insert(alias.clone(), name.clone());
+                        self.read.insert(name.clone());
                     } else if let Some(cols) = q.columns.get(alias) {
                         staged.push((alias.clone(), empty_text(cols)?));
                     } else {
@@ -1440,6 +1571,7 @@ pub async fn resume<T: Transport, S: Sink, Q: sql::SqlRunner>(
         tokens: HashMap::new(),
         ahead: HashMap::new(),
         item: Some(key.to_string()),
+        read: Default::default(),
     };
     let tables = HashMap::from([
         (
@@ -1526,6 +1658,7 @@ pub async fn run<T: Transport, S: Sink, Q: sql::SqlRunner>(
             tokens: HashMap::new(),
             ahead: HashMap::new(),
             item: None,
+            read: Default::default(),
         };
         match exec.pass(0, HashMap::new()).await {
             Ok(n) => outcome.written = n,
@@ -1585,6 +1718,7 @@ pub async fn run<T: Transport, S: Sink, Q: sql::SqlRunner>(
             tokens: HashMap::new(),
             ahead: HashMap::new(),
             item: Some(key.clone()),
+            read: Default::default(),
         };
         if let Some(k) = exec.keep.as_deref_mut() {
             k.entry(e.as_.clone())

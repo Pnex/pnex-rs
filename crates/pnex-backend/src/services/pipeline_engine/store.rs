@@ -474,14 +474,59 @@ impl Sink for DatasetSink<'_> {
             .map_err(|_| fail("storage", json!({ "table": table })))
     }
 
+    async fn shape(&mut self, table: &str) -> Result<Option<(i64, Vec<String>)>, Failure> {
+        let row = self
+            .db
+            .query_one_raw(stmt(
+                "SELECT coalesce(sum(t.rows), 0)::bigint AS rows, d.schema FROM datasets d \
+                 JOIN dataset_transactions t ON t.dataset_id = d.id \
+                 WHERE d.org_id = $1 AND d.name = $2 \
+                 AND t.state = 'committed' AND t.purged_at IS NULL \
+                 AND t.seq >= coalesce(( \
+                   SELECT max(s.seq) FROM dataset_transactions s \
+                   WHERE s.dataset_id = d.id AND s.state = 'committed' AND s.kind = 'snapshot' \
+                 ), 0) \
+                 GROUP BY d.id, d.schema",
+                vec![self.org.into(), table.into()],
+            ))
+            .await
+            .map_err(|_| fail("storage", json!({ "table": table })))?;
+        let Some(row) = row else {
+            return Ok(None);
+        };
+        let shape = (|| {
+            let schema: Value = row.try_get("", "schema")?;
+            let names = schema
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|f| f["name"].as_str().map(str::to_string))
+                .collect();
+            Ok::<_, sea_orm::DbErr>((row.try_get::<i64>("", "rows")?, names))
+        })();
+        shape
+            .map(Some)
+            .map_err(|_| fail("storage", json!({ "table": table })))
+    }
+
     async fn append(
         &mut self,
-        table: &str,
-        replace: bool,
+        target: &pnex_core::pipeline::doc::TableTarget,
         files: Vec<Arc<Batches>>,
+        read: &std::collections::BTreeSet<String>,
     ) -> Result<u64, Failure> {
+        let (table, replace) = (target.name.as_str(), target.replace);
+        let read: Vec<String> = read.iter().cloned().collect();
         let out = async {
             let id = table_of(self.db, self.org, table).await?;
+            if let Some(days) = target.retain_days {
+                self.db
+                    .execute_raw(stmt(
+                        "UPDATE datasets SET retain_days = $2 WHERE id = $1",
+                        vec![id.into(), i32::from(days).into()],
+                    ))
+                    .await?;
+            }
             let (tx, rx) = tokio::sync::mpsc::channel(2);
             // Read back batch by batch: a month of ticks never sits in memory.
             let reader = tokio::task::spawn_blocking(move || -> Result<(), Failure> {
@@ -500,7 +545,8 @@ impl Sink for DatasetSink<'_> {
             } else {
                 pnex_core::datasets::DatasetTransactionKind::Append
             };
-            let written = datasets::write_stream(self.db, self.store, self.org, id, kind, rx).await;
+            let written =
+                datasets::write_stream(self.db, self.store, self.org, id, kind, rx, &read).await;
             if let Ok(Err(f)) = reader.await {
                 tracing::warn!(code = f.code, "pipeline batches not read back");
             }

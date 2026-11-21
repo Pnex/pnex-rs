@@ -75,7 +75,7 @@ impl Checks {
         *self == Self::default()
     }
 
-    fn violations(&self, at: &str, bad: &mut impl FnMut(String, &str)) {
+    pub(crate) fn violations(&self, at: &str, bad: &mut impl FnMut(String, &str)) {
         if let (Some(min), Some(max)) = (self.min_rows, self.max_rows) {
             if min > max {
                 bad(format!("{at}.min_rows"), "invalid");
@@ -124,6 +124,55 @@ pub struct CheckResult {
     pub value: String,
     /// What was allowed.
     pub limit: String,
+}
+
+pub fn check(
+    name: &str,
+    column: Option<String>,
+    passed: bool,
+    value: impl std::fmt::Display,
+    limit: impl std::fmt::Display,
+) -> CheckResult {
+    CheckResult {
+        check: name.into(),
+        column,
+        passed,
+        value: value.to_string(),
+        limit: limit.to_string(),
+    }
+}
+
+/// The share, rounded up: 1 row in a million is not 0 %.
+pub fn percent(part: i64, whole: i64) -> i64 {
+    if whole <= 0 {
+        return 0;
+    }
+    (part.saturating_mul(100) + whole - 1) / whole
+}
+
+/// Column names come from the document: quoted, and only asked about once found in
+/// the schema of the result.
+fn quoted(column: &str) -> String {
+    format!("\"{}\"", column.replace('"', "\"\""))
+}
+
+/// Groups of `columns` held by more than one row of the table `result`.
+pub fn duplicates_sql(columns: &[String]) -> String {
+    let keys = columns
+        .iter()
+        .map(|c| quoted(c))
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!("SELECT count(*) FROM (SELECT 1 FROM result GROUP BY {keys} HAVING count(*) > 1) d")
+}
+
+/// Rows of the table `result` whose `column` is null or blank.
+pub fn empty_sql(column: &str) -> String {
+    let c = quoted(column);
+    format!(
+        "SELECT coalesce(sum(CASE WHEN {c} IS NULL OR btrim(CAST({c} AS VARCHAR)) = '' \
+         THEN 1 ELSE 0 END), 0) FROM result"
+    )
 }
 
 /// A problem of a document: where, and a machine token.
@@ -723,6 +772,20 @@ impl DatasetTriggerConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_share_rounds_up_and_survives_nothing() {
+        assert_eq!(percent(0, 0), 0);
+        assert_eq!(percent(1, 1_000_000), 1);
+        assert_eq!(percent(1, 2), 50);
+        assert_eq!(percent(3, 3), 100);
+    }
+
+    #[test]
+    fn a_column_name_cannot_leave_its_quotes() {
+        assert_eq!(quoted(r#"a"b"#), r#""a""b""#);
+        assert!(duplicates_sql(&["x".into(), r#"y"; DROP"#.into()]).contains(r#""y""; DROP""#));
+    }
 
     fn doc(transforms: Vec<(&str, Vec<(&str, &str)>, &str)>) -> PipelineDocument {
         PipelineDocument {

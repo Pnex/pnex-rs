@@ -736,6 +736,8 @@ tests:
 | `fetch.stream`, `fetch.parts` | Fichier lu à mesure, en parties jointes, suivi d'un `unpack` tar et d'un `read` |
 | `fetch.pages` | Numéro de page jusqu'à une page vide, `max` au plus |
 | `write.table.key` | Colonnes qui nomment une ligne : une ligne déjà vue est écartée |
+| `write.table.checks` | Contrôles de D576 sur les lignes à écrire. Un contrôle en échec n'écrit rien (`pipeline-check-failed`). `max_drop_pct` exige `replace` |
+| `write.table.retain_days` | Jours de lecture d'une version remplacée par `as_of`, de 1 à 3 650. Le run écrit aussi le lignage des tables lues par ses étapes `sql` (D574) |
 | `sql.columns` | Colonnes d'une table absente, lue vide |
 
 ### 6.2 Routes
@@ -767,7 +769,6 @@ tests:
 - PE8 : mesure autour d'événements et chaînes candidates dans `/analysis`, note de séance en règle.
 - PE9 : `HOST_DEBT` à vider (5 lignes), lexique (Étape, Table de travail, Sonde, Requête nommée), fiches de l'assistant.
 - D934 (choix de Shan, 2026-11-21) : une seule sorte de pipeline. `/api/v1/pipelines` doit servir le pipeline du moteur écrit par l'org, versionné, ses `tests:` joués avant l'enregistrement. Il peut lire tout hôte public, derrière la garde R8, la cadence D938 et le quota de l'org. Plan :
-  1. `write.table` reçoit `checks` (D576) et `retain_days`. Le run écrit le lignage des tables lues (D574).
   2. Stockage et routes : le pipeline d'org remplace le document D571 dans `pipelines`. Le planificateur lance aussi les pipelines d'org.
   3. Migration des données : un traitement D571 devient une étape `sql` suivie d'un `write`.
   4. Studio `/pipelines/:id` : éditeur YAML, tests et graphe des tables.

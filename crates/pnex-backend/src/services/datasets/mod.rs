@@ -846,12 +846,15 @@ where
 
 /// Records the file and makes the transaction visible, as one PostgreSQL write.
 /// A snapshot gives the dataset its columns; so does a first append.
+/// `read`: names of the org's tables the rows come from, kept as the
+/// transaction's inputs (lineage, D574) with their current versions.
 async fn commit(
     db: &DatabaseConnection,
     dataset_id: Uuid,
     transaction_id: Uuid,
     kind: DatasetTransactionKind,
     written: &Written,
+    read: &[String],
 ) -> Result<(), DatasetError> {
     let tx = db.begin().await?;
     tx.execute_raw(stmt(
@@ -893,6 +896,28 @@ async fn commit(
         vec![dataset_id.into(), columns.into(), snapshot.into()],
     ))
     .await?;
+    if !read.is_empty() {
+        // No pipeline row: a pack pipeline (D934) is no `pipelines` row.
+        tx.execute_raw(stmt(
+            "INSERT INTO dataset_transaction_inputs \
+             (transaction_id, input_transaction_id, pipeline_id, pipeline_version) \
+             SELECT $1, t.id, NULL, 0 FROM datasets o \
+             JOIN datasets d ON d.org_id = o.org_id AND d.name = ANY($3) AND d.id <> o.id \
+             JOIN dataset_transactions t ON t.dataset_id = d.id \
+             WHERE o.id = $2 AND t.state = 'committed' AND t.purged_at IS NULL \
+             AND t.seq >= coalesce(( \
+               SELECT max(s.seq) FROM dataset_transactions s \
+               WHERE s.dataset_id = d.id AND s.state = 'committed' AND s.kind = 'snapshot' \
+             ), 0) \
+             ON CONFLICT DO NOTHING",
+            vec![
+                transaction_id.into(),
+                dataset_id.into(),
+                read.to_vec().into(),
+            ],
+        ))
+        .await?;
+    }
     tx.commit().await?;
     Ok(())
 }
@@ -961,7 +986,7 @@ where
                 return Ok(Some(same));
             }
         }
-        commit(db, id, transaction_id, kind, &written).await?;
+        commit(db, id, transaction_id, kind, &written, &[]).await?;
         Ok(None)
     }
     .await;
@@ -1046,6 +1071,7 @@ pub async fn append_stream(
         id,
         DatasetTransactionKind::Append,
         batches,
+        &[],
     )
     .await
 }
@@ -1059,6 +1085,7 @@ pub async fn write_stream(
     id: Uuid,
     kind: DatasetTransactionKind,
     mut batches: tokio::sync::mpsc::Receiver<Option<arrow_array::RecordBatch>>,
+    read: &[String],
 ) -> Result<Option<DatasetTransaction>, DatasetError> {
     let cut = || DatasetError::Storage("the source stopped before its end".into());
     let dataset = get(db, org_id, id).await?;
@@ -1145,7 +1172,7 @@ pub async fn write_stream(
             sha256: sink.sha256(),
             columns: columns.clone(),
         };
-        commit(db, id, transaction_id, kind, &written).await
+        commit(db, id, transaction_id, kind, &written, read).await
     }
     .await;
     if let Err(e) = result {

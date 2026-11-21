@@ -199,12 +199,12 @@ impl Sink for Memory {
 
     async fn append(
         &mut self,
-        table: &str,
-        _: bool,
+        t: &pnex_core::pipeline::doc::TableTarget,
         files: Vec<Arc<Batches>>,
+        _: &std::collections::BTreeSet<String>,
     ) -> Result<u64, Failure> {
         let n = files.iter().map(|f| f.rows).sum();
-        self.0.entry(table.to_string()).or_default().extend(files);
+        self.0.entry(t.name.clone()).or_default().extend(files);
         Ok(n)
     }
 
@@ -773,4 +773,66 @@ async fn a_source_pushing_back_ends_the_run() {
         .map(|n| super::store::cooldown(n).as_secs())
         .collect();
     assert_eq!(pauses, [60, 120, 240, 480, 960, 1920, 3600, 3600]);
+}
+
+/// D576 on a table write: a failing check writes nothing and says which
+/// check refused what; passing ones write the rows.
+#[tokio::test]
+async fn table_checks_refuse_or_let_the_write_through() {
+    let attempt = |checks: &str| {
+        let doc: pnex_core::pipeline::doc::Document = serde_saphyr::from_str(&format!(
+            "key: t\nsteps:\n\
+             - sql: {{ as: rows, sql: \"SELECT 'a' AS k, 'x' AS v UNION ALL SELECT 'a' AS k, 'y' AS v\" }}\n\
+             - write: {{ from: rows, table: {{ name: t, replace: true, checks: {checks} }} }}\n"
+        ))
+        .unwrap();
+        assert!(doc.violations().is_empty(), "{:?}", doc.violations());
+        async move {
+            let mut sink = Memory::default();
+            let transport = Replay {
+                pack: "watch".into(),
+                given: HashMap::new(),
+            };
+            let out = run(
+                &doc,
+                &Inputs::default(),
+                &transport,
+                &mut sink,
+                &InProcess,
+                &HashMap::new(),
+                None,
+                None,
+                None,
+            )
+            .await;
+            (out, sink.0.contains_key("t"))
+        }
+    };
+    let refused = |out: &super::RunOutcome| {
+        let f = out.failure.as_ref().expect("a check refused the rows");
+        assert_eq!(f.code, pnex_core::err_codes::PIPELINE_CHECK_FAILED);
+        f.args.clone()
+    };
+
+    let (out, wrote) = attempt("{ min_rows: 3 }").await;
+    assert!(!wrote);
+    assert_eq!(
+        refused(&out),
+        json!({ "output": "t", "check": "min_rows", "column": null, "value": "2", "limit": "3" })
+    );
+
+    let (out, wrote) = attempt("{ unique: [k] }").await;
+    assert!(!wrote);
+    assert_eq!(
+        refused(&out),
+        json!({ "output": "t", "check": "unique", "column": "k", "value": "1", "limit": "0" })
+    );
+
+    let (out, wrote) = attempt(
+        "{ min_rows: 2, max_rows: 2, unique: [k, v], max_empty_pct: { v: 0 }, max_drop_pct: 10, same_columns: true }",
+    )
+    .await;
+    assert!(out.failure.is_none(), "{:?}", out.failure);
+    assert!(wrote);
+    assert_eq!(out.written, 2);
 }
