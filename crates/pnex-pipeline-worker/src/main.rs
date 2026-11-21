@@ -21,7 +21,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     loop {
         tokio::select! {
             _ = stop.recv() => {
-                worker.release().await;
                 tracing::info!("pipeline worker stopped");
                 return Ok(());
             }

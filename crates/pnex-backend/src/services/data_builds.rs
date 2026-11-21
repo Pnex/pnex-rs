@@ -9,10 +9,11 @@
 use std::time::Duration;
 
 use pnex_core::err_codes;
+use pnex_core::pipeline::doc::Document;
 use pnex_core::pipelines::{
     dataset_channel, find_cycle, next_step, plan, Build, BuildState, BuildStep, BuildStepState,
-    BuildTargetKind, DatasetEvent, GraphNode, PipelineDocument, PlanError, CHANGED_IDS_MAX,
-    DATASET_COMMITTED, DATASET_SYNCED,
+    BuildTargetKind, DatasetEvent, GraphNode, PlanError, CHANGED_IDS_MAX, DATASET_COMMITTED,
+    DATASET_SYNCED,
 };
 use sea_orm::{
     ConnectionTrait, DatabaseBackend, DatabaseConnection, DbErr, QueryResult, Statement,
@@ -71,25 +72,24 @@ async fn pipeline_nodes(db: &impl ConnectionTrait, org_id: i64) -> Result<Vec<Gr
         let document: String = r.try_get("", "document")?;
         let id: Uuid = r.try_get("", "id")?;
         // Checked when saved: a document of an older format just has no edges.
-        let doc: Option<PipelineDocument> = serde_saphyr::from_str(&document).ok();
+        let doc: Option<Document> = serde_saphyr::from_str(&document).ok();
         out.push(pipeline_node(id, r.try_get("", "name")?, doc.as_ref()));
     }
     Ok(out)
 }
 
-pub(crate) fn pipeline_node(id: Uuid, name: String, doc: Option<&PipelineDocument>) -> GraphNode {
+pub(crate) fn pipeline_node(id: Uuid, name: String, doc: Option<&Document>) -> GraphNode {
     let writes: Vec<String> = doc
         .into_iter()
-        .flat_map(|d| d.transforms.iter().map(|t| t.output.clone()))
+        .flat_map(|d| d.table_writes())
+        .map(str::to_string)
         .collect();
-    let mut reads: Vec<String> = doc
+    let reads: Vec<String> = doc
         .into_iter()
-        .flat_map(|d| d.transforms.iter())
-        .flat_map(|t| t.inputs.values().cloned())
-        .filter(|d| !writes.contains(d))
+        .flat_map(|d| d.table_reads())
+        .filter(|t| !writes.iter().any(|w| w == t))
+        .map(str::to_string)
         .collect();
-    reads.sort();
-    reads.dedup();
     GraphNode {
         kind: BuildTargetKind::Pipeline,
         id: id.to_string(),
@@ -480,12 +480,12 @@ async fn start_step(
             }
             let row = db
                 .query_one_raw(stmt(
-                    "INSERT INTO pipeline_jobs (org_id, pipeline_id, version, trigger) \
-                     SELECT org_id, id, version, 'build' FROM pipelines \
+                    "INSERT INTO pipeline_jobs (org_id, pipeline_id, version, trigger, started_by) \
+                     SELECT org_id, id, version, 'build', $3 FROM pipelines \
                      WHERE org_id = $1 AND id = $2 \
                      ON CONFLICT (pipeline_id) WHERE state IN ('queued', 'running') DO NOTHING \
                      RETURNING id",
-                    vec![org_id.into(), id.into()],
+                    vec![org_id.into(), id.into(), author.into()],
                 ))
                 .await?;
             match row {

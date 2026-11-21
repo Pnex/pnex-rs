@@ -149,7 +149,7 @@ impl Api<'_> {
 }
 
 fn document(input: &str, output: &str) -> String {
-    format!("transforms:\n  - output: {output}\n    inputs: {{ i: {input} }}\n    sql: SELECT * FROM i\n")
+    common::sql_pipeline(output, &[("i", input)], "SELECT * FROM i")
 }
 
 async fn personal_org(server: &axum_test::TestServer, token: &str) -> i64 {

@@ -6037,61 +6037,6 @@
         ],
         "type": "object"
       },
-      "Checks": {
-        "additionalProperties": false,
-        "description": "What a computed result must hold before it is committed (D576).",
-        "properties": {
-          "max_drop_pct": {
-            "description": "Highest fall in rows against the current version, in percent.",
-            "format": "int32",
-            "minimum": 0,
-            "type": [
-              "integer",
-              "null"
-            ]
-          },
-          "max_empty_pct": {
-            "additionalProperties": {
-              "format": "int32",
-              "minimum": 0,
-              "type": "integer"
-            },
-            "description": "Column → highest share of null or blank values, in percent.",
-            "propertyNames": {
-              "type": "string"
-            },
-            "type": "object"
-          },
-          "max_rows": {
-            "format": "int64",
-            "minimum": 0,
-            "type": [
-              "integer",
-              "null"
-            ]
-          },
-          "min_rows": {
-            "format": "int64",
-            "minimum": 0,
-            "type": [
-              "integer",
-              "null"
-            ]
-          },
-          "same_columns": {
-            "description": "Refuses a result whose columns differ from the current version.",
-            "type": "boolean"
-          },
-          "unique": {
-            "description": "Columns that together identify a row.",
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          }
-        },
-        "type": "object"
-      },
       "ChunkText": {
         "properties": {
           "asset_id": {
@@ -14243,8 +14188,12 @@
             "type": "string"
           },
           "pipeline_id": {
+            "description": "The org's pipeline; absent for a pack's (`pipeline_name` is then\n`<pack>/<key>`).",
             "format": "uuid",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "pipeline_name": {
             "type": "string"
@@ -14253,7 +14202,6 @@
         "required": [
           "dataset_id",
           "dataset_name",
-          "pipeline_id",
           "pipeline_name"
         ],
         "type": "object"
@@ -25959,19 +25907,49 @@
         ],
         "type": "object"
       },
-      "PipelineDocument": {
-        "additionalProperties": false,
-        "description": "What a pipeline computes, transform by transform, in order. A transform may\nread the output of an earlier one.",
+      "PipelineCheck": {
+        "description": "What a pipeline document reads and writes, once checked and tested.",
         "properties": {
-          "transforms": {
+          "reads": {
+            "description": "Tables of the org its `sql` steps read.",
             "items": {
-              "$ref": "#/components/schemas/Transform"
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "rights": {
+            "description": "Permissions a member needs to run it.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "steps": {
+            "description": "Kind of each step, in order (`fetch`, `sql`, `write`…).",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "tests": {
+            "description": "Test cases played, all held.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "writes": {
+            "description": "Tables of the org it writes.",
+            "items": {
+              "type": "string"
             },
             "type": "array"
           }
         },
         "required": [
-          "transforms"
+          "reads",
+          "writes",
+          "steps",
+          "tests",
+          "rights"
         ],
         "type": "object"
       },
@@ -33985,48 +33963,6 @@
           "stream",
           "segment_id",
           "text"
-        ],
-        "type": "object"
-      },
-      "Transform": {
-        "additionalProperties": false,
-        "description": "One SQL query from datasets to a dataset.",
-        "properties": {
-          "checks": {
-            "$ref": "#/components/schemas/Checks",
-            "description": "Blocking checks of the result: one that fails leaves the previous version\ncurrent (D576)."
-          },
-          "inputs": {
-            "additionalProperties": {
-              "type": "string"
-            },
-            "description": "SQL table name → dataset read. Nothing else is visible to the query.",
-            "propertyNames": {
-              "type": "string"
-            },
-            "type": "object"
-          },
-          "output": {
-            "description": "Dataset it writes, created on the first run.",
-            "type": "string"
-          },
-          "retain_days": {
-            "description": "Days a replaced version of the output stays readable through `as_of`, from 1 to\n3650. Default: 90. The latest version is never purged.",
-            "format": "int32",
-            "minimum": 0,
-            "type": [
-              "integer",
-              "null"
-            ]
-          },
-          "sql": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "output",
-          "inputs",
-          "sql"
         ],
         "type": "object"
       },
@@ -90177,7 +90113,7 @@
         "x-pnex-as-of": "current_only"
       },
       "post": {
-        "description": "Creates a pipeline from a YAML document of SQL transforms, each with its input datasets and its output dataset. Requires `pipelines:write`.",
+        "description": "Creates a pipeline from a YAML engine document (steps such as `fetch`, `read`, `sql`, `write`), after its `tests:` pass on the answers they hold. It may not navigate (`browse`), share into another org, read pack settings, nor set its own schedule. Requires `pipelines:write`.",
         "operationId": "pipelines_create",
         "parameters": [
           {
@@ -90220,7 +90156,7 @@
                 }
               }
             },
-            "description": "`pipeline-document-invalid` (`errors.violations`: `path`, `token`) or `field-invalid` on `name`"
+            "description": "`pipeline-document-invalid` (`errors.violations`: `path`, `token`; a failed test is under `tests.<n>`) or `field-invalid` on `name`"
           },
           "401": {
             "content": {
@@ -90266,7 +90202,7 @@
     },
     "/api/v1/pipelines/validate": {
       "post": {
-        "description": "Parses and checks a YAML document without saving it, and answers it parsed. Loops through other pipelines are only found at save. Requires `pipelines:read`.",
+        "description": "Checks a YAML document and plays its `tests:` without saving it, and answers the tables it reads and writes and the rights its run needs. Loops through other pipelines are only found at save. Requires `pipelines:read`.",
         "operationId": "pipelines_validate",
         "parameters": [
           {
@@ -90295,7 +90231,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PipelineDocument"
+                  "$ref": "#/components/schemas/PipelineCheck"
                 }
               }
             },
@@ -90708,7 +90644,7 @@
         "x-pnex-as-of": "current_only"
       },
       "post": {
-        "description": "Queues a run of the current version for the worker; read its state with `GET /pipelines/{id}/runs/{run_id}`. Requires `pipelines:run`, and `datasets:read` and `datasets:write` since the run reads and writes datasets, and a clearance for every marking of the tables it reads.",
+        "description": "Queues a run of the current version; read its state with `GET /pipelines/{id}/runs/{run_id}`. Requires `pipelines:run`, the rights its writes need (`datasets:read` and `datasets:write` always; `ontology:write`, `time-ranges:write`, `proposals:file` or `media:write` for those targets), and a clearance for every marking of the tables it reads. The run checks them again when it starts.",
         "operationId": "pipelines_runs_start",
         "parameters": [
           {

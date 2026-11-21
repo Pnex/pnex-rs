@@ -1,9 +1,16 @@
-//! Pipelines (pipelines.md D571, D573, D574): versioned documents, the run
-//! queue the worker takes from, and lineage. The server never runs user SQL.
+//! An org's own pipelines (pipelines.md D934, D571, D573, D574): versioned
+//! engine documents, checked and tested before they are saved, their run
+//! queue, and lineage. The server runs their steps; the worker runs their
+//! SQL, never the server.
 
+use std::collections::HashMap;
+use std::time::Duration;
+
+use loco_rs::app::AppContext;
 use pnex_core::datasets::Dataset;
+use pnex_core::pipeline::doc::Document;
 use pnex_core::pipelines::{
-    DatasetLineage, LineageLink, Pipeline, PipelineDocument, PipelineRun, PipelineRunState,
+    DatasetLineage, LineageLink, Pipeline, PipelineCheck, PipelineRun, PipelineRunState,
     PipelineVersion, PipelineViolation, DOCUMENT_MAX_BYTES, NAME_MAX,
 };
 use sea_orm::{
@@ -49,22 +56,91 @@ fn at(column: &str) -> String {
     format!("to_char({column} AT TIME ZONE 'UTC', {DATE}) AS {column}")
 }
 
+fn violation(path: String, token: String) -> PipelineViolation {
+    PipelineViolation { path, token }
+}
+
 /// Parses and checks a YAML document: it can run, or the caller knows why not.
-pub fn checked(yaml: &str) -> Result<PipelineDocument, PipelineError> {
-    let one = |token: &str| {
-        PipelineError::Document(vec![PipelineViolation {
-            path: "document".into(),
-            token: token.into(),
-        }])
-    };
+pub fn checked(yaml: &str) -> Result<Document, PipelineError> {
+    let one =
+        |token: &str| PipelineError::Document(vec![violation("document".into(), token.into())]);
     if yaml.len() > DOCUMENT_MAX_BYTES {
         return Err(one(&format!("max_bytes:{DOCUMENT_MAX_BYTES}")));
     }
-    let doc: PipelineDocument = serde_saphyr::from_str(yaml).map_err(|_| one("yaml"))?;
-    match doc.violations() {
-        v if v.is_empty() => Ok(doc),
-        v => Err(PipelineError::Document(v)),
+    let doc: Document = serde_saphyr::from_str(yaml).map_err(|_| one("yaml"))?;
+    let v: Vec<PipelineViolation> = doc
+        .violations()
+        .into_iter()
+        .chain(doc.org_violations())
+        .map(|v| violation(v.path, v.token))
+        .collect();
+    match v.is_empty() {
+        true => Ok(doc),
+        false => Err(PipelineError::Document(v)),
     }
+}
+
+/// How long the tests of one save may take, the worker included.
+const TESTS_WAIT: Duration = Duration::from_secs(60);
+
+/// Plays the document's `tests:` on the answers they hold (D934): a case
+/// that does not hold refuses the document.
+pub async fn tested(ctx: &AppContext, org_id: i64, doc: &Document) -> Result<(), PipelineError> {
+    use crate::services::pipeline_engine::{replay, sql::WorkerSql, store};
+    if doc.tests.is_empty() {
+        return Ok(());
+    }
+    let storage = crate::services::datasets::store_of(&ctx.config)
+        .map_err(|e| PipelineError::Db(DbErr::Custom(e.code().to_string())))?;
+    let sql = WorkerSql {
+        db: &ctx.db,
+        store: &storage,
+        org: org_id,
+    };
+    let own = replay::Replay {
+        pack: None,
+        given: HashMap::new(),
+    };
+    let all = async {
+        let mut out = Vec::new();
+        for (i, case) in doc.tests.iter().enumerate() {
+            let functions = store::call_functions("", doc);
+            let extractors = store::model_extractors("", doc);
+            for p in replay::case(doc, i, case, &own, functions, extractors, &sql).await {
+                let path = match p.table {
+                    Some(t) => format!("tests.{i}.expect.{t}"),
+                    None => format!("tests.{i}"),
+                };
+                out.push(violation(path, p.token));
+            }
+        }
+        out
+    };
+    let v = tokio::time::timeout(TESTS_WAIT, all)
+        .await
+        .unwrap_or_else(|_| vec![violation("tests".into(), "timeout".into())]);
+    match v.is_empty() {
+        true => Ok(()),
+        false => Err(PipelineError::Document(v)),
+    }
+}
+
+/// What a document reads and writes once checked and tested: the answer
+/// of the check route.
+pub async fn check(
+    ctx: &AppContext,
+    org_id: i64,
+    yaml: &str,
+) -> Result<PipelineCheck, PipelineError> {
+    let doc = checked(yaml)?;
+    tested(ctx, org_id, &doc).await?;
+    Ok(PipelineCheck {
+        reads: doc.table_reads().into_iter().map(str::to_string).collect(),
+        writes: doc.table_writes().into_iter().map(str::to_string).collect(),
+        steps: doc.steps.iter().map(|s| s.name().to_string()).collect(),
+        tests: doc.tests.len(),
+        rights: doc.rights().into_iter().map(str::to_string).collect(),
+    })
 }
 
 /// A document that closes a loop with other pipelines or imports could never be
@@ -74,14 +150,14 @@ async fn no_cycle(
     org_id: i64,
     id: Uuid,
     name: &str,
-    doc: &PipelineDocument,
+    doc: &Document,
 ) -> Result<(), PipelineError> {
     let node = crate::services::data_builds::pipeline_node(id, name.to_string(), Some(doc));
     match crate::services::data_builds::cycle_with(db, org_id, node).await? {
-        Some(_) => Err(PipelineError::Document(vec![PipelineViolation {
-            path: "transforms".into(),
-            token: "cycle".into(),
-        }])),
+        Some(_) => Err(PipelineError::Document(vec![violation(
+            "steps".into(),
+            "cycle".into(),
+        )])),
         None => Ok(()),
     }
 }
@@ -171,7 +247,7 @@ fn run_of(row: &QueryResult) -> Result<PipelineRun, DbErr> {
 }
 
 pub async fn create(
-    db: &DatabaseConnection,
+    ctx: &AppContext,
     org_id: i64,
     name: &str,
     document: &str,
@@ -189,7 +265,9 @@ pub async fn create(
         return Err(invalid(format!("max_length:{NAME_MAX}")));
     }
     let doc = checked(document)?;
+    let db = &ctx.db;
     no_cycle(db, org_id, Uuid::new_v4(), name, &doc).await?;
+    tested(ctx, org_id, &doc).await?;
     let tx = db.begin().await?;
     let row = tx
         .query_one_raw(stmt(
@@ -258,16 +336,18 @@ pub async fn list(
 
 /// Saves a new version over the one that was read.
 pub async fn update(
-    db: &DatabaseConnection,
+    ctx: &AppContext,
     org_id: i64,
     id: Uuid,
     document: &str,
     expected_version: i32,
     author: i64,
 ) -> Result<Pipeline, PipelineError> {
+    let db = &ctx.db;
     let current = get(db, org_id, id).await?;
     let doc = checked(document)?;
     no_cycle(db, org_id, id, &current.name, &doc).await?;
+    tested(ctx, org_id, &doc).await?;
     let tx = db.begin().await?;
     let done = tx
         .execute_raw(stmt(
@@ -390,11 +470,16 @@ pub async fn start_run(
     }
     let row = db
         .query_one_raw(stmt(
-            "INSERT INTO pipeline_jobs (org_id, pipeline_id, version, trigger) \
-             VALUES ($1, $2, $3, 'manual') \
+            "INSERT INTO pipeline_jobs (org_id, pipeline_id, version, trigger, started_by) \
+             VALUES ($1, $2, $3, 'manual', $4) \
              ON CONFLICT (pipeline_id) WHERE state IN ('queued', 'running') DO NOTHING \
              RETURNING id",
-            vec![org_id.into(), id.into(), pipeline.version.into()],
+            vec![
+                org_id.into(),
+                id.into(),
+                pipeline.version.into(),
+                user.into(),
+            ],
         ))
         .await?
         .ok_or(PipelineError::RunActive)?;
@@ -409,20 +494,15 @@ pub async fn missing_markings(
     user: i64,
     document: &str,
 ) -> Result<Vec<String>, DbErr> {
-    let Ok(doc) = serde_saphyr::from_str::<PipelineDocument>(document) else {
+    let Ok(doc) = serde_saphyr::from_str::<Document>(document) else {
         return Ok(Vec::new());
     };
-    let names: std::collections::BTreeSet<&String> = doc
-        .transforms
-        .iter()
-        .flat_map(|t| t.inputs.values())
-        .collect();
     let mut out = std::collections::BTreeSet::new();
-    for name in names {
+    for name in doc.table_reads() {
         let row = db
             .query_one_raw(stmt(
                 "SELECT id FROM datasets WHERE org_id = $1 AND name = $2",
-                vec![org_id.into(), name.clone().into()],
+                vec![org_id.into(), name.into()],
             ))
             .await?;
         if let Some(id) = row.and_then(|r| r.try_get::<Uuid>("", "id").ok()) {
@@ -478,7 +558,9 @@ fn link_of(row: &QueryResult) -> Result<LineageLink, DbErr> {
     Ok(LineageLink {
         dataset_id: row.try_get::<Uuid>("", "dataset_id")?.to_string(),
         dataset_name: row.try_get("", "dataset_name")?,
-        pipeline_id: row.try_get::<Uuid>("", "pipeline_id")?.to_string(),
+        pipeline_id: row
+            .try_get::<Option<Uuid>>("", "pipeline_id")?
+            .map(|u| u.to_string()),
         pipeline_name: row.try_get("", "pipeline_name")?,
     })
 }
@@ -491,12 +573,12 @@ pub async fn lineage(db: &DatabaseConnection, dataset: &Dataset) -> Result<Datas
     let upstream = db
         .query_all_raw(stmt(
             "SELECT DISTINCT d.id AS dataset_id, d.name AS dataset_name, \
-             p.id AS pipeline_id, p.name AS pipeline_name \
+             p.id AS pipeline_id, coalesce(p.name, i.pipeline_key) AS pipeline_name \
              FROM dataset_transactions t \
              JOIN dataset_transaction_inputs i ON i.transaction_id = t.id \
              JOIN dataset_transactions it ON it.id = i.input_transaction_id \
              JOIN datasets d ON d.id = it.dataset_id \
-             JOIN pipelines p ON p.id = i.pipeline_id \
+             LEFT JOIN pipelines p ON p.id = i.pipeline_id \
              WHERE t.dataset_id = $1 ORDER BY dataset_name, pipeline_name",
             vec![id.into()],
         ))
@@ -504,12 +586,12 @@ pub async fn lineage(db: &DatabaseConnection, dataset: &Dataset) -> Result<Datas
     let downstream = db
         .query_all_raw(stmt(
             "SELECT DISTINCT d.id AS dataset_id, d.name AS dataset_name, \
-             p.id AS pipeline_id, p.name AS pipeline_name \
+             p.id AS pipeline_id, coalesce(p.name, i.pipeline_key) AS pipeline_name \
              FROM dataset_transactions it \
              JOIN dataset_transaction_inputs i ON i.input_transaction_id = it.id \
              JOIN dataset_transactions t ON t.id = i.transaction_id \
              JOIN datasets d ON d.id = t.dataset_id \
-             JOIN pipelines p ON p.id = i.pipeline_id \
+             LEFT JOIN pipelines p ON p.id = i.pipeline_id \
              WHERE it.dataset_id = $1 ORDER BY dataset_name, pipeline_name",
             vec![id.into()],
         ))
@@ -544,65 +626,218 @@ pub async fn lineage(db: &DatabaseConnection, dataset: &Dataset) -> Result<Datas
     })
 }
 
-#[cfg(test)]
-mod yaml_tests {
-    use super::*;
-    use pnex_core::pipelines::{Checks, Transform};
-    use std::collections::BTreeMap;
+// ─────────────────────────── Runs ───────────────────────────
 
-    fn doc(sql: &str) -> PipelineDocument {
-        PipelineDocument {
-            transforms: vec![Transform {
-                output: "clean".into(),
-                inputs: BTreeMap::from([("a".to_string(), "raw: \"x\"".to_string())]),
-                sql: sql.into(),
-                checks: Checks {
-                    min_rows: Some(1),
-                    unique: vec!["id".into()],
-                    max_empty_pct: BTreeMap::from([("name".to_string(), 5)]),
-                    same_columns: true,
-                    ..Checks::default()
-                },
-                retain_days: None,
-            }],
+const HEARTBEAT_EVERY: Duration = Duration::from_secs(30);
+/// Takes of one run before it fails for good.
+const MAX_ATTEMPTS: i32 = 2;
+
+/// A queued run, taken.
+struct Job {
+    id: Uuid,
+    org_id: i64,
+    pipeline_id: Uuid,
+    version: i32,
+    attempts: i32,
+    started_by: Option<i64>,
+}
+
+/// Runs dead for too long go back to the queue, or fail after their attempts.
+async fn sweep_dead(db: &DatabaseConnection) -> Result<(), DbErr> {
+    // One minute past the 10 after which a dead run's open table transaction
+    // is freed: requeued sooner, the retry would find it still open.
+    db.execute_raw(stmt(
+        "UPDATE pipeline_jobs SET state = 'failed', code = $1, finished_at = now() \
+         WHERE state = 'running' AND heartbeat_at < now() - interval '11 minutes' \
+         AND attempts >= $2",
+        vec![
+            pnex_core::err_codes::PIPELINE_WORKER_LOST.into(),
+            MAX_ATTEMPTS.into(),
+        ],
+    ))
+    .await?;
+    db.execute_raw(stmt(
+        "UPDATE pipeline_jobs SET state = 'queued' \
+         WHERE state = 'running' AND heartbeat_at < now() - interval '11 minutes' \
+         AND attempts < $1",
+        vec![MAX_ATTEMPTS.into()],
+    ))
+    .await?;
+    Ok(())
+}
+
+/// Takes a queued run of an org with no run in progress and no erasure
+/// pending (a run started now could read rows about to be erased). The org
+/// served least recently goes first.
+async fn claim(db: &DatabaseConnection) -> Result<Option<Job>, DbErr> {
+    let row = db
+        .query_one_raw(stmt(
+            "UPDATE pipeline_jobs SET state = 'running', attempts = attempts + 1, \
+             heartbeat_at = now(), started_at = coalesce(started_at, now()) \
+             WHERE id = ( \
+               SELECT j.id FROM pipeline_jobs j \
+               WHERE j.state = 'queued' AND NOT EXISTS ( \
+                 SELECT 1 FROM pipeline_jobs r WHERE r.org_id = j.org_id AND r.state = 'running') \
+               AND NOT EXISTS ( \
+                 SELECT 1 FROM dataset_erasures e WHERE e.org_id = j.org_id AND e.done_at IS NULL) \
+               ORDER BY (SELECT max(l.started_at) FROM pipeline_jobs l WHERE l.org_id = j.org_id) \
+                 NULLS FIRST, j.created_at \
+               FOR UPDATE OF j SKIP LOCKED LIMIT 1 \
+             ) RETURNING id, org_id, pipeline_id, version, attempts, started_by",
+            vec![],
+        ))
+        .await;
+    let row = match row {
+        Ok(r) => r,
+        // Two servers took two runs of one org: the unique index stopped the
+        // second, its run stays queued.
+        Err(e) if e.to_string().contains("duplicate key") => return Ok(None),
+        Err(e) => return Err(e),
+    };
+    row.map(|r| {
+        Ok(Job {
+            id: r.try_get("", "id")?,
+            org_id: r.try_get("", "org_id")?,
+            pipeline_id: r.try_get("", "pipeline_id")?,
+            version: r.try_get("", "version")?,
+            attempts: r.try_get("", "attempts")?,
+            started_by: r.try_get("", "started_by")?,
+        })
+    })
+    .transpose()
+}
+
+/// Runs one job: the version it names, under the rights its starter still
+/// holds (R2). `Err`: its failure code and arguments.
+async fn run_job(ctx: &AppContext, job: &Job) -> Result<(), (String, serde_json::Value)> {
+    use pnex_core::err_codes;
+    let db_failure = |e: DbErr| {
+        tracing::warn!(error = %e, "pipeline run: database");
+        (
+            err_codes::PIPELINE_WORKER_LOST.to_string(),
+            serde_json::Value::Null,
+        )
+    };
+    let document: String = ctx
+        .db
+        .query_one_raw(stmt(
+            "SELECT document FROM pipeline_versions WHERE pipeline_id = $1 AND version = $2",
+            vec![job.pipeline_id.into(), job.version.into()],
+        ))
+        .await
+        .map_err(db_failure)?
+        .and_then(|r| r.try_get("", "document").ok())
+        .ok_or_else(|| {
+            (
+                err_codes::PIPELINE_NOT_FOUND.to_string(),
+                serde_json::Value::Null,
+            )
+        })?;
+    let doc = checked(&document).map_err(|_| {
+        (
+            err_codes::PIPELINE_DOCUMENT_INVALID.to_string(),
+            serde_json::Value::Null,
+        )
+    })?;
+    if let Some(user) = job.started_by {
+        let grants = crate::services::iam::store::member_grants(&ctx.db, job.org_id, user)
+            .await
+            .map_err(db_failure)?;
+        if let Some(p) = doc
+            .rights()
+            .into_iter()
+            .find(|p| !grants.as_ref().is_some_and(|g| g.can(p)))
+        {
+            return Err((
+                err_codes::ACCESS_DENIED.to_string(),
+                serde_json::json!({ "permission": p }),
+            ));
+        }
+        let missing = missing_markings(&ctx.db, job.org_id, user, &document)
+            .await
+            .map_err(db_failure)?;
+        if !missing.is_empty() {
+            return Err((
+                err_codes::MARKING_REQUIRED.to_string(),
+                serde_json::json!({ "markings": missing }),
+            ));
         }
     }
+    use crate::services::pipeline_engine::store;
+    let out = store::run_own(
+        ctx,
+        job.org_id,
+        job.pipeline_id,
+        job.version,
+        &doc,
+        job.started_by,
+        &store::HttpTransport,
+    )
+    .await
+    .map_err(|e| (e.code().to_string(), serde_json::Value::Null))?;
+    match out.failure {
+        Some(f) => Err((f.code.to_string(), f.args)),
+        None => Ok(()),
+    }
+}
 
-    /// What a screen writes is what the server reads, whatever the query holds.
-    #[test]
-    fn a_document_survives_its_yaml() {
-        for sql in [
-            "SELECT 1",
-            "SELECT *\nFROM a\n\nWHERE x = 'y: z' -- comment # hash",
-            "SELECT '{not: yaml}', \"é\", '|', '- x'",
-            "  SELECT 1",
-            "SELECT 1\n",
-            "\nSELECT 1",
-            "SELECT 1 \nFROM a",
-            "SELECT\t1",
-            "SELECT 1\r\nFROM a",
-            "SELECT 1\n  , 2\n\n\n  , 3",
-            "SELECT '\\n' -- \u{1F600}",
-        ] {
-            let d = doc(sql);
-            let parsed: PipelineDocument =
-                serde_saphyr::from_str(&d.to_yaml()).unwrap_or_else(|e| panic!("{sql:?}: {e}"));
-            assert_eq!(parsed, d, "{sql:?}\n{}", d.to_yaml());
+/// Takes and runs the next queued run. `false` when there is none.
+pub async fn run_next(ctx: &AppContext) -> Result<bool, DbErr> {
+    sweep_dead(&ctx.db).await?;
+    let Some(job) = claim(&ctx.db).await? else {
+        return Ok(false);
+    };
+    let beat = {
+        let (db, id) = (ctx.db.clone(), job.id);
+        tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(HEARTBEAT_EVERY).await;
+                let _ = db
+                    .execute_raw(stmt(
+                        "UPDATE pipeline_jobs SET heartbeat_at = now() WHERE id = $1",
+                        vec![id.into()],
+                    ))
+                    .await;
+            }
+        })
+    };
+    let outcome = run_job(ctx, &job).await;
+    beat.abort();
+    let (state, code, args) = match outcome {
+        Ok(()) => ("done", None, None),
+        Err((code, args)) => {
+            tracing::info!(job = %job.id, code, "pipeline run failed");
+            ("failed", Some(code), Some(args))
         }
-    }
+    };
+    ctx.db
+        .execute_raw(stmt(
+            // A late server must not overwrite a run another one took back.
+            "UPDATE pipeline_jobs SET state = $2, code = $3, args = $4, finished_at = now() \
+             WHERE id = $1 AND state = 'running' AND attempts = $5",
+            vec![
+                job.id.into(),
+                state.into(),
+                code.into(),
+                args.into(),
+                job.attempts.into(),
+            ],
+        ))
+        .await?;
+    Ok(true)
+}
 
-    #[test]
-    fn a_plain_query_stays_readable() {
-        let yaml = doc("SELECT *\nFROM a").to_yaml();
-        assert!(
-            yaml.contains("sql: |-\n      SELECT *\n      FROM a\n"),
-            "{yaml}"
-        );
-    }
-
-    #[test]
-    fn the_starter_can_run() {
-        let d = PipelineDocument::starter("raw", "clean");
-        assert_eq!(checked(&d.to_yaml()).unwrap(), d);
-    }
+/// The queue of the org pipelines' runs, polled every 2 seconds.
+pub fn spawn(ctx: &AppContext) {
+    let ctx = ctx.clone();
+    tokio::spawn(async move {
+        loop {
+            match run_next(&ctx).await {
+                Ok(true) => continue,
+                Ok(false) => {}
+                Err(e) => tracing::warn!(error = %e, "pipeline queue pass stopped"),
+            }
+            tokio::time::sleep(Duration::from_secs(2)).await;
+        }
+    });
 }

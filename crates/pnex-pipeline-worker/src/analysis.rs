@@ -143,7 +143,6 @@ impl Worker {
                         .ok_or_else(unknown)?;
                     Input {
                         alias: format!("{OBJECTS_SCHEMA}.{table}"),
-                        transactions: Default::default(),
                         files: vec![key.to_string()],
                     }
                 }

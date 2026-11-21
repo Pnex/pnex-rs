@@ -1,5 +1,6 @@
-//! Pipelines API (pipelines.md D571, D573): documents, runs, lineage. Org
-//! from the principal (R1), permissions applied by `OrgContext` (R2).
+//! Pipelines API (pipelines.md D934, D571, D573): an org's own engine
+//! pipelines, their runs, lineage. Org from the principal (R1), permissions
+//! applied by `OrgContext` (R2).
 
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
@@ -202,11 +203,11 @@ async fn list(
     tag = "pipelines",
     operation_id = "pipelines_create",
     summary = "Create a pipeline",
-    description = "Creates a pipeline from a YAML document of SQL transforms, each with its input datasets and its output dataset. Requires `pipelines:write`.",
+    description = "Creates a pipeline from a YAML engine document (steps such as `fetch`, `read`, `sql`, `write`), after its `tests:` pass on the answers they hold. It may not navigate (`browse`), share into another org, read pack settings, nor set its own schedule. Requires `pipelines:write`.",
     request_body = pnex_core::pipelines::PipelineInput,
     responses(
         (status = 201, body = pnex_core::pipelines::Pipeline),
-        (status = 400, description = "`pipeline-document-invalid` (`errors.violations`: `path`, `token`) or `field-invalid` on `name`", body = crate::openapi::ErrorDetail),
+        (status = 400, description = "`pipeline-document-invalid` (`errors.violations`: `path`, `token`; a failed test is under `tests.<n>`) or `field-invalid` on `name`", body = crate::openapi::ErrorDetail),
         (status = 403, description = "`access-denied`", body = crate::openapi::ErrorDetail),
         (status = 409, description = "`pipeline-name-taken`", body = crate::openapi::ErrorDetail)
     ),
@@ -218,7 +219,7 @@ async fn create(
     Json(input): Json<PipelineInput>,
 ) -> Result<Response> {
     let author = org.auth.user.id;
-    match pipelines::create(&ctx.db, org.org.id, &input.name, &input.document, author).await {
+    match pipelines::create(&ctx, org.org.id, &input.name, &input.document, author).await {
         Ok(p) => Ok((StatusCode::CREATED, Json(p)).into_response()),
         Err(e) => pipeline_error(e),
     }
@@ -231,20 +232,21 @@ async fn create(
     tag = "pipelines",
     operation_id = "pipelines_validate",
     summary = "Check a pipeline document",
-    description = "Parses and checks a YAML document without saving it, and answers it parsed. Loops through other pipelines are only found at save. Requires `pipelines:read`.",
+    description = "Checks a YAML document and plays its `tests:` without saving it, and answers the tables it reads and writes and the rights its run needs. Loops through other pipelines are only found at save. Requires `pipelines:read`.",
     request_body = pnex_core::pipelines::PipelineDraft,
     responses(
-        (status = 200, body = pnex_core::pipelines::PipelineDocument),
+        (status = 200, body = pnex_core::pipelines::PipelineCheck),
         (status = 400, description = "`pipeline-document-invalid` (`errors.violations`: `path`, `token`)", body = crate::openapi::ErrorDetail),
         (status = 403, description = "`access-denied`", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
 )]
 async fn validate(
-    _org: OrgContext,
+    State(ctx): State<AppContext>,
+    org: OrgContext,
     Json(input): Json<pnex_core::pipelines::PipelineDraft>,
 ) -> Result<Response> {
-    match pipelines::checked(&input.document) {
+    match pipelines::check(&ctx, org.org.id, &input.document).await {
         Ok(doc) => format::json(doc),
         Err(e) => pipeline_error(e),
     }
@@ -303,7 +305,7 @@ async fn update(
     Json(input): Json<PipelineUpdate>,
 ) -> Result<Response> {
     let saved = pipelines::update(
-        &ctx.db,
+        &ctx,
         org.org.id,
         id,
         &input.document,
@@ -390,7 +392,7 @@ async fn versions(
     tag = "pipelines",
     operation_id = "pipelines_runs_start",
     summary = "Run a pipeline",
-    description = "Queues a run of the current version for the worker; read its state with `GET /pipelines/{id}/runs/{run_id}`. Requires `pipelines:run`, and `datasets:read` and `datasets:write` since the run reads and writes datasets, and a clearance for every marking of the tables it reads.",
+    description = "Queues a run of the current version; read its state with `GET /pipelines/{id}/runs/{run_id}`. Requires `pipelines:run`, the rights its writes need (`datasets:read` and `datasets:write` always; `ontology:write`, `time-ranges:write`, `proposals:file` or `media:write` for those targets), and a clearance for every marking of the tables it reads. The run checks them again when it starts.",
     params(("id" = String, Path, format = "uuid", description = "Pipeline id (UUID)")),
     responses(
         (status = 202, body = pnex_core::pipelines::PipelineRun),
@@ -405,10 +407,16 @@ async fn start_run(
     org: OrgContext,
     Path(id): Path<Uuid>,
 ) -> Result<Response> {
-    for needed in ["datasets:read", "datasets:write"] {
-        if !org.can(needed) {
-            return Err(crate::auth::access_denied(needed));
-        }
+    let current = match pipelines::get(&ctx.db, org.org.id, id).await {
+        Ok(p) => p,
+        Err(e) => return pipeline_error(e),
+    };
+    // A document saved checked: one of an older format needs the table rights only.
+    let rights = pipelines::checked(&current.document)
+        .map(|d| d.rights())
+        .unwrap_or_else(|_| vec!["datasets:read", "datasets:write"]);
+    if let Some(p) = rights.into_iter().find(|p| !org.can(p)) {
+        return Err(crate::auth::access_denied(p));
     }
     match pipelines::start_run(&ctx.db, org.org.id, id, org.auth.user.id).await {
         Ok(r) => Ok((StatusCode::ACCEPTED, Json(r)).into_response()),

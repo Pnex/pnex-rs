@@ -1,16 +1,15 @@
-//! Studio of a pipeline (pipelines.md §6.3), in the shared editor shell (D222):
-//! the graph of its tables fills the stage, with the first rows of the selected one
-//! under it; a closable column holds the transform, its code (YAML), its runs and its
+//! Studio of an org's pipeline (pipelines.md §6.3, D934), in the shared editor
+//! shell (D222): the graph of the tables it reads and writes fills the stage, with
+//! the first rows of the selected one under it; a closable column holds its YAML
+//! document, checked and tested by the server as it is typed, its runs and its
 //! schedule. Versions in the shell (D221).
-
-use std::collections::BTreeMap;
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;
 use pnex_core::datasets::Dataset;
 use pnex_core::pipelines::{
-    Build, BuildState, BuildStep, BuildTargetKind, Checks, PipelineDocument, PipelineRunState,
-    PipelineViolation, Transform,
+    Build, BuildState, BuildStep, BuildTargetKind, PipelineCheck, PipelineRunState,
+    PipelineViolation,
 };
 
 use super::graph::{document_graph, GraphNode, TableGraph};
@@ -34,7 +33,6 @@ use crate::state::access::can;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum Tab {
-    Transform,
     Code,
     Runs,
     Schedule,
@@ -50,50 +48,22 @@ fn violations_of(e: &api::error::ApiError) -> Vec<PipelineViolation> {
         .unwrap_or_default()
 }
 
-/// `transforms.2.sql` → `Transform 3 · sql`.
+/// `steps.2.sql` → `Step 3 · sql`, `tests.0.expect.rows` → `Test 1 · expect.rows`.
 fn violation_place(path: &str) -> String {
     let mut parts = path.split('.');
-    match (
+    let (head, n) = (
         parts.next(),
         parts.next().and_then(|n| n.parse::<usize>().ok()),
-    ) {
-        (Some("transforms"), Some(n)) => {
-            let rest: Vec<&str> = parts.collect();
-            format!("{} · {}", t!("pipe-transform-n", n : n + 1), rest.join("."))
-        }
-        _ => path.to_string(),
-    }
-}
-
-/// A name no table of the document has.
-fn free_name(doc: &PipelineDocument) -> String {
-    let (names, _) = document_graph(doc);
-    (1..)
-        .map(|n| format!("table_{n}"))
-        .find(|n| !names.contains(n))
-        .unwrap_or_default()
-}
-
-/// Renames a table everywhere the document names it, so that a chain stays a chain.
-fn rename_output(doc: &mut PipelineDocument, index: usize, to: &str) {
-    let Some(from) = doc.transforms.get(index).map(|t| t.output.clone()) else {
-        return;
+    );
+    let rest: Vec<&str> = parts.collect();
+    let place = match (head, n) {
+        (Some("steps"), Some(n)) => t!("pipe-step-n", n : n + 1).to_string(),
+        (Some("tests"), Some(n)) => t!("pipe-test-n", n : n + 1).to_string(),
+        _ => return path.to_string(),
     };
-    for t in &mut doc.transforms {
-        for table in t.inputs.values_mut() {
-            if *table == from {
-                *table = to.to_string();
-            }
-        }
-    }
-    doc.transforms[index].output = to.to_string();
-}
-
-/// Removes a transform; the tables that read its output keep the name, which then reads
-/// whatever table has it.
-fn remove_transform(doc: &mut PipelineDocument, index: usize) {
-    if index < doc.transforms.len() {
-        doc.transforms.remove(index);
+    match rest.is_empty() {
+        true => place,
+        false => format!("{place} · {}", rest.join(".")),
     }
 }
 
@@ -102,16 +72,14 @@ pub fn PipelineStudio(id: String) -> Element {
     let id = use_signal(|| id);
     let mut reload = use_signal(|| 0u32);
     let mut generation = use_signal(|| 0u32);
-    let mut doc = use_signal(|| PipelineDocument {
-        transforms: Vec::new(),
-    });
+    let mut check = use_signal(|| None::<PipelineCheck>);
     let mut yaml = use_signal(String::new);
     let mut version = use_signal(|| None::<i32>);
     let mut dirty = use_signal(|| false);
     let mut opened = use_signal(|| None::<i32>);
     let mut violations = use_signal(Vec::<PipelineViolation>::new);
     let mut selected = use_signal(|| None::<String>);
-    let mut tab = use_signal(|| Tab::Transform);
+    let mut tab = use_signal(|| Tab::Code);
     let mut column = use_signal(|| true);
     let mut message = use_signal(|| None::<String>);
     let mut versions_open = use_signal(|| false);
@@ -153,7 +121,7 @@ pub fn PipelineStudio(id: String) -> Element {
         spawn(async move {
             match api::pipelines::validate(&p.document).await {
                 Ok(parsed) => {
-                    doc.set(parsed);
+                    check.set(Some(parsed));
                     yaml.set(p.document.clone());
                     version.set(Some(p.version));
                     violations.set(Vec::new());
@@ -166,11 +134,6 @@ pub fn PipelineStudio(id: String) -> Element {
             }
         });
     });
-
-    let mut changed = move || {
-        dirty.set(true);
-        violations.set(doc.peek().violations());
-    };
 
     // Code edits: parsed by the server shortly after the last keystroke.
     let mut code_edit = move |text: String| {
@@ -186,38 +149,21 @@ pub fn PipelineStudio(id: String) -> Element {
             match api::pipelines::validate(&text).await {
                 Ok(parsed) => {
                     violations.set(Vec::new());
-                    doc.set(parsed);
+                    check.set(Some(parsed));
                 }
                 Err(e) => violations.set(violations_of(&e)),
             }
         });
     };
 
-    // Opening the code writes it from the structure; leaving it needs a code the server
-    // accepts.
     let mut open_tab = move |to: Tab| {
-        let from = tab();
-        if to == from {
-            return;
-        }
-        if from == Tab::Code && !violations().is_empty() {
-            message.set(Some(t!("pipe-yaml-fix-first").to_string()));
-            return;
-        }
-        if to == Tab::Code {
-            yaml.set(doc.read().to_yaml());
-        }
         message.set(None);
         tab.set(to);
     };
 
     let save = move |_| {
         message.set(None);
-        let text = if tab() == Tab::Code {
-            yaml()
-        } else {
-            doc.read().to_yaml()
-        };
+        let text = yaml();
         let Some(expected) = version() else {
             return;
         };
@@ -284,34 +230,13 @@ pub fn PipelineStudio(id: String) -> Element {
         });
     };
 
-    let add_transform = move |_| {
-        let current = doc.read().clone();
-        let (names, _) = document_graph(&current);
-        let Some(source) = selected().or_else(|| names.last().cloned()) else {
-            return;
-        };
-        let output = free_name(&current);
-        doc.write().transforms.push(Transform {
-            output: output.clone(),
-            inputs: BTreeMap::from([("source".to_string(), source)]),
-            sql: "SELECT * FROM source".to_string(),
-            checks: Checks::default(),
-            retain_days: None,
-        });
-        selected.set(Some(output));
-        column.set(true);
-        tab.set(Tab::Transform);
-        changed();
-    };
-
     // ── derived view ──
-    let d = doc.read().clone();
     let known: Vec<Dataset> = match &*tables.read() {
         Some(Ok(v)) => v.clone(),
         _ => Vec::new(),
     };
     let dataset_of = |name: &str| known.iter().find(|t| t.name == name).cloned();
-    let (names, edges) = document_graph(&d);
+    let (names, edges) = check().as_ref().map(document_graph).unwrap_or_default();
     let nodes: Vec<GraphNode> = names
         .iter()
         .map(|name| {
@@ -328,9 +253,6 @@ pub fn PipelineStudio(id: String) -> Element {
         .collect();
     let picked = selected();
     let picked_dataset = picked.as_deref().and_then(dataset_of);
-    let picked_index = picked
-        .as_ref()
-        .and_then(|name| d.transforms.iter().position(|t| &t.output == name));
     let has_errors = !violations().is_empty();
     let running = build().is_some_and(|b| b.state == BuildState::Running);
     let name = match &*saved.read() {
@@ -379,16 +301,6 @@ pub fn PipelineStudio(id: String) -> Element {
                     .collect()
             })
         });
-    let table_names: Vec<String> = {
-        let mut all: Vec<String> = known.iter().map(|t| t.name.clone()).collect();
-        for n in &names {
-            if !all.contains(n) {
-                all.push(n.clone());
-            }
-        }
-        all
-    };
-
     rsx! {
         EditorShell {
             on_back: move |_| {
@@ -473,11 +385,6 @@ pub fn PipelineStudio(id: String) -> Element {
                         aside { class: "flex max-h-[55%] w-full shrink-0 flex-col border-t border-line bg-surface md:max-h-none md:w-[26rem] md:border-l md:border-t-0",
                             div { class: "{TAB_BAR} px-3 pt-2",
                                 button {
-                                    class: if tab() == Tab::Transform { TAB_ACTIVE } else { TAB },
-                                    onclick: move |_| open_tab(Tab::Transform),
-                                    {t!("pipe-tab-transform")}
-                                }
-                                button {
                                     class: if tab() == Tab::Code { TAB_ACTIVE } else { TAB },
                                     "data-testid": "pipe-tab-code",
                                     onclick: move |_| open_tab(Tab::Code),
@@ -511,56 +418,12 @@ pub fn PipelineStudio(id: String) -> Element {
                                         "{m}"
                                     }
                                 }
-                                if tab() == Tab::Transform {
-                                    if can_write && !names.is_empty() {
-                                        button {
-                                            class: BTN_SECONDARY_SM,
-                                            "data-testid": "pipe-add-transform",
-                                            onclick: add_transform,
-                                            {t!("pipe-transform-add")}
-                                        }
-                                    }
-                                    if let Some(i) = picked_index {
-                                        TransformEditor {
-                                            key: "{i}",
-                                            transform: d.transforms[i].clone(),
-                                            tables: table_names.clone(),
-                                            can_write,
-                                            can_delete: d.transforms.len() > 1,
-                                            on_rename: move |to: String| {
-                                                rename_output(&mut doc.write(), i, &to);
-                                                selected.set(Some(to));
-                                                changed();
-                                            },
-                                            on_change: move |t: Transform| {
-                                                if let Some(slot) = doc.write().transforms.get_mut(i) {
-                                                    *slot = t;
-                                                }
-                                                changed();
-                                            },
-                                            on_delete: move |_| {
-                                                remove_transform(&mut doc.write(), i);
-                                                selected.set(None);
-                                                changed();
-                                            },
-                                        }
-                                    } else if let Some(table) = picked_dataset.clone() {
-                                        p { class: FIELD_HELP, {t!("pipe-source-help")} }
-                                        button {
-                                            class: BTN_SECONDARY_SM,
-                                            onclick: move |_| {
-                                                navigator
-                                                    .push(Route::PipelineTable {
-                                                        id: table.id.clone(),
-                                                    });
-                                            },
-                                            {t!("pipe-open-table")}
-                                        }
-                                    } else {
-                                        p { class: FIELD_HELP, {t!("pipe-pick-node")} }
-                                    }
-                                }
                                 if tab() == Tab::Code {
+                                    if let Some(c) = check() {
+                                        p { class: FIELD_HELP, "data-testid": "pipe-check",
+                                            {t!("pipe-check-summary", steps : c.steps.len(), tests : c.tests)}
+                                        }
+                                    }
                                     textarea {
                                         class: "{INPUT} min-h-96 font-mono text-xs",
                                         spellcheck: "false",
@@ -612,7 +475,7 @@ pub fn PipelineStudio(id: String) -> Element {
                     spawn(async move {
                         match api::pipelines::validate(&v.yaml).await {
                             Ok(parsed) => {
-                                doc.set(parsed);
+                                check.set(Some(parsed));
                                 yaml.set(v.yaml.clone());
                                 violations.set(Vec::new());
                                 opened.set(Some(v.version));
@@ -763,333 +626,5 @@ fn ScheduleForm(
                 p { class: "text-sm text-alarm", "{e}" }
             }
         }
-    }
-}
-
-/// `name=5` lines, one per column.
-fn parse_empty_pct(text: &str) -> BTreeMap<String, u8> {
-    text.lines()
-        .filter_map(|l| {
-            let (column, pct) = l.split_once('=')?;
-            Some((column.trim().to_string(), pct.trim().parse().ok()?))
-        })
-        .filter(|(c, _)| !c.is_empty())
-        .collect()
-}
-
-fn format_empty_pct(map: &BTreeMap<String, u8>) -> String {
-    map.iter()
-        .map(|(c, p)| format!("{c}={p}"))
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
-fn parse_list(text: &str) -> Vec<String> {
-    text.split(',')
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .collect()
-}
-
-#[component]
-fn TransformEditor(
-    transform: Transform,
-    tables: Vec<String>,
-    can_write: bool,
-    can_delete: bool,
-    on_rename: EventHandler<String>,
-    on_change: EventHandler<Transform>,
-    on_delete: EventHandler<()>,
-) -> Element {
-    let t = transform;
-    let inputs: Vec<(String, String)> = t.inputs.clone().into_iter().collect();
-    let edit = move |f: Box<dyn FnOnce(&mut Transform)>, base: &Transform| {
-        let mut next = base.clone();
-        f(&mut next);
-        on_change.call(next);
-    };
-    let free_alias = (1..)
-        .map(|n| format!("source_{n}"))
-        .find(|a| !t.inputs.contains_key(a))
-        .unwrap_or_default();
-    rsx! {
-        div { class: "space-y-3", "data-testid": "pipe-transform",
-            datalist { id: "pipe-tables",
-                for name in tables {
-                    option { key: "{name}", value: "{name}" }
-                }
-            }
-            div {
-                label { class: FIELD_LABEL, r#for: "pipe-transform-output", {t!("pipe-output")} }
-                input {
-                    id: "pipe-transform-output",
-                    class: INPUT,
-                    disabled: !can_write,
-                    value: "{t.output}",
-                    onchange: move |e| on_rename.call(e.value().trim().to_string()),
-                }
-            }
-            div { class: "space-y-2",
-                span { class: FIELD_LABEL, {t!("pipe-inputs")} }
-                for (alias, table) in inputs {
-                    div { key: "{alias}", class: "flex items-center gap-2",
-                        input {
-                            class: "{INPUT} font-mono",
-                            disabled: !can_write,
-                            aria_label: t!("pipe-input-alias"),
-                            value: "{alias}",
-                            onchange: {
-                                let (t, alias, table) = (t.clone(), alias.clone(), table.clone());
-                                move |e: FormEvent| {
-                                    let to = e.value().trim().to_string();
-                                    let (old, table) = (alias.clone(), table.clone());
-                                    edit(
-                                        Box::new(move |n| {
-                                            n.inputs.remove(&old);
-                                            n.inputs.insert(to, table);
-                                        }),
-                                        &t,
-                                    );
-                                }
-                            },
-                        }
-                        input {
-                            class: INPUT,
-                            disabled: !can_write,
-                            list: "pipe-tables",
-                            aria_label: t!("pipe-input-table"),
-                            value: "{table}",
-                            onchange: {
-                                let (t, alias) = (t.clone(), alias.clone());
-                                move |e: FormEvent| {
-                                    let (to, alias) = (e.value().trim().to_string(), alias.clone());
-                                    edit(
-                                        Box::new(move |n| {
-                                            n.inputs.insert(alias, to);
-                                        }),
-                                        &t,
-                                    );
-                                }
-                            },
-                        }
-                        button {
-                            class: BTN_SECONDARY_SM,
-                            disabled: !can_write,
-                            aria_label: t!("pipe-input-remove"),
-                            onclick: {
-                                let (t, alias) = (t.clone(), alias.clone());
-                                move |_| {
-                                    let alias = alias.clone();
-                                    edit(
-                                        Box::new(move |n| {
-                                            n.inputs.remove(&alias);
-                                        }),
-                                        &t,
-                                    );
-                                }
-                            },
-                            "✕"
-                        }
-                    }
-                }
-                button {
-                    class: BTN_SECONDARY_SM,
-                    disabled: !can_write,
-                    onclick: {
-                        let t = t.clone();
-                        move |_| {
-                            let alias = free_alias.clone();
-                            edit(
-                                Box::new(move |n| {
-                                    n.inputs.insert(alias, String::new());
-                                }),
-                                &t,
-                            );
-                        }
-                    },
-                    {t!("pipe-input-add")}
-                }
-            }
-            div {
-                label { class: FIELD_LABEL, r#for: "pipe-transform-sql", {t!("pipe-sql")} }
-                textarea {
-                    id: "pipe-transform-sql",
-                    class: "{INPUT} min-h-48 font-mono text-xs",
-                    spellcheck: "false",
-                    disabled: !can_write,
-                    value: "{t.sql}",
-                    oninput: {
-                        let t = t.clone();
-                        move |e: FormEvent| {
-                            let sql = e.value();
-                            edit(Box::new(move |n| n.sql = sql), &t);
-                        }
-                    },
-                }
-                p { class: FIELD_HELP, {t!("pipe-sql-help")} }
-            }
-            details { class: "rounded-md border border-line",
-                summary { class: "cursor-pointer px-3 py-2 text-sm font-medium text-ink",
-                    {t!("pipe-checks")}
-                }
-                div { class: "space-y-3 p-3",
-                    p { class: FIELD_HELP, {t!("pipe-checks-help")} }
-                    div {
-                        label { class: FIELD_LABEL, r#for: "pipe-min-rows",
-                            {t!("pipe-check-min-rows")}
-                        }
-                        input {
-                            id: "pipe-min-rows",
-                            class: INPUT,
-                            inputmode: "numeric",
-                            disabled: !can_write,
-                            value: t.checks.min_rows.map(|v| v.to_string()).unwrap_or_default(),
-                            onchange: {
-                                let t = t.clone();
-                                move |e: FormEvent| {
-                                    let v = e.value().trim().parse().ok();
-                                    edit(Box::new(move |n| n.checks.min_rows = v), &t);
-                                }
-                            },
-                        }
-                    }
-                    div {
-                        label { class: FIELD_LABEL, r#for: "pipe-max-rows",
-                            {t!("pipe-check-max-rows")}
-                        }
-                        input {
-                            id: "pipe-max-rows",
-                            class: INPUT,
-                            inputmode: "numeric",
-                            disabled: !can_write,
-                            value: t.checks.max_rows.map(|v| v.to_string()).unwrap_or_default(),
-                            onchange: {
-                                let t = t.clone();
-                                move |e: FormEvent| {
-                                    let v = e.value().trim().parse().ok();
-                                    edit(Box::new(move |n| n.checks.max_rows = v), &t);
-                                }
-                            },
-                        }
-                    }
-                    div {
-                        label { class: FIELD_LABEL, r#for: "pipe-unique", {t!("pipe-check-unique")} }
-                        input {
-                            id: "pipe-unique",
-                            class: INPUT,
-                            disabled: !can_write,
-                            value: t.checks.unique.join(", "),
-                            onchange: {
-                                let t = t.clone();
-                                move |e: FormEvent| {
-                                    let v = parse_list(&e.value());
-                                    edit(Box::new(move |n| n.checks.unique = v), &t);
-                                }
-                            },
-                        }
-                    }
-                    div {
-                        label { class: FIELD_LABEL, r#for: "pipe-max-empty",
-                            {t!("pipe-check-max-empty")}
-                        }
-                        textarea {
-                            id: "pipe-max-empty",
-                            class: "{INPUT} font-mono text-xs",
-                            disabled: !can_write,
-                            value: format_empty_pct(&t.checks.max_empty_pct),
-                            onchange: {
-                                let t = t.clone();
-                                move |e: FormEvent| {
-                                    let v = parse_empty_pct(&e.value());
-                                    edit(Box::new(move |n| n.checks.max_empty_pct = v), &t);
-                                }
-                            },
-                        }
-                    }
-                    div {
-                        label { class: FIELD_LABEL, r#for: "pipe-max-drop",
-                            {t!("pipe-check-max-drop")}
-                        }
-                        input {
-                            id: "pipe-max-drop",
-                            class: INPUT,
-                            inputmode: "numeric",
-                            disabled: !can_write,
-                            value: t.checks.max_drop_pct.map(|v| v.to_string()).unwrap_or_default(),
-                            onchange: {
-                                let t = t.clone();
-                                move |e: FormEvent| {
-                                    let v = e.value().trim().parse().ok();
-                                    edit(Box::new(move |n| n.checks.max_drop_pct = v), &t);
-                                }
-                            },
-                        }
-                    }
-                    label { class: "flex items-center gap-2 text-sm text-ink",
-                        input {
-                            r#type: "checkbox",
-                            disabled: !can_write,
-                            checked: t.checks.same_columns,
-                            onchange: {
-                                let t = t.clone();
-                                move |e: FormEvent| {
-                                    let v = e.checked();
-                                    edit(Box::new(move |n| n.checks.same_columns = v), &t);
-                                }
-                            },
-                        }
-                        {t!("pipe-check-same-columns")}
-                    }
-                }
-            }
-            if can_write && can_delete {
-                button { class: BTN_DANGER, onclick: move |_| on_delete.call(()),
-                    {t!("pipe-transform-delete")}
-                }
-            }
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn chain() -> PipelineDocument {
-        let mut d = PipelineDocument::starter("raw", "clean");
-        d.transforms.push(Transform {
-            output: "final".into(),
-            inputs: BTreeMap::from([("c".to_string(), "clean".to_string())]),
-            sql: "SELECT * FROM c".into(),
-            checks: Checks::default(),
-            retain_days: None,
-        });
-        d
-    }
-
-    #[test]
-    fn renaming_an_output_keeps_the_chain() {
-        let mut d = chain();
-        rename_output(&mut d, 0, "tidy");
-        assert_eq!(d.transforms[0].output, "tidy");
-        assert_eq!(d.transforms[1].inputs["c"], "tidy");
-        assert!(d.violations().is_empty(), "{:?}", d.violations());
-    }
-
-    #[test]
-    fn a_new_table_name_is_free() {
-        let mut d = chain();
-        assert_eq!(free_name(&d), "table_1");
-        d.transforms[0].output = "table_1".into();
-        assert_eq!(free_name(&d), "table_2");
-    }
-
-    #[test]
-    fn check_fields_read_what_they_write() {
-        let map = parse_empty_pct("name = 5\nbad\n=3\ncity=x\nsiren=0");
-        assert_eq!(map.len(), 2);
-        assert_eq!(map["name"], 5);
-        assert_eq!(parse_empty_pct(&format_empty_pct(&map)), map);
-        assert_eq!(parse_list(" a, b ,,c"), ["a", "b", "c"]);
     }
 }

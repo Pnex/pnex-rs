@@ -10139,6 +10139,8 @@ version = "0.2.0"
 dependencies = [
  "sea-orm",
  "sea-orm-migration",
+ "serde",
+ "serde-saphyr",
  "serde_json",
  "tokio",
 ]

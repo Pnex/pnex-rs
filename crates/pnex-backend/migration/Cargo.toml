@@ -11,6 +11,8 @@ path = "src/lib.rs"
 
 [dependencies]
 serde_json = { workspace = true }
+serde = { workspace = true }
+serde-saphyr = "2"
 
 [dependencies.sea-orm-migration]
 version = "2.0"

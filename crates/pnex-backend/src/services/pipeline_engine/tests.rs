@@ -7,54 +7,13 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use chrono::NaiveDate;
-use serde_json::{json, Value};
+use serde_json::json;
 
 use super::blob::{Batches, Blob};
+use super::replay::{rendered, Memory, Replay};
 use super::sql::SqlRunner;
-use super::store::{fixture, shipped};
-use super::{fail, run, Failure, Inputs, Req, Row, Sink, Table, Transport};
-
-/// Fixtures stay small: a test shows the shape of a source, not its data.
-const FIXTURE_MAX: usize = 64 * 1024;
-
-struct Replay {
-    pack: String,
-    given: HashMap<String, String>,
-}
-
-impl Replay {
-    fn answer(&self, url: &reqwest::Url) -> Result<Option<Blob>, Failure> {
-        let Some(file) = self.given.get(url.as_str()) else {
-            // Shown when a test fails: the address its `given` should list.
-            println!("{}: no fixture for {url}", self.pack);
-            return Ok(None);
-        };
-        let bytes = fixture(&self.pack, file)
-            .ok_or_else(|| fail("fixture_missing", json!({ "file": file })))?;
-        assert!(
-            bytes.len() <= FIXTURE_MAX,
-            "{}/{file}: fixtures stay under 64 KB",
-            self.pack
-        );
-        Ok(Some(Blob::Mem(bytes.to_vec())))
-    }
-}
-
-impl Transport for Replay {
-    async fn get(&self, url: &reqwest::Url, _: &Req) -> Result<Option<Blob>, Failure> {
-        self.answer(url)
-    }
-
-    async fn post_form(
-        &self,
-        url: &reqwest::Url,
-        _: Option<&reqwest::Url>,
-        _: &[(String, String)],
-        _: &Req,
-    ) -> Result<Option<Blob>, Failure> {
-        self.answer(url)
-    }
-}
+use super::store::shipped;
+use super::{fail, run, Failure, Inputs, Req, Transport};
 
 /// The worker's own query function, in this process: same session, same
 /// allow list (D945).
@@ -115,218 +74,6 @@ impl SqlRunner for InProcess {
     }
 }
 
-/// Writes kept in memory; the org's tables a case gives, from its fixtures.
-#[derive(Default)]
-struct Memory(
-    HashMap<String, Vec<Arc<Batches>>>,
-    HashMap<String, Arc<Batches>>,
-    /// Extracts of each navigation (`given: browse:<as>`): row → name → text.
-    HashMap<String, Value>,
-    /// The model's answer of each `model` step (`given: model:<as>`).
-    HashMap<String, Value>,
-);
-
-impl Memory {
-    fn with_case(
-        pack: &str,
-        tables: &std::collections::BTreeMap<String, String>,
-        given: &std::collections::BTreeMap<String, String>,
-    ) -> Self {
-        let file =
-            |name: &str| fixture(pack, name).unwrap_or_else(|| panic!("{pack}/{name}: no fixture"));
-        let tables = tables
-            .iter()
-            .map(|(name, f)| (name.clone(), csv_text(file(f))))
-            .collect();
-        let browsed = given
-            .iter()
-            .filter_map(|(k, f)| {
-                let step = k.strip_prefix("browse:")?;
-                let v = serde_json::from_slice(file(f)).expect("browse fixture is JSON");
-                Some((step.to_string(), v))
-            })
-            .collect();
-        let answers = given
-            .iter()
-            .filter_map(|(k, f)| {
-                let step = k.strip_prefix("model:")?;
-                let v = serde_json::from_slice(file(f)).expect("model fixture is JSON");
-                Some((step.to_string(), v))
-            })
-            .collect();
-        Self(HashMap::new(), tables, browsed, answers)
-    }
-}
-
-/// A CSV fixture as text columns.
-fn csv_text(bytes: &[u8]) -> Arc<Batches> {
-    use arrow_array::{ArrayRef, RecordBatch, StringArray};
-    use arrow_schema::{DataType, Field, Schema};
-    let mut rd = csv::Reader::from_reader(bytes);
-    let names: Vec<String> = rd.headers().unwrap().iter().map(str::to_string).collect();
-    let rows: Vec<csv::StringRecord> = rd.records().map(Result::unwrap).collect();
-    let schema = Arc::new(Schema::new(
-        names
-            .iter()
-            .map(|n| Field::new(n, DataType::Utf8, true))
-            .collect::<Vec<_>>(),
-    ));
-    let cols: Vec<ArrayRef> = (0..names.len())
-        .map(|i| {
-            let v: Vec<Option<&str>> = rows
-                .iter()
-                .map(|r| r.get(i).filter(|x| !x.is_empty()))
-                .collect();
-            Arc::new(StringArray::from(v)) as ArrayRef
-        })
-        .collect();
-    let mut w = super::blob::BatchWriter::new(schema.clone()).unwrap();
-    w.write(&RecordBatch::try_new(schema, cols).unwrap())
-        .unwrap();
-    w.finish().unwrap()
-}
-
-impl Sink for Memory {
-    // A replay reads no table of the worker: a key only dedupes within the
-    // run, and a table is the case's fixture or missing.
-    async fn has_table(&mut self, _: &str) -> Result<bool, Failure> {
-        Ok(false)
-    }
-
-    async fn org_table(&mut self, table: &str) -> Result<Option<Arc<Batches>>, Failure> {
-        Ok(self.1.get(table).cloned())
-    }
-
-    async fn append(
-        &mut self,
-        t: &pnex_core::pipeline::doc::TableTarget,
-        files: Vec<Arc<Batches>>,
-        _: &std::collections::BTreeSet<String>,
-    ) -> Result<u64, Failure> {
-        let n = files.iter().map(|f| f.rows).sum();
-        self.0.entry(t.name.clone()).or_default().extend(files);
-        Ok(n)
-    }
-
-    async fn ranges(&mut self, rows: Vec<serde_json::Map<String, Value>>) -> Result<u64, Failure> {
-        Ok(rows.len() as u64)
-    }
-
-    async fn media(
-        &mut self,
-        _: &pnex_core::pipeline::doc::MediaTarget,
-        rows: Vec<serde_json::Map<String, Value>>,
-    ) -> Result<u64, Failure> {
-        Ok(rows.len() as u64)
-    }
-
-    async fn proposals(
-        &mut self,
-        _: &pnex_core::pipeline::doc::ProposalsTarget,
-        rows: Vec<serde_json::Map<String, Value>>,
-    ) -> Result<u64, Failure> {
-        Ok(rows.len() as u64)
-    }
-
-    async fn objects(
-        &mut self,
-        _: &pnex_core::pipeline::doc::ObjectsTarget,
-        rows: Vec<serde_json::Map<String, Value>>,
-    ) -> Result<u64, Failure> {
-        Ok(rows.len() as u64)
-    }
-
-    async fn ask(&mut self, rows: Vec<serde_json::Map<String, Value>>) -> Result<u64, Failure> {
-        Ok(rows.len() as u64)
-    }
-
-    async fn model(
-        &mut self,
-        step: &pnex_core::pipeline::doc::Model,
-        ex: &pnex_core::extractor::Extractor,
-        rows: Vec<serde_json::Map<String, Value>>,
-    ) -> Result<Vec<Row>, Failure> {
-        // The recorded answer, checked against each row's own text.
-        let answer = self.3.get(&step.as_).cloned().unwrap_or(Value::Null);
-        Ok(rows
-            .iter()
-            .flat_map(|r| {
-                let text = r
-                    .get(&step.text)
-                    .and_then(Value::as_str)
-                    .unwrap_or_default();
-                let checked = ex.check(text, &answer);
-                super::item_rows(r, &step.text, &checked, 0)
-            })
-            .collect())
-    }
-
-    async fn browse(
-        &mut self,
-        b: &pnex_core::pipeline::doc::Browse,
-        _: &Row,
-        item: &str,
-    ) -> Result<Option<Vec<Row>>, Failure> {
-        // No extracts given: the navigation is started, the row waits.
-        let Some(found) = self.2.get(&b.as_) else {
-            return Ok(None);
-        };
-        let texts = found
-            .get(item)
-            .and_then(Value::as_object)
-            .into_iter()
-            .flatten()
-            .map(|(k, v)| (k.clone(), v.as_str().unwrap_or_default().to_string()));
-        Ok(Some(super::extract_rows(texts)))
-    }
-}
-
-/// Rows of a working table as text, the way a table sample shows them.
-fn rendered(tables: &[Table]) -> (Vec<String>, Vec<Value>) {
-    let (mut columns, mut rows) = (Vec::new(), Vec::new());
-    for t in tables {
-        match t {
-            Table::Rows(rs) => {
-                for r in rs {
-                    for k in r.cols.keys() {
-                        if !columns.contains(k) {
-                            columns.push(k.clone());
-                        }
-                    }
-                    rows.push(Value::Object(r.cols.clone()));
-                }
-            }
-            Table::Batches(files) => {
-                for file in files {
-                    for f in file.schema.fields() {
-                        if !columns.contains(f.name()) {
-                            columns.push(f.name().clone());
-                        }
-                    }
-                    for b in file.read().unwrap() {
-                        rows.extend(
-                            crate::services::datasets::parquet::records(&b.unwrap()).unwrap(),
-                        );
-                    }
-                }
-            }
-        }
-    }
-    (columns, rows)
-}
-
-fn matches(row: &Value, want: &serde_json::Map<String, Value>) -> bool {
-    want.iter().all(|(k, v)| {
-        let got = match row.get(k) {
-            Some(Value::String(s)) => s.clone(),
-            Some(other) => other.to_string(),
-            None => return v.is_null(),
-        };
-        let v = v.as_str().map_or_else(|| v.to_string(), str::to_string);
-        got == v || got.starts_with(&v)
-    })
-}
-
 #[tokio::test]
 async fn every_shipped_pipeline_passes_its_tests() {
     let all = shipped();
@@ -343,112 +90,26 @@ async fn every_shipped_pipeline_passes_its_tests() {
             "{id}: a shipped pipeline has a test (D945)"
         );
         println!("{id}: {} test(s)", sp.doc.tests.len());
-        for (i, case) in sp.doc.tests.iter().enumerate() {
-            let today = case
-                .today
-                .as_deref()
-                .and_then(|d| NaiveDate::parse_from_str(d, "%Y-%m-%d").ok())
-                .unwrap_or_else(|| NaiveDate::from_ymd_opt(2026, 1, 1).unwrap());
-            // A key goes in a header or a parameter added when sent: never in
-            // the address a fixture is found by.
-            let secrets = sp
-                .doc
-                .steps
-                .iter()
-                .filter_map(|s| match s {
-                    pnex_core::pipeline::Step::Fetch(f) => f.secret.as_ref(),
-                    _ => None,
-                })
-                .flat_map(|s| {
-                    let grant = s
-                        .token
-                        .iter()
-                        .flat_map(|t| [t.user.clone(), t.password.clone()]);
-                    std::iter::once(s.name.clone()).chain(grant)
-                })
-                .map(|n| (n, "test-key".to_string()))
-                .collect();
-            let inputs = Inputs {
-                settings: case.settings.clone().into_iter().collect(),
-                now: today.and_hms_opt(12, 0, 0).unwrap(),
-                secrets,
-                objects: case.objects.clone().into_iter().collect(),
-                functions: super::store::call_functions(&sp.pack, &sp.doc),
-                extractors: super::store::model_extractors(&sp.pack, &sp.doc),
-                asked: case
-                    .asked
-                    .iter()
-                    .map(|r| {
-                        r.iter()
-                            .map(|(k, v)| (k.clone(), Value::String(v.clone())))
-                            .collect()
-                    })
-                    .collect(),
-                extra: case
-                    .extra
-                    .iter()
-                    .map(|(k, by_value)| {
-                        let by_value = by_value
-                            .iter()
-                            .map(|(v, cols)| {
-                                let cols = cols
-                                    .iter()
-                                    .map(|(c, x)| (c.clone(), serde_json::Value::String(x.clone())))
-                                    .collect();
-                                (v.clone(), cols)
-                            })
-                            .collect();
-                        (k.clone(), by_value)
-                    })
-                    .collect(),
-                ..Default::default()
-            };
-            let transport = Replay {
-                pack: sp.pack.clone(),
-                given: case.given.clone().into_iter().collect(),
-            };
-            let mut sink = Memory::with_case(&sp.pack, &case.tables, &case.given);
-            let mut kept = HashMap::new();
-            let out = run(
+        let replay = Replay {
+            pack: Some(sp.pack.clone()),
+            given: HashMap::new(),
+        };
+        for (i, c) in sp.doc.tests.iter().enumerate() {
+            let problems = super::replay::case(
                 &sp.doc,
-                &inputs,
-                &transport,
-                &mut sink,
+                i,
+                c,
+                &replay,
+                super::store::call_functions(&sp.pack, &sp.doc),
+                super::store::model_extractors(&sp.pack, &sp.doc),
                 &InProcess,
-                &HashMap::new(),
-                Some(usize::MAX),
-                Some(&mut kept),
-                None,
             )
             .await;
-            let at = format!("{id} test {i} {}", case.name);
-            assert!(out.failure.is_none(), "{at}: {:?}", out.failure);
-            for (item, failure, _) in &out.items {
-                assert!(
-                    failure.is_none(),
-                    "{at}: row {} failed: {failure:?}",
-                    item.key
-                );
-            }
-            for (table, want) in &case.expect {
-                let (columns, rows) = rendered(kept.get(table).map(Vec::as_slice).unwrap_or(&[]));
-                if let Some(n) = want.rows {
-                    assert_eq!(rows.len() as u64, n, "{at}: rows of {table}: {rows:#?}");
-                }
-                for c in &want.columns {
-                    assert!(
-                        columns.contains(c),
-                        "{at}: {table} has no column {c}: {columns:?}"
-                    );
-                }
-                for w in &want.contains {
-                    let w: serde_json::Map<String, Value> = w.clone().into_iter().collect();
-                    assert!(
-                        rows.iter().any(|r| matches(r, &w)),
-                        "{at}: {table} has no row {w:?} in {rows:#?}"
-                    );
-                }
-            }
+            assert!(
+                problems.is_empty(),
+                "{id} test {i} {}: {problems:?}",
+                c.name
+            );
         }
     }
 }
@@ -475,7 +136,7 @@ async fn object_hosts_open_their_hosts_but_never_to_a_secret() {
             ..Default::default()
         };
         let transport = Replay {
-            pack: "watch".into(),
+            pack: Some("watch".into()),
             given: [(url.to_string(), "rss.xml".to_string())].into(),
         };
         let (mut sink, mut kept) = (Memory::default(), HashMap::new());
@@ -528,7 +189,7 @@ async fn browse_pauses_a_row_and_its_extracts_resume_it() {
         ..Default::default()
     };
     let transport = Replay {
-        pack: "watch".into(),
+        pack: Some("watch".into()),
         given: HashMap::new(),
     };
     let mut sink = Memory::default();
@@ -612,7 +273,7 @@ async fn asked_rows_are_taken_with_their_columns_every_time() {
         ..Default::default()
     };
     let transport = Replay {
-        pack: "watch".into(),
+        pack: Some("watch".into()),
         given: HashMap::new(),
     };
     let mut sink = Memory::default();
@@ -639,7 +300,7 @@ async fn asked_rows_are_taken_with_their_columns_every_time() {
         assert_eq!((item.key.as_str(), *rows), ("p1", 1));
         known.insert(item.key.clone(), item.clone());
     }
-    let (_, rows) = rendered(&kept["kept"]);
+    let (_, rows) = rendered(&kept["kept"]).unwrap();
     assert!(
         rows[0]
             .to_string()
@@ -790,7 +451,7 @@ async fn table_checks_refuse_or_let_the_write_through() {
         async move {
             let mut sink = Memory::default();
             let transport = Replay {
-                pack: "watch".into(),
+                pack: Some("watch".into()),
                 given: HashMap::new(),
             };
             let out = run(

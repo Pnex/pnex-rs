@@ -157,6 +157,7 @@ mod m20261121_000162_site_recipe_node_fold;
 mod m20261121_000163_type_roles;
 mod m20261121_000164_drop_legacy_history;
 mod m20261121_000165_connection_shares;
+mod m20261121_000166_org_pipelines;
 
 pub struct Migrator;
 
@@ -310,6 +311,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20261121_000163_type_roles::Migration),
             Box::new(m20261121_000164_drop_legacy_history::Migration),
             Box::new(m20261121_000165_connection_shares::Migration),
+            Box::new(m20261121_000166_org_pipelines::Migration),
         ]
     }
 }

@@ -411,8 +411,10 @@ pub struct DatasetSink<'a> {
     /// The application, for the targets that write media; an import's run
     /// has none.
     pub ctx: Option<&'a AppContext>,
-    /// `<pack>/<key>` of the pipeline run.
+    /// `<pack>/<key>` of the pipeline run, or the id of an org's own.
     pub pipeline: &'a str,
+    /// An org's own pipeline and the version run (D934).
+    pub own: Option<(Uuid, i32)>,
     /// The member who asked the run: a navigation plays in their browser
     /// agent (D782).
     pub user: Option<i64>,
@@ -519,6 +521,20 @@ impl Sink for DatasetSink<'_> {
         let read: Vec<String> = read.iter().cloned().collect();
         let out = async {
             let id = table_of(self.db, self.org, table).await?;
+            // An import's table feeds a sync written with its author's rights:
+            // an org's own pipeline never writes it.
+            if self.own.is_some() {
+                let owned = self
+                    .db
+                    .query_one_raw(stmt(
+                        "SELECT 1 AS x FROM datasets WHERE id = $1 AND import_id IS NOT NULL",
+                        vec![id.into()],
+                    ))
+                    .await?;
+                if owned.is_some() {
+                    return Err(DatasetError::Reserved);
+                }
+            }
             if let Some(days) = target.retain_days {
                 self.db
                     .execute_raw(stmt(
@@ -545,8 +561,13 @@ impl Sink for DatasetSink<'_> {
             } else {
                 pnex_core::datasets::DatasetTransactionKind::Append
             };
+            let read = datasets::Read {
+                tables: &read,
+                pipeline: self.own,
+                key: self.own.is_none().then_some(self.pipeline),
+            };
             let written =
-                datasets::write_stream(self.db, self.store, self.org, id, kind, rx, &read).await;
+                datasets::write_stream(self.db, self.store, self.org, id, kind, rx, read).await;
             if let Ok(Err(f)) = reader.await {
                 tracing::warn!(code = f.code, "pipeline batches not read back");
             }
@@ -556,6 +577,7 @@ impl Sink for DatasetSink<'_> {
         match out {
             Ok(t) => Ok(t.map_or(0, |t| t.rows.max(0) as u64)),
             Err(DatasetError::QuotaExceeded) => Err(fail("quota", json!({ "table": table }))),
+            Err(DatasetError::Reserved) => Err(fail("table_reserved", json!({ "table": table }))),
             Err(DatasetError::SchemaMismatch { columns }) => Err(fail(
                 "schema",
                 json!({ "table": table, "columns": columns }),
@@ -1525,6 +1547,7 @@ async fn run_core(
         org,
         ctx,
         pipeline: &id,
+        own: None,
         user,
         asked: Vec::new(),
     };
@@ -1544,6 +1567,47 @@ async fn run_core(
     if let Some(f) = &out.failure {
         tracing::warn!(org, pipeline = %id, code = f.code, args = %f.args, "pipeline run failed");
     }
+    Ok(out)
+}
+
+/// Runs `version` of an org's own pipeline (D934) now; what it did is kept
+/// like a pack pipeline's, under the pipeline's id. Its `call` steps reach
+/// the functions of the shipped packs only (`<pack>/<name>`).
+pub async fn run_own(
+    ctx: &AppContext,
+    org: i64,
+    id: Uuid,
+    version: i32,
+    doc: &Document,
+    user: Option<i64>,
+    transport: &impl Transport,
+) -> Result<RunOutcome, DatasetError> {
+    let store = datasets::store_of(&ctx.config)?;
+    let key = id.to_string();
+    let (items, shas) = known(&ctx.db, org, &key).await?;
+    let mut inputs = inputs(&ctx.db, org, doc, Utc::now().naive_utc(), shas).await?;
+    inputs.functions = call_functions("", doc);
+    inputs.extractors = model_extractors("", doc);
+    let mut sink = DatasetSink {
+        db: &ctx.db,
+        store: &store,
+        org,
+        ctx: Some(ctx),
+        pipeline: &key,
+        own: Some((id, version)),
+        user,
+        asked: Vec::new(),
+    };
+    let sql = super::sql::WorkerSql {
+        db: &ctx.db,
+        store: &store,
+        org,
+    };
+    let out = run(
+        doc, &inputs, transport, &mut sink, &sql, &items, None, None, None,
+    )
+    .await;
+    record(&ctx.db, org, &key, &out).await?;
     Ok(out)
 }
 
@@ -1644,6 +1708,7 @@ async fn resume_locked(
         org,
         ctx: Some(ctx),
         pipeline: &id,
+        own: None,
         user,
         asked: Vec::new(),
     };

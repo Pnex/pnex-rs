@@ -1,15 +1,11 @@
 //! Pipelines (pipelines.md D571): the document, its validation and the
 //! DTOs of the API. Pure, wasm-safe. The YAML is parsed by the callers.
 
-use std::collections::{BTreeMap, HashSet};
+use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
 pub const NAME_MAX: usize = 255;
-pub const TRANSFORMS_MAX: usize = 50;
-pub const INPUTS_MAX: usize = 32;
-pub const ALIAS_MAX: usize = 63;
-pub const SQL_MAX_BYTES: usize = 64 * 1024;
 pub const DOCUMENT_MAX_BYTES: usize = 1024 * 1024;
 pub const CHECK_COLUMNS_MAX: usize = 32;
 /// How long a replaced version of an output stays readable, when its transform says nothing.
@@ -17,35 +13,6 @@ pub const RETAIN_DAYS_DEFAULT: u16 = 90;
 pub const RETAIN_DAYS_MAX: u16 = 3650;
 /// Steps of one build: everything an org could chain together.
 pub const BUILD_STEPS_MAX: usize = 200;
-
-/// What a pipeline computes, transform by transform, in order. A transform may
-/// read the output of an earlier one.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[serde(deny_unknown_fields)]
-pub struct PipelineDocument {
-    pub transforms: Vec<Transform>,
-}
-
-/// One SQL query from datasets to a dataset.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[serde(deny_unknown_fields)]
-pub struct Transform {
-    /// Dataset it writes, created on the first run.
-    pub output: String,
-    /// SQL table name → dataset read. Nothing else is visible to the query.
-    pub inputs: BTreeMap<String, String>,
-    pub sql: String,
-    /// Blocking checks of the result: one that fails leaves the previous version
-    /// current (D576).
-    #[serde(default, skip_serializing_if = "Checks::is_empty")]
-    pub checks: Checks,
-    /// Days a replaced version of the output stays readable through `as_of`, from 1 to
-    /// 3650. Default: 90. The latest version is never purged.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub retain_days: Option<u16>,
-}
 
 /// What a computed result must hold before it is committed (D576).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -183,130 +150,8 @@ pub struct PipelineViolation {
     pub token: String,
 }
 
-fn valid_alias(s: &str) -> bool {
-    let mut chars = s.chars();
-    s.len() <= ALIAS_MAX
-        && chars
-            .next()
-            .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
-        && chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
-}
-
 fn valid_name(s: &str) -> bool {
     !s.trim().is_empty() && s.chars().count() <= NAME_MAX
-}
-
-impl PipelineDocument {
-    /// The first version of a pipeline made on a screen: a copy of one table.
-    pub fn starter(input: &str, output: &str) -> Self {
-        Self {
-            transforms: vec![Transform {
-                output: output.to_string(),
-                inputs: BTreeMap::from([("source".to_string(), input.to_string())]),
-                sql: "SELECT * FROM source".to_string(),
-                checks: Checks::default(),
-                retain_days: None,
-            }],
-        }
-    }
-
-    /// The document as YAML, with its SQL readable. Written by hand because this crate
-    /// runs in the browser, without a YAML library; a value goes as a JSON string, which
-    /// is valid YAML, whenever a block could change it.
-    pub fn to_yaml(&self) -> String {
-        let quoted = |s: &str| serde_json::Value::String(s.to_string()).to_string();
-        let block_safe = |s: &str| {
-            !s.is_empty()
-                && !s.chars().any(|c| c.is_control() && c != '\n')
-                && s.lines()
-                    .all(|l| l.is_empty() || l.trim_end() == l && !l.starts_with(' '))
-                && !s.starts_with('\n')
-                && !s.ends_with('\n')
-        };
-        let mut out = String::from("transforms:\n");
-        for t in &self.transforms {
-            out += &format!("  - output: {}\n", quoted(&t.output));
-            let inputs = serde_json::to_string(&t.inputs).unwrap_or_else(|_| "{}".into());
-            out += &format!("    inputs: {inputs}\n");
-            if block_safe(&t.sql) {
-                out += "    sql: |-\n";
-                for line in t.sql.split('\n') {
-                    match line {
-                        "" => out.push('\n'),
-                        l => out += &format!("      {l}\n"),
-                    }
-                }
-            } else {
-                out += &format!("    sql: {}\n", quoted(&t.sql));
-            }
-            if !t.checks.is_empty() {
-                let checks = serde_json::to_string(&t.checks).unwrap_or_else(|_| "{}".into());
-                out += &format!("    checks: {checks}\n");
-            }
-        }
-        out
-    }
-
-    /// Empty when the document can run.
-    pub fn violations(&self) -> Vec<PipelineViolation> {
-        let mut out = Vec::new();
-        let mut bad = |path: String, token: &str| {
-            out.push(PipelineViolation {
-                path,
-                token: token.to_string(),
-            })
-        };
-        if self.transforms.is_empty() {
-            bad("transforms".into(), "required");
-        }
-        if self.transforms.len() > TRANSFORMS_MAX {
-            bad("transforms".into(), &format!("max_items:{TRANSFORMS_MAX}"));
-        }
-        let outputs: Vec<&str> = self.transforms.iter().map(|t| t.output.as_str()).collect();
-        let mut seen: HashSet<&str> = HashSet::new();
-        for (i, t) in self.transforms.iter().enumerate() {
-            if !valid_name(&t.output) {
-                bad(format!("transforms.{i}.output"), "invalid");
-            }
-            if !seen.insert(&t.output) {
-                bad(format!("transforms.{i}.output"), "duplicate");
-            }
-            if t.sql.trim().is_empty() {
-                bad(format!("transforms.{i}.sql"), "required");
-            }
-            if t.sql.len() > SQL_MAX_BYTES {
-                bad(
-                    format!("transforms.{i}.sql"),
-                    &format!("max_bytes:{SQL_MAX_BYTES}"),
-                );
-            }
-            if t.inputs.is_empty() {
-                bad(format!("transforms.{i}.inputs"), "required");
-            }
-            if t.inputs.len() > INPUTS_MAX {
-                bad(
-                    format!("transforms.{i}.inputs"),
-                    &format!("max_items:{INPUTS_MAX}"),
-                );
-            }
-            t.checks
-                .violations(&format!("transforms.{i}.checks"), &mut bad);
-            if t.retain_days.is_some_and(|d| d == 0 || d > RETAIN_DAYS_MAX) {
-                bad(format!("transforms.{i}.retain_days"), "invalid");
-            }
-            for (alias, dataset) in &t.inputs {
-                let path = format!("transforms.{i}.inputs.{alias}");
-                if !valid_alias(alias) || !valid_name(dataset) {
-                    bad(path.clone(), "invalid");
-                }
-                // Reading an output written later, or its own, is a cycle (D575).
-                if outputs[i..].contains(&dataset.as_str()) {
-                    bad(path, "cycle");
-                }
-            }
-        }
-        out
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -402,6 +247,22 @@ pub struct PipelineRun {
     pub finished_at: Option<String>,
 }
 
+/// What a pipeline document reads and writes, once checked and tested.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct PipelineCheck {
+    /// Tables of the org its `sql` steps read.
+    pub reads: Vec<String>,
+    /// Tables of the org it writes.
+    pub writes: Vec<String>,
+    /// Kind of each step, in order (`fetch`, `sql`, `write`…).
+    pub steps: Vec<String>,
+    /// Test cases played, all held.
+    pub tests: usize,
+    /// Permissions a member needs to run it.
+    pub rights: Vec<String>,
+}
+
 /// A dataset linked to another by a pipeline run.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -409,8 +270,10 @@ pub struct LineageLink {
     #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
     pub dataset_id: String,
     pub dataset_name: String,
+    /// The org's pipeline; absent for a pack's (`pipeline_name` is then
+    /// `<pack>/<key>`).
     #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
-    pub pipeline_id: String,
+    pub pipeline_id: Option<String>,
     pub pipeline_name: String,
 }
 
@@ -787,68 +650,6 @@ mod tests {
         assert!(duplicates_sql(&["x".into(), r#"y"; DROP"#.into()]).contains(r#""y""; DROP""#));
     }
 
-    fn doc(transforms: Vec<(&str, Vec<(&str, &str)>, &str)>) -> PipelineDocument {
-        PipelineDocument {
-            transforms: transforms
-                .into_iter()
-                .map(|(output, inputs, sql)| Transform {
-                    output: output.into(),
-                    inputs: inputs
-                        .into_iter()
-                        .map(|(a, d)| (a.to_string(), d.to_string()))
-                        .collect(),
-                    sql: sql.into(),
-                    checks: Checks::default(),
-                    retain_days: None,
-                })
-                .collect(),
-        }
-    }
-
-    fn tokens(d: &PipelineDocument) -> Vec<String> {
-        d.violations()
-            .into_iter()
-            .map(|v| format!("{}={}", v.path, v.token))
-            .collect()
-    }
-
-    #[test]
-    fn a_chain_is_valid() {
-        let d = doc(vec![
-            ("clean", vec![("r", "raw")], "SELECT * FROM r"),
-            ("final", vec![("c", "clean")], "SELECT * FROM c"),
-        ]);
-        assert!(d.violations().is_empty());
-    }
-
-    #[test]
-    fn an_output_cannot_be_read_by_itself_or_before_it_is_written() {
-        let own = doc(vec![("a", vec![("x", "a")], "SELECT 1")]);
-        assert_eq!(tokens(&own), ["transforms.0.inputs.x=cycle"]);
-        let later = doc(vec![
-            ("a", vec![("x", "b")], "SELECT 1"),
-            ("b", vec![("y", "raw")], "SELECT 1"),
-        ]);
-        assert_eq!(tokens(&later), ["transforms.0.inputs.x=cycle"]);
-    }
-
-    #[test]
-    fn bad_documents_name_their_path() {
-        assert_eq!(tokens(&doc(vec![])), ["transforms=required"]);
-        let d = doc(vec![("a", vec![], " ")]);
-        assert_eq!(
-            tokens(&d),
-            ["transforms.0.sql=required", "transforms.0.inputs=required"]
-        );
-        let d = doc(vec![("a", vec![("not valid", "raw")], "SELECT 1")]);
-        assert_eq!(tokens(&d), ["transforms.0.inputs.not valid=invalid"]);
-        let d = doc(vec![
-            ("a", vec![("x", "raw")], "SELECT 1"),
-            ("a", vec![("x", "raw")], "SELECT 1"),
-        ]);
-        assert_eq!(tokens(&d), ["transforms.1.output=duplicate"]);
-    }
-
     fn node(name: &str, reads: &[&str], writes: &[&str], after: &[&str]) -> GraphNode {
         GraphNode {
             kind: BuildTargetKind::Import,
@@ -975,49 +776,6 @@ mod tests {
         let mut steps = plan(&g, 0).unwrap();
         assert_eq!(steps[0].state, BuildStepState::Skipped);
         assert_eq!(next_step(&mut steps), Some(1));
-    }
-
-    #[test]
-    fn checks_are_validated_with_their_path() {
-        let mut d = doc(vec![("a", vec![("x", "raw")], "SELECT 1")]);
-        d.transforms[0].checks = Checks {
-            min_rows: Some(2),
-            max_rows: Some(1),
-            max_drop_pct: Some(101),
-            max_empty_pct: BTreeMap::from([("c".to_string(), 101)]),
-            ..Default::default()
-        };
-        assert_eq!(
-            tokens(&d),
-            [
-                "transforms.0.checks.min_rows=invalid",
-                "transforms.0.checks.max_empty_pct.c=invalid",
-                "transforms.0.checks.max_drop_pct=invalid",
-            ]
-        );
-    }
-
-    #[test]
-    fn retention_is_a_day_count_up_to_ten_years() {
-        let mut d = doc(vec![("a", vec![("x", "raw")], "SELECT 1")]);
-        for (days, ok) in [
-            (None, true),
-            (Some(1), true),
-            (Some(RETAIN_DAYS_MAX), true),
-            (Some(0), false),
-            (Some(RETAIN_DAYS_MAX + 1), false),
-        ] {
-            d.transforms[0].retain_days = days;
-            let want: &[&str] = if ok {
-                &[]
-            } else {
-                &["transforms.0.retain_days=invalid"]
-            };
-            assert_eq!(tokens(&d), want, "{days:?}");
-        }
-        let json = r#"{"transforms":[{"output":"a","inputs":{"x":"raw"},"sql":"SELECT 1","retain_days":30}]}"#;
-        let parsed: PipelineDocument = serde_json::from_str(json).unwrap();
-        assert_eq!(parsed.transforms[0].retain_days, Some(30));
     }
 
     #[test]

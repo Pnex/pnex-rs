@@ -12,6 +12,11 @@ import { confirmDialog, dialog } from '../src/pages/shell.ts';
 import { memoryKey } from '../src/scenarios.ts';
 
 const WORKER = process.env.PNEX_E2E_PIPELINE_WORKER === '1';
+
+/** An org's pipeline (D934) that copies one table into another. */
+const copy = (from: string, to: string) =>
+  `key: copy\nsteps:\n  - sql: {as: rows, tables: {s: ${JSON.stringify(from)}}, sql: SELECT * FROM s}\n` +
+  `  - write: {from: rows, table: {name: ${JSON.stringify(to)}, replace: true}}\n`;
 /** The admin CLI to try for real, built from this checkout. */
 const CLI = process.env.PNEX_E2E_CLI;
 
@@ -92,28 +97,23 @@ test.describe('pipelines', { tag: '@pipelines' }, () => {
     await expect(page.getByTestId(`table-node-${raw}`)).toBeVisible();
     await page.getByTestId(`table-node-${clean}`).click();
 
-    // A query edited on the screen is saved as a new version.
+    // A query edited in the YAML is checked as typed, then saved as a new version.
     const sql = 'SELECT city, count(*) AS n FROM source GROUP BY city';
-    await page.getByLabel(app.t('pipe-sql'), { exact: true }).fill(sql);
-    await page.getByText(app.t('pipe-checks'), { exact: true }).click();
-    await page.getByLabel(app.t('pipe-check-min-rows'), { exact: true }).fill('1');
-    await page.getByLabel(app.t('pipe-check-min-rows'), { exact: true }).blur();
+    const first = (await api.list<any>('/pipelines')).find((p) => p.name === name);
+    await expect(page.getByTestId('pipe-yaml')).toHaveValue(/SELECT \* FROM source/);
+    await page.getByTestId('pipe-yaml').fill(first.document.replace('SELECT * FROM source', sql));
+    await expect(page.getByTestId('pipe-check')).toBeVisible();
     await page.getByTestId('pipe-save').click();
     await expect(page.getByTestId('pipe-save')).toBeDisabled();
 
     const saved = (await api.list<any>('/pipelines')).find((p) => p.name === name);
     expect(saved.version).toBe(2);
     expect(saved.document).toContain(sql);
-    expect(saved.document).toContain('min_rows');
 
-    // The code shows the same pipeline; a wrong one is named and locks the way out.
-    await page.getByTestId('pipe-tab-code').click();
-    await expect(page.getByTestId('pipe-yaml')).toHaveValue(/GROUP BY city/);
-    await page.getByTestId('pipe-yaml').fill('transforms: []');
+    // A wrong document is named where it fails and cannot be saved.
+    await page.getByTestId('pipe-yaml').fill('key: p\nsteps: []');
     await expect(page.getByTestId('pipe-violations')).toBeVisible();
     await expect(page.getByTestId('pipe-save')).toBeDisabled();
-    await page.getByRole('button', { name: app.t('pipe-tab-runs') }).click();
-    await expect(page.getByTestId('pipe-message')).toHaveText(app.t('pipe-yaml-fix-first'));
     await page.getByTestId('pipe-yaml').fill(saved.document);
     await expect(page.getByTestId('pipe-violations')).toBeHidden();
 
@@ -128,7 +128,7 @@ test.describe('pipelines', { tag: '@pipelines' }, () => {
       const finalTable = `${slug}_final`;
       const next = await api.post<any>('/pipelines', {
         name: `${prefix} next`,
-        document: `transforms:\n  - output: ${finalTable}\n    inputs: {c: ${clean}}\n    sql: SELECT * FROM c\n`,
+        document: copy(clean, finalTable),
       });
       await app.goto(`/pipelines/${next.id}`);
       await page.getByTestId('pipe-run').click();
@@ -163,7 +163,7 @@ test.describe('pipelines', { tag: '@pipelines' }, () => {
     await expect(page.getByText(app.t('pipe-next-run').split('{')[0].trim())).toBeVisible();
     await page.getByLabel(app.t('pipe-tab-schedule'), { exact: true }).selectOption('');
     await expect.poll(async () => (await api.get<any>(`/pipelines/${saved.id}`)).recurrence ?? null).toBeNull();
-    await page.getByRole('button', { name: app.t('pipe-tab-transform') }).click();
+    await page.getByTestId('pipe-tab-code').click();
 
     if (WORKER) {
       // Chained runs are listed, each with its steps.
@@ -229,7 +229,7 @@ test.describe('pipelines', { tag: '@pipelines' }, () => {
     const table = await api.post<any>('/datasets', { name: `${slug}_phone` });
     const made = await api.post<any>('/pipelines', {
       name: `${prefix} phone`,
-      document: `transforms:\n  - output: ${slug}_out\n    inputs: {s: ${slug}_phone}\n    sql: SELECT * FROM s\n`,
+      document: copy(`${slug}_phone`, `${slug}_out`),
     });
     await app.goto(`/pipelines/${made.id}`);
     await page.getByTestId(`table-node-${slug}_out`).click();
@@ -413,7 +413,7 @@ test.describe('pipelines in French', { tag: ['@pipelines', '@i18n'] }, () => {
     await api.upload(`/datasets/${table.id}/transactions/csv`, Buffer.from('a,b\n1,\n'), 'text/csv');
     const made = await api.post<any>('/pipelines', {
       name: `${prefix} i18n`,
-      document: `transforms:\n  - output: ${slug}_i18n_out\n    inputs: {s: ${slug}_i18n}\n    sql: SELECT * FROM s\n`,
+      document: copy(`${slug}_i18n`, `${slug}_i18n_out`),
     });
     await app.goto(`/pipelines/tables/${table.id}`);
     await expect(page.getByRole('main')).toContainText(t('pipe-table-versions'));

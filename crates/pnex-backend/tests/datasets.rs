@@ -522,7 +522,7 @@ async fn erasing_an_object_removes_its_rows_from_every_version() {
             "/api/v1/pipelines",
             &env.alice,
             org,
-            json!({ "name": "report", "document": "transforms:\n  - output: report\n    inputs: { p: people }\n    sql: SELECT name AS who FROM p\n" }),
+            json!({ "name": "report", "document": common::sql_pipeline("report", &[("p", "people")], "SELECT name AS who FROM p") }),
         )
         .await;
         assert_eq!(s, 201, "{p}");
@@ -543,7 +543,7 @@ async fn erasing_an_object_removes_its_rows_from_every_version() {
             "/api/v1/pipelines",
             &env.alice,
             org,
-            json!({ "name": "gone", "document": "transforms:\n  - output: left over\n    inputs: { p: people }\n    sql: SELECT name AS who FROM p\n" }),
+            json!({ "name": "gone", "document": common::sql_pipeline("left over", &[("p", "people")], "SELECT name AS who FROM p") }),
         )
         .await;
         assert_eq!(s, 201, "{p2}");

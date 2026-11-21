@@ -8,6 +8,7 @@ pub mod blob;
 mod files;
 pub mod flow_ask;
 pub mod read;
+pub mod replay;
 pub mod sql;
 pub mod store;
 #[cfg(test)]

@@ -63,7 +63,11 @@ pub mod as_of;
 /// 12 (2026-11-21, agents.md D786): `DeployFlow` loses `force` (no flow waits for a
 /// rule run any more, `flow-collecting` is gone); the `site_recipe` node folds into
 /// `agent_run`, whose ends `agent_run_finished` filters by rule and outcome.
-pub const CONTRACT: u32 = 12;
+/// 13 (2026-11-21, pipelines.md D934): a pipeline document is an engine
+/// document (`key`, `steps`, `tests`), no longer `transforms`; the check
+/// route answers `PipelineCheck`; a lineage link of a pack pipeline has no
+/// `pipeline_id`.
+pub const CONTRACT: u32 = 13;
 
 /// Routes under this prefix act on the org of their `{id}`, which must also be
 /// the `X-Org-Id` (SEC-75): generated clients send the path org there instead

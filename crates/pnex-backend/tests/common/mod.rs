@@ -523,3 +523,20 @@ pub fn spawn_pipeline_worker() -> tokio::task::JoinHandle<()> {
         }
     })
 }
+
+/// An org's pipeline (pipelines.md D934) that replaces `output` with the
+/// rows of one query over `inputs` (SQL name → table of the org).
+#[allow(dead_code)]
+pub fn sql_pipeline(output: &str, inputs: &[(&str, &str)], sql: &str) -> String {
+    let q = |s: &str| serde_json::Value::String(s.to_string()).to_string();
+    let tables: Vec<String> = inputs
+        .iter()
+        .map(|(a, t)| format!("{a}: {}", q(t)))
+        .collect();
+    format!(
+        "key: p\nsteps:\n  - sql: {{as: t1, tables: {{{}}}, sql: {}}}\n  - write: {{from: t1, table: {{name: {}, replace: true}}}}\n",
+        tables.join(", "),
+        q(sql),
+        q(output)
+    )
+}

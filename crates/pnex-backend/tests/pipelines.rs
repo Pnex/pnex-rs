@@ -1,5 +1,6 @@
-//! Pipelines API (pipelines.md D571, D573, D574): documents, versions, run
-//! queue, org isolation (R1), permissions (R2). The worker has its own tests.
+//! Pipelines API (pipelines.md D934, D571, D573, D574): an org's engine
+//! documents, their tests, versions, run queue, org isolation (R1),
+//! permissions (R2). The worker has its own tests.
 //!
 //! Needs PostgreSQL (TEST_DATABASE_URL).
 
@@ -10,8 +11,16 @@ use pnex_backend::app::App;
 use serde_json::{json, Value};
 use serial_test::serial;
 
-const DOC: &str =
-    "transforms:\n  - output: out\n    inputs: { r: raw }\n    sql: SELECT * FROM r\n";
+fn doc() -> String {
+    common::sql_pipeline("out", &[("r", "raw")], "SELECT * FROM r")
+}
+
+/// A pipeline read from the network, with one test on its inline answer.
+fn tested(rows: u64) -> String {
+    format!(
+        "key: p\nhosts: [data.example.io]\nsteps:\n  - fetch: {{as: page, url: \"https://data.example.io/a.csv\"}}\n  - read: {{as: rows, from: page, format: csv}}\n  - write: {{from: rows, table: {{name: out}}}}\ntests:\n  - given: {{\"https://data.example.io/a.csv\": \"n\\n1\\n2\\n\"}}\n    expect: {{rows: {{rows: {rows}}}}}\n"
+    )
+}
 
 struct Env {
     alice: String,
@@ -20,7 +29,7 @@ struct Env {
 
 async fn with_app<F, Fut>(f: F)
 where
-    F: FnOnce(axum_test::TestServer, Env) -> Fut,
+    F: FnOnce(axum_test::TestServer, Env, loco_rs::app::AppContext) -> Fut,
     Fut: std::future::Future<Output = ()>,
 {
     let base = common::spawn_mock_rauthy().await;
@@ -45,7 +54,7 @@ where
         config,
         move |server, ctx| async move {
             common::seed_catalogue(&ctx.db).await;
-            f(server, env).await;
+            f(server, env, ctx.clone()).await;
         },
     )
     .await;
@@ -90,7 +99,7 @@ async fn call(
 #[tokio::test]
 #[serial]
 async fn documents_versions_and_runs() {
-    with_app(|server, env| async move {
+    with_app(|server, env, _ctx| async move {
         let org = personal_org(&server, &env.alice).await;
         let (s, p) = call(
             &server,
@@ -98,7 +107,7 @@ async fn documents_versions_and_runs() {
             "/api/v1/pipelines",
             &env.alice,
             org,
-            Some(json!({ "name": "fc", "document": DOC })),
+            Some(json!({ "name": "fc", "document": doc() })),
         )
         .await;
         assert_eq!(s, 201, "{p}");
@@ -112,7 +121,7 @@ async fn documents_versions_and_runs() {
             "/api/v1/pipelines",
             &env.alice,
             org,
-            Some(json!({ "name": "fc", "document": DOC })),
+            Some(json!({ "name": "fc", "document": doc() })),
         )
         .await;
         assert_eq!(s, 409);
@@ -120,13 +129,15 @@ async fn documents_versions_and_runs() {
 
         // A bad document says where, in machine tokens.
         for (document, field, token) in [
-            ("transforms: [", "document", "yaml"),
-            ("transforms: []", "transforms", "required"),
+            ("steps: [".to_string(), "document", "yaml"),
+            ("key: p\nsteps: []".to_string(), "steps", "required"),
             (
-                "transforms:\n  - output: a\n    inputs: { x: a }\n    sql: SELECT 1\n",
-                "transforms.0.inputs.x",
-                "cycle",
+                format!("schedule: 1h\n{}", doc()),
+                "schedule",
+                "org_unsupported",
             ),
+            // Its test does not hold: the save is refused where it fails.
+            (tested(3), "tests.0.expect.rows", "rows:2"),
         ] {
             let (s, e) = call(
                 &server,
@@ -144,7 +155,7 @@ async fn documents_versions_and_runs() {
         }
 
         // A new version, on the version that was read.
-        let two = DOC.replace("output: out", "output: out2");
+        let two = doc().replace("name: \"out\"", "name: \"out2\"");
         let (s, p) = call(
             &server,
             "PUT",
@@ -162,7 +173,7 @@ async fn documents_versions_and_runs() {
             &path,
             &env.alice,
             org,
-            Some(json!({ "document": DOC, "expected_version": 1 })),
+            Some(json!({ "document": doc(), "expected_version": 1 })),
         )
         .await;
         assert_eq!(s, 409);
@@ -178,7 +189,7 @@ async fn documents_versions_and_runs() {
         )
         .await;
         assert_eq!(v["count"], 2);
-        assert_eq!(v["results"][1]["document"], DOC);
+        assert_eq!(v["results"][1]["document"], doc());
         assert_eq!(v["results"][0]["author"], "alice@example.com", "{v}");
 
         // A draft is checked without being saved, with the same answers as a save.
@@ -189,12 +200,24 @@ async fn documents_versions_and_runs() {
             check,
             &env.alice,
             org,
-            Some(json!({ "document": DOC })),
+            Some(json!({ "document": doc() })),
         )
         .await;
         assert_eq!(s, 200, "{parsed}");
-        assert!(parsed["transforms"][0]["output"].is_string(), "{parsed}");
-        for (document, token) in [("transforms: []", "required"), ("not: [yaml", "yaml")] {
+        assert_eq!(parsed["reads"], json!(["raw"]), "{parsed}");
+        assert_eq!(parsed["writes"], json!(["out"]), "{parsed}");
+        assert_eq!(parsed["steps"], json!(["sql", "write"]), "{parsed}");
+        let (s, held) = call(
+            &server,
+            "POST",
+            check,
+            &env.alice,
+            org,
+            Some(json!({ "document": tested(2) })),
+        )
+        .await;
+        assert_eq!((s, &held["tests"]), (200, &json!(1)), "{held}");
+        for (document, token) in [("key: p\nsteps: []", "required"), ("not: [yaml", "yaml")] {
             let (s, e) = call(
                 &server,
                 "POST",
@@ -255,7 +278,7 @@ async fn documents_versions_and_runs() {
 #[tokio::test]
 #[serial]
 async fn isolation_between_orgs_and_viewer_read_only() {
-    with_app(|server, env| async move {
+    with_app(|server, env, _ctx| async move {
         let org_a = personal_org(&server, &env.alice).await;
         let org_b = personal_org(&server, &env.bob).await;
         let (_, p) = call(
@@ -264,7 +287,7 @@ async fn isolation_between_orgs_and_viewer_read_only() {
             "/api/v1/pipelines",
             &env.alice,
             org_a,
-            Some(json!({ "name": "private", "document": DOC })),
+            Some(json!({ "name": "private", "document": doc() })),
         )
         .await;
         let id = p["id"].as_str().unwrap().to_string();
@@ -279,7 +302,7 @@ async fn isolation_between_orgs_and_viewer_read_only() {
             (
                 "PUT",
                 path.clone(),
-                Some(json!({ "document": DOC, "expected_version": 1 })),
+                Some(json!({ "document": doc(), "expected_version": 1 })),
             ),
             ("DELETE", path.clone(), None),
         ] {
@@ -295,7 +318,7 @@ async fn isolation_between_orgs_and_viewer_read_only() {
             "/api/v1/pipelines/validate",
             &env.bob,
             org_a,
-            Some(json!({ "document": DOC })),
+            Some(json!({ "document": doc() })),
         )
         .await;
         assert_eq!(s, 403);
@@ -315,12 +338,12 @@ async fn isolation_between_orgs_and_viewer_read_only() {
             (
                 "POST",
                 "/api/v1/pipelines".to_string(),
-                Some(json!({ "name": "v", "document": DOC })),
+                Some(json!({ "name": "v", "document": doc() })),
             ),
             (
                 "PUT",
                 path.clone(),
-                Some(json!({ "document": DOC, "expected_version": 1 })),
+                Some(json!({ "document": doc(), "expected_version": 1 })),
             ),
             ("POST", runs.clone(), None),
             ("DELETE", path.clone(), None),
@@ -336,7 +359,7 @@ async fn isolation_between_orgs_and_viewer_read_only() {
 #[tokio::test]
 #[serial]
 async fn lineage_of_a_dataset_nothing_computed_is_empty() {
-    with_app(|server, env| async move {
+    with_app(|server, env, _ctx| async move {
         let org = personal_org(&server, &env.alice).await;
         let (_, d) = call(
             &server,
@@ -386,7 +409,7 @@ async fn france_competences_join_through_the_worker() {
         .parse()
         .unwrap();
     let bin = std::env::var("PNEX_WORKER_BIN").expect("PNEX_WORKER_BIN");
-    with_app(|server, env| async move {
+    with_app(|server, env, ctx| async move {
         let org = personal_org(&server, &env.alice).await;
         for (name, part) in [("partners", "_Partenaires_"), ("sheets", "_Standard_")] {
             let (_, d) = call(
@@ -409,16 +432,13 @@ async fn france_competences_join_through_the_worker() {
                 .await;
             assert_eq!(res.status_code().as_u16(), 201, "{}", res.text());
         }
-        let document = r#"
-transforms:
-  - output: active_partners
-    inputs: { p: partners, s: sheets }
-    sql: |
-      SELECT p.Numero_Fiche AS code, left(digits(p.Siret_Partenaire), 9) AS siren,
-             p.Habilitation_Partenaire AS scope
-      FROM p JOIN s ON p.Numero_Fiche = s.Numero_Fiche
-      WHERE s.Actif = 'ACTIVE'
-"#;
+        let document = common::sql_pipeline(
+            "active_partners",
+            &[("p", "partners"), ("s", "sheets")],
+            "SELECT p.Numero_Fiche AS code, left(digits(p.Siret_Partenaire), 9) AS siren, \
+             p.Habilitation_Partenaire AS scope \
+             FROM p JOIN s ON p.Numero_Fiche = s.Numero_Fiche WHERE s.Actif = 'ACTIVE'",
+        );
         let (s, p) = call(
             &server,
             "POST",
@@ -442,6 +462,10 @@ transforms:
             .env("PNEX_S3_BUCKET", "pnex-test")
             .spawn()
             .unwrap();
+        // The server takes the run; the worker runs its query.
+        assert!(pnex_backend::services::pipelines::run_next(&ctx)
+            .await
+            .unwrap());
         let mut state = Value::Null;
         for _ in 0..120 {
             tokio::time::sleep(std::time::Duration::from_secs(1)).await;
@@ -494,6 +518,75 @@ transforms:
             .collect();
         assert_eq!(names, ["partners", "sheets"], "{l}");
         assert_eq!(l["stale"], false);
+    })
+    .await;
+}
+
+/// D934: the server takes a queued run of an org's own pipeline and plays
+/// it; its table is written and the run says so. A member who lost a
+/// right its writes need sees the run refused when it starts (R2).
+#[tokio::test]
+#[serial]
+async fn an_org_pipeline_runs_on_the_server() {
+    with_app(|server, env, ctx| async move {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let app = axum::Router::new().route("/a.csv", axum::routing::get(|| async { "n\n1\n2\n" }));
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        pnex_backend::services::pipeline_engine::store::route_for_tests("data.example.io", &base);
+
+        let org = personal_org(&server, &env.alice).await;
+        let (s, p) = call(
+            &server,
+            "POST",
+            "/api/v1/pipelines",
+            &env.alice,
+            org,
+            Some(json!({ "name": "numbers", "document": tested(2) })),
+        )
+        .await;
+        assert_eq!(s, 201, "{p}");
+        let runs = format!("/api/v1/pipelines/{}/runs", p["id"].as_str().unwrap());
+        let (s, r) = call(&server, "POST", &runs, &env.alice, org, None).await;
+        assert_eq!(s, 202, "{r}");
+        assert!(pnex_backend::services::pipelines::run_next(&ctx)
+            .await
+            .unwrap());
+        let run = format!("{runs}/{}", r["id"].as_str().unwrap());
+        let (_, done) = call(&server, "GET", &run, &env.alice, org, None).await;
+        assert_eq!(done["state"], "done", "{done}");
+        let (_, all) = call(&server, "GET", "/api/v1/datasets", &env.alice, org, None).await;
+        let out = all["results"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|d| d["name"] == "out")
+            .expect("its table");
+        assert_eq!(out["rows"], 2, "{out}");
+
+        // The starter lost the right to write tables before the run started.
+        let (s, r) = call(&server, "POST", &runs, &env.alice, org, None).await;
+        assert_eq!(s, 202, "{r}");
+        sea_orm::ConnectionTrait::execute_unprepared(
+            &ctx.db,
+            &format!("UPDATE organization_members SET role = 'viewer' WHERE org_id = {org}"),
+        )
+        .await
+        .unwrap();
+        assert!(pnex_backend::services::pipelines::run_next(&ctx)
+            .await
+            .unwrap());
+        let (_, refused) = call(
+            &server,
+            "GET",
+            &format!("{runs}/{}", r["id"].as_str().unwrap()),
+            &env.alice,
+            org,
+            None,
+        )
+        .await;
+        assert_eq!(refused["state"], "failed", "{refused}");
+        assert_eq!(refused["code"], "access-denied", "{refused}");
     })
     .await;
 }

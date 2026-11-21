@@ -314,6 +314,11 @@ impl Hooks for App {
         crate::services::crawl::spawn_scheduler(ctx);
         crate::services::markets::spawn_scheduler(ctx);
         crate::services::pipeline_engine::store::spawn(ctx);
+        // Runs of the orgs' own pipelines (pipelines.md D934). Tests take
+        // them one by one with `pipelines::run_next`.
+        if ctx.environment != Environment::Test {
+            crate::services::pipelines::spawn(ctx);
+        }
         crate::services::markets::summary::spawn_scheduler(ctx);
         crate::services::proofs::spawn_server_executor(ctx);
         // Site recipe runs cut by a restart never finish (D326).

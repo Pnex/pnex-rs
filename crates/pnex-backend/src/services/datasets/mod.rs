@@ -844,17 +844,27 @@ where
     })
 }
 
+/// The tables of the org a write comes from, and the pipeline that read
+/// them: kept as the transaction's inputs (lineage, D574).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Read<'a> {
+    pub tables: &'a [String],
+    /// An org's pipeline and its version (D934).
+    pub pipeline: Option<(Uuid, i32)>,
+    /// `<pack>/<key>` of a pack's pipeline.
+    pub key: Option<&'a str>,
+}
+
 /// Records the file and makes the transaction visible, as one PostgreSQL write.
-/// A snapshot gives the dataset its columns; so does a first append.
-/// `read`: names of the org's tables the rows come from, kept as the
-/// transaction's inputs (lineage, D574) with their current versions.
+/// A snapshot gives the dataset its columns; so does a first append. The
+/// inputs of `read` are kept with their current versions.
 async fn commit(
     db: &DatabaseConnection,
     dataset_id: Uuid,
     transaction_id: Uuid,
     kind: DatasetTransactionKind,
     written: &Written,
-    read: &[String],
+    read: Read<'_>,
 ) -> Result<(), DatasetError> {
     let tx = db.begin().await?;
     tx.execute_raw(stmt(
@@ -896,12 +906,12 @@ async fn commit(
         vec![dataset_id.into(), columns.into(), snapshot.into()],
     ))
     .await?;
-    if !read.is_empty() {
-        // No pipeline row: a pack pipeline (D934) is no `pipelines` row.
+    if !read.tables.is_empty() {
+        let (pipeline, version) = read.pipeline.unzip();
         tx.execute_raw(stmt(
             "INSERT INTO dataset_transaction_inputs \
-             (transaction_id, input_transaction_id, pipeline_id, pipeline_version) \
-             SELECT $1, t.id, NULL, 0 FROM datasets o \
+             (transaction_id, input_transaction_id, pipeline_id, pipeline_version, pipeline_key) \
+             SELECT $1, t.id, $4, coalesce($5, 0), $6 FROM datasets o \
              JOIN datasets d ON d.org_id = o.org_id AND d.name = ANY($3) AND d.id <> o.id \
              JOIN dataset_transactions t ON t.dataset_id = d.id \
              WHERE o.id = $2 AND t.state = 'committed' AND t.purged_at IS NULL \
@@ -913,7 +923,10 @@ async fn commit(
             vec![
                 transaction_id.into(),
                 dataset_id.into(),
-                read.to_vec().into(),
+                read.tables.to_vec().into(),
+                pipeline.into(),
+                version.into(),
+                read.key.into(),
             ],
         ))
         .await?;
@@ -986,7 +999,7 @@ where
                 return Ok(Some(same));
             }
         }
-        commit(db, id, transaction_id, kind, &written, &[]).await?;
+        commit(db, id, transaction_id, kind, &written, Read::default()).await?;
         Ok(None)
     }
     .await;
@@ -1071,7 +1084,7 @@ pub async fn append_stream(
         id,
         DatasetTransactionKind::Append,
         batches,
-        &[],
+        Read::default(),
     )
     .await
 }
@@ -1085,7 +1098,7 @@ pub async fn write_stream(
     id: Uuid,
     kind: DatasetTransactionKind,
     mut batches: tokio::sync::mpsc::Receiver<Option<arrow_array::RecordBatch>>,
-    read: &[String],
+    read: Read<'_>,
 ) -> Result<Option<DatasetTransaction>, DatasetError> {
     let cut = || DatasetError::Storage("the source stopped before its end".into());
     let dataset = get(db, org_id, id).await?;

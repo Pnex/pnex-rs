@@ -16,9 +16,7 @@ pub use table::PipelineTable;
 use dioxus::prelude::*;
 use dioxus_i18n::t;
 use pnex_core::datasets::Dataset;
-use pnex_core::pipelines::{
-    Build, BuildState, BuildStep, BuildStepState, Pipeline, PipelineDocument,
-};
+use pnex_core::pipelines::{Build, BuildState, BuildStep, BuildStepState, Pipeline};
 
 use crate::api;
 use crate::api::error_i18n::{localize, localize_code};
@@ -278,7 +276,7 @@ fn PipelineList(reload: Signal<u32>, adding: Signal<bool>) -> Element {
         _ => Vec::new(),
     };
     let submit = move |_| {
-        let document = PipelineDocument::starter(&source(), output().trim()).to_yaml();
+        let document = starter(&source(), output().trim());
         let title = name().trim().to_string();
         busy.set(true);
         error.set(None);
@@ -569,4 +567,14 @@ fn BuildList(reload: Signal<u32>) -> Element {
             }
         }
     }
+}
+/// The first version of a pipeline made on a screen (D934): a copy of one
+/// table into another. A name goes as a JSON string, which is valid YAML.
+fn starter(input: &str, output: &str) -> String {
+    let q = |v: &str| serde_json::Value::String(v.to_string()).to_string();
+    format!(
+        "key: copy\nsteps:\n  - sql:\n      as: rows\n      tables: {{source: {}}}\n      sql: SELECT * FROM source\n  - write:\n      from: rows\n      table: {{name: {}, replace: true}}\n",
+        q(input),
+        q(output)
+    )
 }

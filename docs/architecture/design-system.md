@@ -256,8 +256,8 @@ Chaque concept a un seul nom dans chaque langue, un seul composant et une seule 
 | Groupe de menu : tout ce qui alimente PNeX (appareils, agents navigateur, sites web) | Sources | Sources | pas « Appareils » pour le groupe |
 | Source continue (pistes audio et/ou vidéo : caméra IP, direct, fichier) | Flux | Stream | une caméra-appareil |
 | Lignes versionnées qu'un pipeline lit et écrit (D569, Q-P7) | Table | Table | ni « jeu de données », ni « dataset » à l'écran (sauf images de Vision Lab et ressources data.gouv.fr) |
-| Chaîne de traitements SQL d'une table à l'autre (D571) | Pipeline | Pipeline | pas « flux », pas « flow », pas « import » |
-| Requête d'un pipeline, de ses tables lues à sa table écrite (D358) | Traitement | Transform | pas « transformation », pas « étape » (= règle de navigation), pas « nœud » (= flow) |
+| Document YAML d'étapes qui lit une source ou des tables et écrit une table ou l'ontologie (D934) | Pipeline | Pipeline | pas « flux », pas « flow », pas « import » |
+| Opération fermée d'un pipeline : `fetch`, `read`, `sql`, `write`… (D936) | Étape | Step | pas « traitement », pas « transformation », pas « nœud » (= flow) |
 | Un passage d'un pipeline (D358) | Exécution | Run | pas « passage » (= règle de navigation), pas « job » |
 | Fiche d'un travail exécuté dans un bac à sable, identité de service de l'org (D757) | Agent | Agent | seul dans le menu Agents ; ailleurs « agent navigateur » et « agent edge » restent qualifiés |
 | Un passage d'un agent dans son bac (D731) | Exécution | Run | pas « run » en français, pas « job » (= travail du runner) |

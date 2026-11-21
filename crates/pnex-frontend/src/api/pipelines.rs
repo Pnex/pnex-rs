@@ -10,7 +10,7 @@ use pnex_core::datasets::{
     DatasetUploadInput,
 };
 use pnex_core::pipelines::{
-    Build, BuildInput, BuildPlan, BuildTargetKind, DatasetLineage, Pipeline, PipelineDocument,
+    Build, BuildInput, BuildPlan, BuildTargetKind, DatasetLineage, Pipeline, PipelineCheck,
     PipelineRun, PipelineVersion,
 };
 use pnex_core::Paginated;
@@ -53,7 +53,7 @@ pub async fn create(name: &str, document: &str) -> Result<Pipeline, ApiError> {
 }
 
 /// 400 = `pipeline-document-invalid`, with its violations.
-pub async fn validate(document: &str) -> Result<PipelineDocument, ApiError> {
+pub async fn validate(document: &str) -> Result<PipelineCheck, ApiError> {
     let body = json!({ "document": document });
     client::request(Method::POST, "/api/v1/pipelines/validate", Some(body)).await
 }

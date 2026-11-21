@@ -6,13 +6,12 @@ Un pipeline fait entrer des données externes dans PneX. Il lit une source (fich
 
 ## 2. Concepts
 
-- **Pipeline (du moteur)** : document YAML d'un pack, `packs/<pack>/pipelines/<clé>.yaml`. Il porte `key`, `hosts`, `steps`, `schedule` et `tests` (D934).
+- **Pipeline** : document YAML du moteur. Il porte `key`, `hosts`, `steps`, `schedule` et `tests` (D934). Un pack le livre dans `packs/<pack>/pipelines/<clé>.yaml`.
+- **Pipeline d'org** : pipeline écrit par une org, servi par `/api/v1/pipelines`, versionné. Ses `tests:` passent avant chaque enregistrement (D934).
 - **Étape** : une opération fermée d'un pipeline du moteur : `enumerate`, `fetch`, `browse`, `extract`, `unpack`, `read`, `sql`, `call`, `model`, `write` (D936).
 - **Table de travail** : résultat nommé d'une étape (`as`), lu par l'étape suivante (`from`, `for_each`). Elle vit le temps de l'exécution (D935).
 - **Élément** : une ligne d'une énumération suivie (`track: true`). Son état est gardé entre deux exécutions (D937).
 - **Table** : lignes versionnées par transactions, fichiers Parquet sur S3 et catalogue PostgreSQL. Le nom technique est `datasets` (D569, lexique Q-P7).
-- **Pipeline de transformation** : document de `/api/v1/pipelines`. Ses traitements SQL lisent des tables et en écrivent (D571).
-- **Traitement** : une requête SQL d'un pipeline de transformation, de ses tables lues à sa table écrite.
 - **Import** : un `object_import`. Il applique un mapping D301 à une table ou à un fichier et écrit objets et liens dans l'ontologie (synchro, D577).
 - **Exécution enchaînée** : une cible et ce dont elle dépend, exécutés dans l'ordre (`data_builds`, D575).
 - **Connecteur** : accès enregistré à une base, une API REST ou un point d'arrivée d'appels signés. Ses identifiants restent au coffre (D791).
@@ -27,18 +26,19 @@ config:
   layout: elk
 ---
 flowchart LR
-  pack[Pack] --> pl[Pipeline du moteur]
+  pack[Pack] --> pl[Pipeline]
   pack --> nq[Requête nommée]
   pack --> imp[Import]
   pl -->|write table| tab[(Table)]
   pl -->|write objects, proposals, media| ont[(Ontologie)]
   imp -->|mapping.pipeline| pl
   imp -->|synchro| ont
-  tr[Pipeline de transformation] -->|traitement SQL| tab
-  tab --> tr
+  org[Org] --> po[Pipeline d'org]
+  po -->|write| tab
+  tab -->|sql tables| po
   con[Connecteur] -->|connector_query| imp
   eb[Exécution enchaînée] --> imp
-  eb --> tr
+  eb --> po
   nq -->|lit| tab
 ```
 
@@ -52,13 +52,12 @@ config:
   layout: elk
 ---
 flowchart LR
-  src[Source externe] --> eng[Pipeline du moteur]
+  src[Source externe] --> eng[Pipeline]
   hook[Webhook, base, REST] --> con[Connecteur]
   up[Envoi d'un fichier] --> tab
   eng --> tab[(Table)]
   con --> imp[Import]
-  tab --> trf[Traitement SQL]
-  trf --> tab
+  tab -->|étape sql| eng
   tab --> imp
   imp --> ont[(Ontologie)]
   imp --> o2[(O2 object_changes)]
@@ -91,9 +90,9 @@ flowchart LR
   end
   subgraph wk[Worker pnex-pipeline-worker]
     d[sql, call]
-    e[traitements SQL]
+    e[requêtes d'analyse]
   end
-  srv -->|pipeline_step_jobs, pipeline_jobs| wk
+  srv -->|pipeline_step_jobs| wk
   wk -->|fichier Parquet ou Arrow| srv
   srv --> vault[(Coffre, egress, ontologie)]
   wk --> s3[(S3, catalogue)]
@@ -240,7 +239,7 @@ Le journal des changements part après le commit (D350). Une transaction annulé
 
 Contrôles d'un import : forme changée, chute suspecte, snapshot avec erreurs (D303), et `max_closures_pct`, 20 % par défaut (D322). Une source publique livre `invalid: skip` sur sa clé et ses textes libres : une valeur sale ne doit pas refuser tout le run.
 
-### 3.7 Tables versionnées et traitements SQL
+### 3.7 Tables versionnées et pipelines d'org
 
 ```mermaid
 stateDiagram-v2
@@ -253,23 +252,28 @@ stateDiagram-v2
   aborted --> [*]: fichiers purgés
 ```
 
-Une table est une suite de transactions `snapshot`, `append` ou `delete` (D569). La vue courante part du dernier `snapshot` commité, puis applique les transactions suivantes. Lire « au temps T » calcule la même vue à T (`as_of`). Une transaction ouverte ou annulée reste invisible. Un traitement déclare `retain_days` (1 à 3 650, 90 par défaut) : une version remplacée reste lisible ce temps. La dernière version n'est jamais purgée.
+Une table est une suite de transactions `snapshot`, `append` ou `delete` (D569). La vue courante part du dernier `snapshot` commité, puis applique les transactions suivantes. Lire « au temps T » calcule la même vue à T (`as_of`). Une transaction ouverte ou annulée reste invisible. Un `write` de table déclare `retain_days` (1 à 3 650, 90 par défaut) : une version remplacée reste lisible ce temps. La dernière version n'est jamais purgée.
 
 ```mermaid
 sequenceDiagram
+  participant U as Membre
   participant S as Serveur
   participant Q as pipeline_jobs
   participant W as Worker
   participant C as Catalogue
-  S->>Q: job (pipeline, version)
-  W->>Q: SELECT … FOR UPDATE SKIP LOCKED
-  W->>C: tables déclarées seulement
-  W->>W: SQL DataFusion, contrôles
-  W->>C: commit + dataset_transaction_inputs
+  U->>S: enregistre (vérifie, joue tests:)
+  U->>Q: run (started_by)
+  S->>Q: SELECT … FOR UPDATE SKIP LOCKED
+  S->>S: relit droits et habilitations (R2)
+  S->>W: étape sql (pipeline_step_jobs)
+  W->>W: SQL DataFusion
+  S->>C: write : contrôles, commit + lignage
   S->>S: dataset.committed sur pnex:ds:v1:{org}
 ```
 
-Le SQL d'un traitement est une entrée hostile (D572). Une session par exécution n'enregistre que les tables déclarées en entrée. Le moteur refuse DDL, DML et instructions de session sur le plan logique. Les fonctions sont en liste blanche, conversions D301 comprises. La mémoire est bornée, avec débordement disque, délai et plafond d'octets.
+Le serveur prend les exécutions des pipelines d'org dans `pipeline_jobs` et joue leurs étapes, comme celles d'un pipeline de pack. Au début de l'exécution, il relit les droits de qui l'a lancée : chaque cible d'écriture demande le droit de sa route (`ontology:write` pour des objets). Un pipeline d'org n'écrit jamais la table d'un import (`table_reserved`). Il ne peut ni naviguer (`browse`), ni partager vers une autre org (`share`), ni lire les réglages d'un pack (`requires`), ni porter son propre horaire (`schedule`, `after`) : la route de planification et les exécutions enchaînées s'en chargent. Les réponses de ses tests sont écrites dans le document (`given:`, `tables:` en CSV), 64 Ko au plus.
+
+Le SQL d'une étape `sql` est une entrée hostile (D572). Une session par exécution n'enregistre que les tables déclarées en entrée. Le moteur refuse DDL, DML et instructions de session sur le plan logique. Les fonctions sont en liste blanche, conversions D301 comprises. La mémoire est bornée, avec débordement disque, délai et plafond d'octets.
 
 Le lignage est écrit par l'exécution, jamais déclaré à la main (D574). `dataset_transaction_inputs` donne l'amont et l'aval, la péremption et le saut : mêmes entrées et même version, rien à recalculer.
 
@@ -467,7 +471,7 @@ Un pipeline peut déclarer `object_hosts` : des adresses tenues par les objets d
 5. Une écriture `proposals` doit rester une proposition, jamais une écriture directe (D941).
 6. Un intermédiaire doit être une table de travail. Une colonne ne doit jamais porter d'octets (D935).
 7. Un run qui casse doit relire sa tranche : un curseur avance après le commit seulement (D794, D937).
-8. Un traitement SQL ne doit lire que les tables déclarées en entrée (D572).
+8. Une étape `sql` ne doit lire que les tables déclarées dans `tables:` et ses tables de travail (D572).
 9. Le journal d'une écriture d'ontologie doit partir après le commit (D350).
 10. Une édition humaine doit survivre tant que la source ne change pas cette valeur (D577).
 11. Un contrôle bloquant doit annuler la transaction et laisser l'aval sur sa dernière version valide (D576).
@@ -551,7 +555,7 @@ Remplacée par D578 : `dataset.committed`, `dataset.synced` et `dataset_trigger`
 D317 retiré, D318 gardé, D319–D321 repris par les étapes du moteur, D322 absorbé.
 
 ### D358 — Lexique dédié
-Pipeline, Traitement, Exécution, Connecteur et Table sont dans `design-system.md` §7. Origine, Correspondance, Aperçu et Rejeu n'y sont pas.
+Pipeline, Étape, Exécution, Connecteur et Table sont dans `design-system.md` §7 (« Traitement » retiré avec D934). Origine, Correspondance, Aperçu et Rejeu n'y sont pas.
 
 ### D569 — Table versionnée par transactions
 Parquet sur S3, catalogue `datasets`, `dataset_transactions`, `dataset_files`. Pas d'`update`. Catalogue maison plutôt qu'Iceberg.
@@ -560,7 +564,7 @@ Parquet sur S3, catalogue `datasets`, `dataset_transactions`, `dataset_files`. P
 Une entité utile monte dans l'ontologie, le reste demeure dans une table lue en SQL.
 
 ### D571 — Le pipeline devient le contenant, l'import sa dernière étape
-Remplace D344. La forme du document est remplacée par D934. `/api/v1/pipelines` garde ce document pour les traitements SQL.
+Remplace D344. La forme du document est remplacée par D934. Les traitements SQL sont devenus des étapes `sql` puis `write` (migration 000166).
 
 ### D572 — Moteur : DataFusion, SQL seul
 SQL hostile : session limitée, refus sur le plan logique, liste blanche, mémoire bornée (§3.8).
@@ -605,7 +609,7 @@ Seul le S3 de PneX. Aucun identifiant de compartiment tiers.
 Écriture retour, tables virtuelles, réplication logique, Elasticsearch, SFTP, OAuth2 avec consentement.
 
 ### D934 — Un seul document : le pipeline
-Toute ingestion est un pipeline YAML. Bornée par D998 : pas de lien déduit dans un pipeline sans ligne d'écart.
+Toute ingestion est un pipeline YAML. Bornée par D998 : pas de lien déduit dans un pipeline sans ligne d'écart. Choix de Shan (2026-11-21) : une seule sorte. `/api/v1/pipelines` sert le pipeline d'org : versionné, `tests:` facultatifs mais joués avant l'enregistrement, réponses écrites dans le document. Il lit tout hôte public derrière la garde R8, la cadence D938 et le quota de l'org. `browse`, `share`, `requires`, `schedule` et `after` lui sont refusés. Son horaire reste la route D575.
 
 ### D935 — Tout intermédiaire est une table de travail
 Une table de travail vit le temps du run, dans la zone de transit, sous le quota de l'org.
@@ -744,8 +748,8 @@ tests:
 
 | Route | Effet |
 |---|---|
-| `GET/POST /api/v1/pipelines`, `…/{id}`, `…/{id}/versions` | Pipelines de transformation et leurs versions |
-| `POST /api/v1/pipelines/validate` | Valide un document |
+| `GET/POST /api/v1/pipelines`, `…/{id}`, `…/{id}/versions` | Pipelines d'org et leurs versions |
+| `POST /api/v1/pipelines/validate` | Vérifie un document, joue ses tests, rend `PipelineCheck` |
 | `GET/POST /api/v1/pipelines/{id}/runs` | Exécutions |
 | `PUT /api/v1/pipelines/{id}/schedule` | Horaire d'une cible |
 | `GET/POST /api/v1/data-builds`, `…/plan` | Exécutions enchaînées |
@@ -759,20 +763,16 @@ tests:
 
 ### 6.3 Écrans
 
-`/pipelines` a quatre onglets : Pipelines, Tables, Exécutions enchaînées, Connecteurs. `/pipelines/:id` est le studio d'un pipeline de transformation : graphe SVG en colonnes, en lecture seule, un nœud par table. La colonne de droite montre le traitement, la scène montre l'échantillon et le profil de colonnes. `/pipelines/tables/:id` montre une table. L'onglet Imports de l'ontologie reste : il porte l'historique, les étapes et l'aperçu des imports. Pas de lecteur commun D220, pas de « Reprendre au traitement N ».
+`/pipelines` a quatre onglets : Pipelines, Tables, Exécutions enchaînées, Connecteurs. `/pipelines/:id` est le studio d'un pipeline d'org : graphe SVG en colonnes, en lecture seule, un nœud par table lue ou écrite. La colonne de droite montre le document YAML, vérifié et testé à la frappe, ses exécutions et son horaire. La scène montre l'échantillon et le profil de colonnes. `/pipelines/tables/:id` montre une table. L'onglet Imports de l'ontologie reste : il porte l'historique, les étapes et l'aperçu des imports. Pas de lecteur commun D220, pas de « Reprendre au traitement N ».
 
 ## 7. Reste à faire
 
 **Lots du moteur non finis :**
 
-- PE5.5 (choix de Shan, 2026-11-20) : la page « Sites web » reste. Elle garde l'édition visuelle, les captures d'écran du run et la description des actions sur la page. Seul le stockage change : une règle devient un pipeline avec `browse`, après D934. `/site-recipes` disparaît alors, pas l'UI.
+- PE5.5 (choix de Shan, 2026-11-20) : la page « Sites web » reste. Elle garde l'édition visuelle, les captures d'écran du run et la description des actions sur la page. Seul le stockage change : une règle devient un pipeline avec `browse`. `/site-recipes` disparaît alors, pas l'UI. Dépend de Q-PE2 : un pipeline d'org refuse encore `browse`.
 - PE8 : mesure autour d'événements et chaînes candidates dans `/analysis`, note de séance en règle.
-- PE9 : `HOST_DEBT` à vider (5 lignes), lexique (Étape, Table de travail, Sonde, Requête nommée), fiches de l'assistant.
-- D934 (choix de Shan, 2026-11-21) : une seule sorte de pipeline. `/api/v1/pipelines` doit servir le pipeline du moteur écrit par l'org, versionné, ses `tests:` joués avant l'enregistrement. Il peut lire tout hôte public, derrière la garde R8, la cadence D938 et le quota de l'org. Plan :
-  2. Stockage et routes : le pipeline d'org remplace le document D571 dans `pipelines`. Le planificateur lance aussi les pipelines d'org.
-  3. Migration des données : un traitement D571 devient une étape `sql` suivie d'un `write`.
-  4. Studio `/pipelines/:id` : éditeur YAML, tests et graphe des tables.
-  5. Retrait du code D571, contrat, MCP, IAM, fiches de l'assistant.
+- PE9 : `HOST_DEBT` à vider (5 lignes), lexique (Table de travail, Sonde, Requête nommée), fiches de l'assistant.
+- D934 : un `call` d'un pipeline d'org ne trouve que les fonctions des packs (`<pack>/<nom>`), pas celles de l'org.
 - D946 : les pipelines des packs restent hors des exécutions enchaînées. `after` d'un pipeline du moteur n'est pas appliqué.
 - D941 : cible `series` non codée.
 - D944 : la sonde n'a pas de route.

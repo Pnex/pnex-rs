@@ -950,6 +950,14 @@ impl Step {
     }
 }
 
+/// A table of the org, named as its Table page shows it (`Cleaned sales`).
+pub fn valid_table(s: &str) -> bool {
+    !s.trim().is_empty()
+        && s.trim() == s
+        && s.chars().count() <= crate::datasets::NAME_MAX
+        && !s.chars().any(char::is_control)
+}
+
 /// A working table, column or SQL name: a letter or `_`, then letters,
 /// digits and `_`.
 /// A column name: as [`valid_name`], capitals allowed, so that a table keeps
@@ -1178,7 +1186,110 @@ impl Document {
         }
         out
     }
+
+    /// What an org may not write in its own pipeline (D934): a navigation
+    /// (Q-PE2 open), a share into another org (R1), pack settings, rows
+    /// asked again of a pack pipeline, and a
+    /// schedule or order of its own (the pipeline's schedule route does
+    /// both). Its tests' recorded answers are inline and stay small.
+    pub fn org_violations(&self) -> Vec<Violation> {
+        let mut out = Vec::new();
+        let mut bad = |path: String, token: &str| {
+            out.push(Violation {
+                path,
+                token: token.into(),
+            })
+        };
+        for (path, set) in [
+            ("schedule", self.schedule.is_some()),
+            ("after", !self.after.is_empty()),
+            ("requires", !self.requires.is_empty()),
+        ] {
+            if set {
+                bad(path.into(), "org_unsupported");
+            }
+        }
+        for (i, s) in self.steps.iter().enumerate() {
+            match s {
+                Step::Browse(_) => bad(format!("steps.{i}"), "org_unsupported"),
+                Step::Write(w) if w.objects.as_ref().is_some_and(|o| o.share.is_some()) => {
+                    bad(format!("steps.{i}.objects.share"), "org_unsupported")
+                }
+                Step::Write(w) if w.ask.is_some() => {
+                    bad(format!("steps.{i}.ask"), "org_unsupported")
+                }
+                _ => {}
+            }
+        }
+        let inline: usize = self
+            .tests
+            .iter()
+            .flat_map(|t| t.given.values().chain(t.tables.values()))
+            .map(String::len)
+            .sum();
+        if inline > ORG_FIXTURES_MAX_BYTES {
+            bad(
+                "tests".into(),
+                &format!("max_bytes:{ORG_FIXTURES_MAX_BYTES}"),
+            );
+        }
+        out
+    }
+
+    /// Rights a member needs to run it: its run reads and writes tables, and
+    /// each other write target needs the right of its own route (R2).
+    pub fn rights(&self) -> Vec<&'static str> {
+        let mut out = vec!["datasets:read", "datasets:write"];
+        for s in &self.steps {
+            let Step::Write(w) = s else { continue };
+            for (set, right) in [
+                (w.objects.is_some(), "ontology:write"),
+                (w.time_ranges.is_some(), "time-ranges:write"),
+                (w.proposals.is_some(), "proposals:file"),
+                (w.media.is_some(), "media:write"),
+            ] {
+                if set && !out.contains(&right) {
+                    out.push(right);
+                }
+            }
+        }
+        out
+    }
+
+    /// Tables of the org its `sql` steps read.
+    pub fn table_reads(&self) -> Vec<&str> {
+        let mut out: Vec<&str> = self
+            .steps
+            .iter()
+            .filter_map(|s| match s {
+                Step::Sql(q) => Some(q.tables.values().map(String::as_str)),
+                _ => None,
+            })
+            .flatten()
+            .collect();
+        out.sort_unstable();
+        out.dedup();
+        out
+    }
+
+    /// Tables of the org its `write` steps write.
+    pub fn table_writes(&self) -> Vec<&str> {
+        let mut out: Vec<&str> = self
+            .steps
+            .iter()
+            .filter_map(|s| match s {
+                Step::Write(w) => w.table.as_ref().map(|t| t.name.as_str()),
+                _ => None,
+            })
+            .collect();
+        out.sort_unstable();
+        out.dedup();
+        out
+    }
 }
+
+/// Recorded answers and tables an org's pipeline holds inline, in all.
+pub const ORG_FIXTURES_MAX_BYTES: usize = 64 * 1024;
 
 fn long(s: &str) -> bool {
     s.len() > STRING_MAX
@@ -1483,7 +1594,7 @@ fn step_violations(
             if s.sql.len() > SQL_MAX_BYTES {
                 bad(format!("{at}.sql"), &format!("max_bytes:{SQL_MAX_BYTES}"));
             }
-            if s.tables.keys().any(|k| !valid_name(k)) || s.tables.values().any(|t| !valid_name(t))
+            if s.tables.keys().any(|k| !valid_name(k)) || s.tables.values().any(|t| !valid_table(t))
             {
                 bad(format!("{at}.tables"), "invalid");
             }
@@ -1540,7 +1651,7 @@ fn step_violations(
                 }
             }
             if let Some(t) = &w.table {
-                if !valid_name(&t.name) {
+                if !valid_table(&t.name) {
                     bad(format!("{at}.table.name"), "invalid");
                 }
                 if (t.replace && !t.key.is_empty())
@@ -1770,5 +1881,49 @@ mod tests {
         );
         assert_eq!(literal_host("{{url}}"), None);
         assert_eq!(literal_host("https://{{host}}/a"), None);
+    }
+
+    #[test]
+    fn an_org_pipeline_keeps_to_its_org_and_says_what_it_needs() {
+        let mut d = doc(json!([
+            {"sql": {"as": "rows", "tables": {"s": "Cleaned sales"}, "sql": "SELECT * FROM s"}},
+            {"write": {"from": "rows", "table": {"name": "Sales by region", "replace": true}}},
+            {"write": {"from": "rows", "objects": {"share": "linkedin", "objects": [
+                {"as": "p", "type": "person", "key": "id", "properties": {"id": "id"}}]}}}
+        ]));
+        assert_eq!(
+            tokens(&d),
+            Vec::<String>::new(),
+            "a Table keeps its UI name"
+        );
+        assert_eq!(d.table_reads(), ["Cleaned sales"]);
+        assert_eq!(d.table_writes(), ["Sales by region"]);
+        assert_eq!(
+            d.rights(),
+            ["datasets:read", "datasets:write", "ontology:write"]
+        );
+        d.schedule = Some("1h".into());
+        d.requires = vec!["pack.key".into()];
+        d.tests = vec![serde_json::from_value(json!({
+            "given": {"https://data.example.io/a": "x".repeat(ORG_FIXTURES_MAX_BYTES)},
+            "tables": {"Cleaned sales": "a\n1"},
+            "expect": {}
+        }))
+        .unwrap()];
+        let org: Vec<String> = d
+            .org_violations()
+            .into_iter()
+            .map(|v| format!("{} {}", v.path, v.token))
+            .collect();
+        assert_eq!(
+            org,
+            [
+                "schedule org_unsupported",
+                "requires org_unsupported",
+                "steps.2.objects.share org_unsupported",
+                "tests max_bytes:65536",
+            ]
+        );
+        assert!(!valid_table(" padded") && !valid_table("") && !valid_table("a\nb"));
     }
 }

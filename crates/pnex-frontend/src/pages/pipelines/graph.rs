@@ -2,10 +2,10 @@
 //! reads and what reads it. Plain SVG with a layered layout: these graphs are small and
 //! read in one direction, which the force view of the case graph does not show.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 use dioxus::prelude::*;
-use pnex_core::pipelines::PipelineDocument;
+use pnex_core::pipelines::PipelineCheck;
 
 const NODE_W: f64 = 190.0;
 const NODE_H: f64 = 54.0;
@@ -63,23 +63,26 @@ pub fn layout(
     (pos, (width, height))
 }
 
-/// Tables of a document, in reading order, and who feeds whom.
-pub fn document_graph(doc: &PipelineDocument) -> (Vec<String>, Vec<(String, String)>) {
-    let mut seen = BTreeSet::new();
-    let mut names = Vec::new();
-    let mut edges = Vec::new();
-    let mut add = |name: &str, names: &mut Vec<String>| {
-        if seen.insert(name.to_string()) {
-            names.push(name.to_string());
+/// Tables of a checked document, the tables it reads before those it
+/// writes, each read table feeding each written one.
+pub fn document_graph(check: &PipelineCheck) -> (Vec<String>, Vec<(String, String)>) {
+    let mut names: Vec<String> = Vec::new();
+    for t in check.reads.iter().chain(&check.writes) {
+        if !names.contains(t) {
+            names.push(t.clone());
         }
-    };
-    for t in &doc.transforms {
-        for table in t.inputs.values() {
-            add(table, &mut names);
-            edges.push((table.clone(), t.output.clone()));
-        }
-        add(&t.output, &mut names);
     }
+    let edges = check
+        .reads
+        .iter()
+        .flat_map(|r| {
+            check
+                .writes
+                .iter()
+                .filter(move |w| *w != r)
+                .map(move |w| (r.clone(), w.clone()))
+        })
+        .collect();
     (names, edges)
 }
 
@@ -209,7 +212,6 @@ pub fn TableGraph(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use pnex_core::pipelines::Transform;
 
     fn node(id: &str) -> GraphNode {
         GraphNode {
@@ -259,22 +261,22 @@ mod tests {
 
     #[test]
     fn a_document_gives_each_table_once() {
-        let t = |output: &str, reads: &[&str]| Transform {
-            output: output.into(),
-            inputs: reads
-                .iter()
-                .enumerate()
-                .map(|(i, r)| (format!("t{i}"), r.to_string()))
-                .collect(),
-            sql: "SELECT 1".into(),
-            checks: Default::default(),
-            retain_days: None,
+        let check = PipelineCheck {
+            reads: vec!["raw".into(), "ref".into()],
+            writes: vec!["clean".into(), "ref".into()],
+            steps: Vec::new(),
+            tests: 0,
+            rights: Vec::new(),
         };
-        let doc = PipelineDocument {
-            transforms: vec![t("clean", &["raw", "ref"]), t("final", &["clean", "ref"])],
-        };
-        let (names, edges) = document_graph(&doc);
-        assert_eq!(names, ["raw", "ref", "clean", "final"]);
-        assert_eq!(edges.len(), 4);
+        let (names, edges) = document_graph(&check);
+        assert_eq!(names, ["raw", "ref", "clean"]);
+        assert_eq!(
+            edges,
+            [
+                edge("raw", "clean"),
+                edge("raw", "ref"),
+                edge("ref", "clean")
+            ]
+        );
     }
 }
