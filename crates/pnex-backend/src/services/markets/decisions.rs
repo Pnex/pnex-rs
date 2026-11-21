@@ -22,7 +22,9 @@ use crate::services::datasets::{self, parquet, DatasetError};
 // many; upgrade = the monthly compaction planned by D808 if real loads show it.
 pub const FILES_MAX: usize = 20_000;
 const READ_CONCURRENCY: usize = 8;
-const COLUMNS: [&str; 8] = [
+/// `side` exists in the tables that keep both quotes (Dukascopy): the bid
+/// side is read, as a chart shows it; a file without it reads as is.
+const COLUMNS: [&str; 9] = [
     "instrument",
     "ts",
     "open",
@@ -31,6 +33,7 @@ const COLUMNS: [&str; 8] = [
     "close",
     "volume",
     "source",
+    "side",
 ];
 const DAY_US: i64 = 86_400_000_000;
 
@@ -159,26 +162,42 @@ async fn window(
                 .column_by_name(name)
                 .and_then(|c| c.as_primitive_opt::<Decimal128Type>())
         };
-        let (Some(o), Some(h), Some(l), Some(c), Some(v)) = (
-            dec("open"),
-            dec("high"),
-            dec("low"),
-            dec("close"),
-            dec("volume"),
-        ) else {
+        let (Some(o), Some(h), Some(l), Some(c)) =
+            (dec("open"), dec("high"), dec("low"), dec("close"))
+        else {
             continue;
         };
+        // A tick volume may be a float (Dukascopy): kept at the same scale.
+        let volume = dec("volume");
+        let float_volume = batch
+            .column_by_name("volume")
+            .and_then(|c| c.as_primitive_opt::<arrow_array::types::Float64Type>());
+        if volume.is_none() && float_volume.is_none() {
+            continue;
+        }
+        let side = batch
+            .column_by_name("side")
+            .and_then(|c| c.as_string_opt::<i32>());
+        let scale = 10f64.powi(pnex_core::markets::history::SCALE as i32);
         for i in 0..batch.num_rows() {
             if inst.value(i) != q.instrument || src.value(i) != q.source {
                 continue;
             }
+            if side.is_some_and(|s| s.value(i) != "bid") {
+                continue;
+            }
+            let v = match (volume, float_volume) {
+                (Some(v), _) => v.value(i),
+                (None, Some(f)) => (f.value(i) * scale).round() as i128,
+                (None, None) => 0,
+            };
             minutes.push(Bar {
                 ts_us: ts.value(i),
                 open: o.value(i),
                 high: h.value(i),
                 low: l.value(i),
                 close: c.value(i),
-                volume: v.value(i),
+                volume: v,
             });
         }
     }
@@ -202,11 +221,9 @@ pub fn bar_out(b: &Bar) -> BarOut {
     }
 }
 
-/// Whether the org has prices of this instrument: a loaded partition, a row
-/// of a pipeline keyed by it, or an MT5 symbol announced by one of its
-/// terminals.
-// shortcut: reads the first label of a pipeline row as the instrument; goes
-// with the market routes in PE7 (pipelines.md D948).
+/// Whether the org has prices of this instrument: a done row of a pipeline
+/// with the instrument among its labels, or an MT5 symbol announced by one of
+/// its terminals.
 pub async fn known_instrument<C: ConnectionTrait>(
     db: &C,
     org: i64,
@@ -214,10 +231,8 @@ pub async fn known_instrument<C: ConnectionTrait>(
 ) -> Result<bool, DbErr> {
     Ok(db
         .query_one_raw(stmt(
-            "SELECT EXISTS (SELECT 1 FROM market_history_partitions \
-                 WHERE org_id = $1 AND instrument = $2 AND state = 'done') \
-              OR EXISTS (SELECT 1 FROM pipeline_items \
-                 WHERE org_id = $1 AND state = 'done' AND split_part(item, '/', 1) = $2) \
+            "SELECT EXISTS (SELECT 1 FROM pipeline_items \
+                 WHERE org_id = $1 AND state = 'done' AND $2 = ANY(string_to_array(item, '/'))) \
               OR EXISTS (SELECT 1 FROM mt5_symbols s JOIN mt5_terminals t ON t.id = s.terminal_id \
                  WHERE t.org_id = $1 AND s.symbol = $2) AS known",
             vec![org.into(), instrument.into()],

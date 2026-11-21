@@ -45,6 +45,7 @@ pub fn bar_table(source: &str) -> Option<&'static str> {
     match source {
         "binance_public" => Some("binance_klines_1m"),
         "histdata" => Some("histdata_m1"),
+        "dukascopy_public" => Some("dukascopy_ohlcv_1m"),
         _ => None,
     }
 }

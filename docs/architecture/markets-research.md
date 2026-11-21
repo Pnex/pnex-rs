@@ -331,7 +331,7 @@ Le modèle et son runner vivent dans un projet Python privé, hors de PneX (D890
 
 Le runner est un compte de service (D891). La liste blanche `SERVICE_WRITES` ne contient que `market-decisions:write` : toute autre écriture d'un compte de service est refusée (SEC-85).
 
-`GET /markets/bars` rééchantillonne les minutes d'une seule source (`binance_public`, `histdata`, `mt5:<courtier>`) en barres alignées sur l'époque UTC (D892). Seules les barres closes à `as_of` sont rendues. Une décision porte sa `source` : l'écart entre HistData et MT5 doit être mesuré avant un usage en direct (D893).
+`GET /markets/bars` rééchantillonne les minutes d'une seule source (`binance_public`, `histdata`, `dukascopy_public`, `mt5:<courtier>`) en barres alignées sur l'époque UTC (D892). Pour Dukascopy, la route lit le côté bid. Seules les barres closes à `as_of` sont rendues. Une décision porte sa `source` : l'écart entre HistData et MT5 doit être mesuré avant un usage en direct (D893).
 
 Une décision (D894) porte le modèle, sa version, l'instrument, la source, l'intervalle, `horizon_bars`, `as_of`, trois probabilités et des barrières en ATR optionnelles. Le serveur vérifie la somme à 1 ± 1e-3 et l'âge d'`as_of` (deux intervalles au plus). Il calcule `best` et `confidence` (1 − entropie normalisée). Plafond : 2 000 décisions par jour et par org.
 
@@ -887,7 +887,7 @@ Secrets du coffre : `markets_tiingo_key`, `markets_fred_key`, `markets_eia_key`,
 
 ### 6.3 Tables PostgreSQL
 
-`market_observations`, `market_decisions`, `account_trades`, `object_versions`, `link_versions`, `mt5_terminals`, `mt5_symbols`, `mt5_inbox`, `market_history_partitions` (à supprimer, PE9), `market_session_summaries`.
+`market_observations`, `market_decisions`, `account_trades`, `object_versions`, `link_versions`, `mt5_terminals`, `mt5_symbols`, `mt5_inbox`, `market_session_summaries`.
 
 ### 6.4 Lots
 
@@ -1032,8 +1032,7 @@ Secrets du coffre : `markets_tiingo_key`, `markets_fred_key`, `markets_eia_key`,
 - D889 : pont table → trace d'un dossier pour un navire ou un avion suivi.
 - D923 : source de financement des wallets, voisinage à profondeur 2. D921 : liens `bears_on` posés sur un pays ou une société exposés.
 - D929 : reconnaissance de l'export brut Myfxbook, écran d'import.
-- `GET /markets/bars` ne lit pas `dukascopy_ohlcv_1m` (`bar_table` ne connaît que `binance_public`, `histdata` et `mt5:`).
-- « Instrument connu » d'une décision lit encore `market_history_partitions`, à supprimer (`pipelines.md` PE9). Lectures `/markets/*` à côté des requêtes nommées (PE7, PE8).
+- Lectures `/markets/*` à côté des requêtes nommées (PE8).
 - Couverture de l'or : achats des banques centrales, encours des ETF.
 - Lots L2 à L8 de l'ingestion de contenus (§3.17).
 - À vérifier : le plafond de 100 000 changements par transaction du journal `object_changes` (constaté sur un import UCDP en masse).

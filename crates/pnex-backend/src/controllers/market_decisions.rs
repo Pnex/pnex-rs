@@ -103,7 +103,7 @@ fn bars_error(e: BarsError) -> Result<Response> {
 struct BarsParams {
     /// Instrument as written in the table (`XAUUSD`, `BTCUSDT`…).
     instrument: String,
-    /// `source` column: `histdata`, `binance_public` or `mt5:<broker>`. Never mixed.
+    /// `source` column: `histdata`, `binance_public`, `dukascopy_public` (bid side) or `mt5:<broker>`. Never mixed.
     source: String,
     /// `1m`, `5m`, `15m`, `1h`, `4h` or `1d`, aligned on 1970-01-01 UTC.
     interval: String,
@@ -205,7 +205,7 @@ async fn bars(
 struct ChainsParams {
     /// Ticker of the `instrument` object, as written in the price table.
     instrument: String,
-    /// Price source (`source` column): `histdata`, `binance_public` or `mt5:<broker>`.
+    /// Price source (`source` column): `histdata`, `binance_public`, `dukascopy_public` (bid side) or `mt5:<broker>`.
     source: String,
     /// Instant of the read (RFC 3339), now by default: everything as known then.
     #[param(format = DateTime)]

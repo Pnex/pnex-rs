@@ -64,7 +64,7 @@ config:
 flowchart LR
     subgraph data[Données]
         pe54[PE5.4 relations d'un contact, en cours] --> pe55[PE5.5 retrait des recettes]
-        pe55 --> pe79[PE7 à PE9]
+        pe55 --> pe79[PE8, PE9]
         d801[D801 habilitation des pipelines]
     end
     subgraph acc[Accès]
@@ -99,7 +99,7 @@ PE5.4 est le seul lot en cours au 2026-11-20 (`pipelines.md`). D801 et les garde
 |---|---|---|---|---|
 | Plateforme opérationnelle | OP1 en grande partie livré. OP2, OP3, OP5, OP9 livrés. | `operational-platform.md` §11 | OP4, OP6–OP8, OP10–OP15 selon la demande client | P2.36 |
 | Ontologie | Noyau 0.2.0 livré (D176–D191), actions D183, D367, D368. | `ontology.md` | Éditeur d'actions, mesures 100 k objets, D369, calendrier GMAO (compteurs, équipes, `.ics`), annexe C | P2.14, P2.20 |
-| Pipelines, Tables, connecteurs | Moteur codé (D934–D953), connecteurs OP2 livrés. | `pipelines.md` | PE5.4 (en cours), PE5.5, PE7, PE8, PE9, D941, D944 | — |
+| Pipelines, Tables, connecteurs | Moteur codé (D934–D953), connecteurs OP2 livrés. | `pipelines.md` | PE5.5, PE8, PE9, D941, D944 | — |
 | Gouvernance | G1–G7 livrés (D798–D806). | `governance.md` | D801, détection et unicité des marquages (à coder), SAML à la demande | — |
 | IAM | I0–I3 livrés, I6 en lecture seule, I7 partiel. | `iam.md` §16 | I4, I5, I2, simulateur d'accès (I7) | P2.25 |
 | Sécurité | Coffre (D110–D119), profil V1 (D153–D158), audit du 2026-11-06 corrigé. | `security.md` §11 | Clé APK release (SEC-10), V2 profil `industrial` | P0.2, P2.37 |

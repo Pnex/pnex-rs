@@ -3003,6 +3003,61 @@ async fn gold_real_sources() {
 
 /// Minute bars of `instrument` from `start` (µs), one per minute, a close
 /// rising by 0.01 a minute, as the `ohlcv` shape (D809).
+/// Dukascopy minutes of XAUUSD from `start_us`: a bid at 2000 and an ask at
+/// 2001 each minute, a float tick volume of 1.5.
+fn dukascopy_rows(start_us: i64, n: i64) -> arrow_array::RecordBatch {
+    use arrow_array::{Decimal128Array, Float64Array, StringArray, TimestampMicrosecondArray};
+    use arrow_schema::{DataType, Field, Schema, TimeUnit};
+    use std::sync::Arc;
+    let u: i128 = 100_000_000;
+    let n2 = (2 * n) as usize;
+    let dec = || DataType::Decimal128(38, 8);
+    let price = |side: &str| if side == "bid" { 2000 * u } else { 2001 * u };
+    let sides: Vec<&str> = (0..n).flat_map(|_| ["bid", "ask"]).collect();
+    let prices = || {
+        Decimal128Array::from(sides.iter().map(|s| price(s)).collect::<Vec<_>>())
+            .with_precision_and_scale(38, 8)
+            .unwrap()
+    };
+    let schema = Arc::new(Schema::new(vec![
+        Field::new("instrument", DataType::Utf8, false),
+        Field::new("side", DataType::Utf8, false),
+        Field::new(
+            "ts",
+            DataType::Timestamp(TimeUnit::Microsecond, Some("UTC".into())),
+            false,
+        ),
+        Field::new("open", dec(), false),
+        Field::new("high", dec(), false),
+        Field::new("low", dec(), false),
+        Field::new("close", dec(), false),
+        Field::new("volume", DataType::Float64, false),
+        Field::new("source", DataType::Utf8, false),
+    ]));
+    arrow_array::RecordBatch::try_new(
+        schema,
+        vec![
+            Arc::new(StringArray::from(vec!["XAUUSD"; n2])),
+            Arc::new(StringArray::from(sides.clone())),
+            Arc::new(
+                TimestampMicrosecondArray::from(
+                    (0..n)
+                        .flat_map(|i| [start_us + i * 60_000_000; 2])
+                        .collect::<Vec<_>>(),
+                )
+                .with_timezone("UTC"),
+            ),
+            Arc::new(prices()),
+            Arc::new(prices()),
+            Arc::new(prices()),
+            Arc::new(prices()),
+            Arc::new(Float64Array::from(vec![1.5; n2])),
+            Arc::new(StringArray::from(vec!["dukascopy_public"; n2])),
+        ],
+    )
+    .unwrap()
+}
+
 fn minute_rows(instrument: &str, source: &str, start_us: i64, n: i64) -> arrow_array::RecordBatch {
     use pnex_core::markets::history::Kline;
     let u: i128 = 100_000_000;
@@ -3071,8 +3126,8 @@ async fn an_external_model_reads_bars_and_posts_decisions() {
         }
         ctx.db
             .execute_unprepared(&format!(
-                "INSERT INTO market_history_partitions (org_id, source, instrument, period, period_start, state) \
-                 VALUES ({org}, 'histdata', 'XAUUSD', 'year', '2026-01-01', 'done')"
+                "INSERT INTO pipeline_items (org_id, pipeline, item, state) \
+                 VALUES ({org}, 'markets.histdata_m1', 'XAUUSD/2026', 'done')"
             ))
             .await
             .unwrap();
@@ -3142,6 +3197,17 @@ async fn an_external_model_reads_bars_and_posts_decisions() {
         assert_eq!(page["results"][0]["volume"], "60");
         let (_, page) = runner("GET", &format!("/api/v1/markets/bars?instrument=XAUUSD&source=mt5:Demo&interval=1m&from={from}"), None).await;
         assert_eq!(page["count"], 60);
+        // Dukascopy keeps both quotes and a float tick volume: the bid side is read.
+        let duka = datasets::create(&ctx.db, org, "dukascopy_ohlcv_1m").await.unwrap();
+        let duka_id: uuid::Uuid = duka.id.parse().unwrap();
+        datasets::append_batch(&ctx.db, &store, org, duka_id, &dukascopy_rows(start, 60))
+            .await
+            .unwrap();
+        let (st, page) = runner("GET", &format!("/api/v1/markets/bars?instrument=XAUUSD&source=dukascopy_public&interval=1h&from={from}"), None).await;
+        assert_eq!(st, 200, "{page}");
+        assert_eq!(page["count"], 1, "{page}");
+        assert_eq!(page["results"][0]["close"], "2000", "the bid, not the ask: {page}");
+        assert_eq!(page["results"][0]["volume"], "90", "60 minutes of 1.5: {page}");
         let (st, e) = runner("GET", "/api/v1/markets/bars?instrument=XAUUSD&source=elsewhere&interval=4h", None).await;
         assert_eq!((st, e["errors"]["fields"]["source"].as_str()), (400, Some("invalid")), "{e}");
         let (st, e) = runner("GET", "/api/v1/markets/bars?instrument=XAUUSD&source=histdata&interval=3h", None).await;
@@ -3265,9 +3331,9 @@ async fn point_in_time_reads_never_show_a_canary() {
             .unwrap();
         ctx.db
             .execute_unprepared(&format!(
-                "INSERT INTO market_history_partitions (org_id, source, instrument, period, period_start, state) \
-                 VALUES ({org}, 'histdata', 'XAUUSD', 'year', date_trunc('year', now())::date, 'done'), \
-                        ({org}, 'histdata', 'CANARY', 'year', date_trunc('year', now())::date, 'done')"
+                "INSERT INTO pipeline_items (org_id, pipeline, item, state) \
+                 VALUES ({org}, 'markets.histdata_m1', 'XAUUSD/2026', 'done'), \
+                        ({org}, 'markets.histdata_m1', 'CANARY/2026', 'done')"
             ))
             .await
             .unwrap();

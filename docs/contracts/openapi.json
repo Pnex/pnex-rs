@@ -73944,7 +73944,7 @@
             }
           },
           {
-            "description": "`source` column: `histdata`, `binance_public` or `mt5:<broker>`. Never mixed.",
+            "description": "`source` column: `histdata`, `binance_public`, `dukascopy_public` (bid side) or `mt5:<broker>`. Never mixed.",
             "in": "query",
             "name": "source",
             "required": true,
@@ -74091,7 +74091,7 @@
             }
           },
           {
-            "description": "Price source (`source` column): `histdata`, `binance_public` or `mt5:<broker>`.",
+            "description": "Price source (`source` column): `histdata`, `binance_public`, `dukascopy_public` (bid side) or `mt5:<broker>`.",
             "in": "query",
             "name": "source",
             "required": true,
