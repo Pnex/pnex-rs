@@ -9,7 +9,7 @@
 //! required kind (`panorama` for scenes, any image — `floorplan` or
 //! `photo` — for plans: any image displays as a plan).
 
-use pnex_core::{TourDoc, TourViolation, TOUR_MODE_PANORAMA};
+use pnex_core::{TourDoc, TourViolation};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QuerySelect, Set,
     TransactionTrait,
@@ -166,7 +166,7 @@ pub async fn create_tour(
         org_id: Set(org_id),
         name: Set(name.trim().to_string()),
         description: Set(description),
-        mode: Set(TOUR_MODE_PANORAMA.to_string()),
+        mode: Set("panorama".to_string()),
         share_token: Set(None),
         published_version_id: Set(None),
         ..Default::default()

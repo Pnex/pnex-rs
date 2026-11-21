@@ -139,10 +139,11 @@ pub async fn liveness(
                 id: device.id,
                 device_id: device.device_id,
                 predefined_device_name: name,
+                // `device_types` rows are only seeded from the catalog.
                 device_type: types
                     .get(&type_id)
-                    .cloned()
-                    .unwrap_or_else(|| "unknown".into()),
+                    .and_then(|n| pnex_core::catalog::DeviceType::from_name(n))
+                    .unwrap_or(pnex_core::catalog::DeviceType::Mixed),
                 live,
                 last_seen: seen_utc.map(|t| t.to_rfc3339()),
             }

@@ -319,7 +319,7 @@ fn ReadLog(case_id: String) -> Element {
                     for (i, e) in r.iter().take(20).enumerate() {
                         div { key: "{i}", class: "border-b border-line py-1 text-xs",
                             div { class: "text-ink",
-                                "{stamp(&e.at)} · {e.who.clone().unwrap_or_default()} · {purpose_label(&e.purpose)}"
+                                "{stamp(&e.at)} · {e.who.clone().unwrap_or_default()} · {purpose_label(e.purpose)}"
                             }
                             div { class: "text-slate",
                                 {read_objects(e)}
@@ -334,11 +334,12 @@ fn ReadLog(case_id: String) -> Element {
     }
 }
 
-fn purpose_label(p: &str) -> String {
+fn purpose_label(p: pnex_core::ontology::api::ReadPurpose) -> String {
+    use pnex_core::ontology::api::ReadPurpose;
     match p {
-        "detect" => t!("cw-read-detect"),
-        "snapshot" => t!("cw-read-snapshot"),
-        _ => t!("cw-read-tracks"),
+        ReadPurpose::Detect => t!("cw-read-detect"),
+        ReadPurpose::Snapshot => t!("cw-read-snapshot"),
+        ReadPurpose::Tracks => t!("cw-read-tracks"),
     }
     .to_string()
 }

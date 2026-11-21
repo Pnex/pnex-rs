@@ -20,8 +20,8 @@ pub struct TourHotspotView {
     pub target_scene: String,
     pub target_floor: String,
     pub label: String,
-    /// `walk` | `stair` (derived) — picks the PNeX arrow in the JS glue.
-    pub kind: String,
+    /// Derived from the floors; picks the PNeX arrow in the JS glue.
+    pub kind: pnex_core::TourLinkKind,
     /// Id of the doc link — target of the repositioning drag.
     pub link_id: String,
 }

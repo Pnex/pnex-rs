@@ -436,7 +436,7 @@ fn KeyRow(
             td { class: "px-3 py-2 hidden text-gray-600 md:table-cell",
                 {row.unit.clone().unwrap_or_default()}
             }
-            td { class: "px-3 py-2 text-gray-500", "{row.kind}" }
+            td { class: "px-3 py-2 text-gray-500", {row.kind.as_str()} }
             td { class: "px-3 py-2 hidden text-xs text-gray-500 md:table-cell",
                 {date_label(&row.last_seen_at)}
             }

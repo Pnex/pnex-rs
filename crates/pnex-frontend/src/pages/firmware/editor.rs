@@ -177,7 +177,9 @@ pub(super) fn FirmwareEditor(project_id: i64, can_write: bool, on_back: Callback
         }
     }
 
-    let chip = loaded().map(|d| d.chip_family).unwrap_or_default();
+    let chip = loaded()
+        .map(|d| d.chip_family.name().to_string())
+        .unwrap_or_default();
     let revision = loaded().map(|d| d.current_revision_number).unwrap_or(0);
     let code_value = code();
 

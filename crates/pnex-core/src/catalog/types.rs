@@ -2,7 +2,9 @@
 //! `device_capabilities` rows, matched by name).
 
 /// Device type — `device_types.name`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
 pub enum DeviceType {
     Sensor,
     Actuator,
@@ -31,6 +33,17 @@ impl DeviceType {
             DeviceType::PowerSupply => "power_supply",
             DeviceType::Agent => "agent",
         }
+    }
+
+    /// `device_types.name` → type; `None` for a name the catalog does not seed.
+    pub fn from_name(name: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|t| t.name() == name)
+    }
+}
+
+impl std::fmt::Display for DeviceType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.name())
     }
 }
 

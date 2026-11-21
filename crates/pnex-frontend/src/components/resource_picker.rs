@@ -158,7 +158,7 @@ pub fn ResourcePicker(
                         .map(|d| PickerRow {
                             id: d.device_id.clone(),
                             name: d.device_id,
-                            subtitle: d.device_type,
+                            subtitle: d.device_type.to_string(),
                         })
                         .collect(),
                 }),

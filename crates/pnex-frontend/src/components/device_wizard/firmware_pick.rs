@@ -14,7 +14,7 @@ pub(super) fn FirmwarePickBlock(soc: String, mut firmware_pick: Signal<Option<i6
     let compatible: Vec<(i64, String, i64)> = match &*projects.value().read() {
         Some(Ok(all)) => all
             .iter()
-            .filter(|p| p.chip_family == chip)
+            .filter(|p| p.chip_family.name() == chip)
             .map(|p| (p.id, p.name.clone(), p.current_revision_number))
             .collect(),
         _ => Vec::new(),

@@ -4,7 +4,7 @@
 //! points to the protected resource metadata (RFC 9728), which names Rauthy
 //! as the authorization server (OAuth code + PKCE, refresh token).
 
-use axum::extract::State;
+use axum::extract::{Query, State};
 use axum::http::header::WWW_AUTHENTICATE;
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use loco_rs::prelude::*;
@@ -18,6 +18,15 @@ account and rights. Org-scoped tools take `X-Org-Id`: list your organisations wi
 `user_info_get`. Lists are paginated (`limit`, `offset`, answer `{count, results}`). Deleting data, acting on \
 devices and deploying or stopping flows are not available here: they stay in the PneX UI.";
 
+/// Query of the MCP endpoint, set once in the client's server URL.
+#[derive(Debug, serde::Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct McpQuery {
+    /// Comma-separated spec tags (`devices,flows`): `tools/list` answers only
+    /// their tools. Absent = every tool.
+    pub tags: Option<String>,
+}
+
 /// JSON-RPC endpoint of the MCP server.
 #[utoipa::path(
     post,
@@ -25,7 +34,8 @@ devices and deploying or stopping flows are not available here: they stay in the
     tag = "mcp",
     operation_id = "mcp",
     summary = "MCP server (JSON-RPC)",
-    description = "Model Context Protocol endpoint (Streamable HTTP, JSON answers, stateless): `initialize`, `ping`, `tools/list`, `tools/call`. The tools are the operations of this spec listed as exposed (D245); a call runs with the caller's token and rights. `X-Org-Id` on this request is the default organisation of the calls. Notifications answer 202.",
+    description = "Model Context Protocol endpoint (Streamable HTTP, JSON answers, stateless): `initialize`, `ping`, `tools/list`, `tools/call`. The tools are the operations of this spec listed as exposed (D245); a call runs with the caller's token and rights. `X-Org-Id` on this request is the default organisation of the calls. `?tags=` limits `tools/list` to the tools of those spec tags. Notifications answer 202.",
+    params(McpQuery),
     request_body = Value,
     responses(
         (status = 200, description = "JSON-RPC answer", body = Value),
@@ -39,6 +49,7 @@ async fn rpc(
     auth: std::result::Result<AuthUser, loco_rs::Error>,
     replay: Option<axum::Extension<AppRouter>>,
     headers: HeaderMap,
+    Query(query): Query<McpQuery>,
     Json(msg): Json<Value>,
 ) -> Result<Response> {
     if let Err(err) = auth {
@@ -71,7 +82,15 @@ async fn rpc(
             }))
         }
         "ping" => Ok(json!({})),
-        "tools/list" => Ok(json!({ "tools": mcp::tool_list() })),
+        "tools/list" => {
+            let tags: Option<Vec<&str>> = query.tags.as_deref().map(|t| {
+                t.split(',')
+                    .map(str::trim)
+                    .filter(|t| !t.is_empty())
+                    .collect()
+            });
+            Ok(json!({ "tools": mcp::tool_list(tags.as_deref()) }))
+        }
         "tools/call" => match replay {
             Some(axum::Extension(AppRouter(router))) => {
                 mcp::call((*router).clone(), &headers, params).await

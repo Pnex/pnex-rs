@@ -159,7 +159,9 @@ pub fn signal_title(s: &SignalItem) -> String {
         }
         .to_string();
     }
-    s.title.clone().unwrap_or_else(|| s.kind.clone())
+    s.title
+        .clone()
+        .unwrap_or_else(|| s.kind.as_str().to_string())
 }
 
 /// Label of a group of like signals (`count` > 1): "127 objects created".
@@ -413,7 +415,7 @@ mod tests {
     fn like_signals_close_in_time_gather() {
         let sig = |at: &str, action: &str| SignalItem {
             at: at.into(),
-            kind: "change".into(),
+            kind: pnex_core::ontology::api::CaseSignalKind::Change,
             change: Some(pnex_core::ontology::api::ChangeView {
                 at: at.into(),
                 action: action.into(),

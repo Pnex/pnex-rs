@@ -10,7 +10,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use pnex_core::ontology::api::{CaseSignals, SignalItem, SignalsQuery};
+use pnex_core::ontology::api::{CaseSignalKind, CaseSignals, SignalItem, SignalsQuery};
 use pnex_core::ontology::PropertyKind;
 use pnex_core::ontology::{EVENT_OCCURRED, KIND_EVENT, KIND_NOTE, REL_INVOLVES, REL_IN_CASE};
 use pnex_core::resources::KIND_FLOW;
@@ -116,7 +116,7 @@ pub async fn signals(
         if e.valid_from >= from && e.valid_from <= to {
             items.push(SignalItem {
                 at: e.valid_from.to_rfc3339(),
-                kind: "link_open".into(),
+                kind: CaseSignalKind::LinkOpen,
                 lane: lane.clone(),
                 link: Some(v.clone()),
                 ..Default::default()
@@ -125,7 +125,7 @@ pub async fn signals(
         if let Some(t) = e.valid_to.filter(|t| *t >= from && *t <= to) {
             items.push(SignalItem {
                 at: t.to_rfc3339(),
-                kind: "link_close".into(),
+                kind: CaseSignalKind::LinkClose,
                 lane,
                 link: Some(v),
                 ..Default::default()
@@ -160,7 +160,7 @@ pub async fn signals(
                     .filter(|(_, c)| c.action.starts_with("object."))
                     .map(|(lane, c)| SignalItem {
                         at: c.at.clone(),
-                        kind: "change".into(),
+                        kind: CaseSignalKind::Change,
                         // The object's title, for a readable label.
                         title: Uuid::parse_str(&lane)
                             .ok()
@@ -202,7 +202,7 @@ pub async fn signals(
         };
         items.push(SignalItem {
             at: start.to_rfc3339(),
-            kind: "range".into(),
+            kind: CaseSignalKind::Range,
             lane: r.scope_id.clone(),
             range: Some(crate::services::time_ranges::view(r)),
             ..Default::default()
@@ -237,7 +237,7 @@ pub async fn signals(
             }
             items.push(SignalItem {
                 at: a.to_rfc3339(),
-                kind: "occurred".into(),
+                kind: CaseSignalKind::Occurred,
                 lane: o.id.to_string(),
                 fuzzy: Some(v.clone()),
                 title: Some(o.title.clone()),
@@ -270,7 +270,7 @@ pub async fn signals(
                 let lane = flows.get(&n.flow_id?)?.clone();
                 Some(SignalItem {
                     at: n.created_at.clone(),
-                    kind: "notification".into(),
+                    kind: CaseSignalKind::Notification,
                     lane,
                     notification: Some(n),
                     ..Default::default()

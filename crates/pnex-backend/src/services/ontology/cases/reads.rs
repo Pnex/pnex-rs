@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use std::sync::{LazyLock, Mutex};
 
 use loco_rs::prelude::*;
-use pnex_core::ontology::api::CaseRead;
+use pnex_core::ontology::api::{CaseRead, ReadPurpose};
 use serde_json::{json, Value};
 use tokio::sync::mpsc;
 use uuid::Uuid;
@@ -30,7 +30,7 @@ const WINDOW_US: i64 = 365 * 24 * 3600 * 1_000_000;
 #[derive(Debug, Clone, Copy)]
 pub struct Reader {
     pub user_id: Option<i64>,
-    pub purpose: &'static str,
+    pub purpose: ReadPurpose,
 }
 
 /// One logged read.
@@ -202,11 +202,9 @@ pub async fn reads(
                         .get("user_id")
                         .and_then(Value::as_i64)
                         .and_then(|u| names.get(&u).cloned()),
-                    purpose: h
-                        .get("purpose")
-                        .and_then(Value::as_str)
-                        .unwrap_or_default()
-                        .to_string(),
+                    // Only this module writes the log: a purpose always parses.
+                    purpose: serde_json::from_value(h["purpose"].clone())
+                        .unwrap_or(ReadPurpose::Tracks),
                     objects: ids
                         .iter()
                         .filter_map(|i| objs.get(i))
@@ -234,7 +232,7 @@ mod tests {
                 case_id: Uuid::nil(),
                 reader: Reader {
                     user_id: Some(7),
-                    purpose: "tracks",
+                    purpose: ReadPurpose::Tracks,
                 },
                 objects: vec![id],
                 window_ms: (1_000, 2_000),

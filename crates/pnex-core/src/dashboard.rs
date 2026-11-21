@@ -48,7 +48,7 @@ pub struct DeviceLiveness {
     pub device_id: String,
     /// Predefined model (`generic_esp8266`, ...).
     pub predefined_device_name: String,
-    pub device_type: String,
+    pub device_type: crate::catalog::DeviceType,
     pub live: bool,
     /// RFC 3339, `null` = never seen.
     pub last_seen: Option<String>,

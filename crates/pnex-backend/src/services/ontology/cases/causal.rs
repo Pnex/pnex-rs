@@ -7,7 +7,7 @@
 use std::collections::{HashMap, HashSet};
 
 use chrono::{DateTime, Utc};
-use pnex_core::ontology::api::{SignalItem, SignalsQuery};
+use pnex_core::ontology::api::{CaseSignalKind, SignalItem, SignalsQuery};
 use pnex_core::ontology::PropertyKind;
 use pnex_core::rca::{Signal, SignalKind};
 use pnex_core::resources::KIND_FLOW;
@@ -50,20 +50,20 @@ pub fn typed(item: &SignalItem, neighbours: &HashMap<String, Vec<String>>) -> Ve
         severity,
         source_ref,
     };
-    match item.kind.as_str() {
-        "link_open" | "link_close" => item
+    match item.kind {
+        k @ (CaseSignalKind::LinkOpen | CaseSignalKind::LinkClose) => item
             .link
             .as_ref()
             .map(|l| {
                 vec![one(
                     SignalKind::ChangeLink,
-                    format!("{}:{}", item.kind, l.id),
+                    format!("{}:{}", k.as_str(), l.id),
                     0.5,
                     format!("link:{}", l.id),
                 )]
             })
             .unwrap_or_default(),
-        "change" => item
+        CaseSignalKind::Change => item
             .change
             .as_ref()
             .map(|c| {
@@ -80,7 +80,7 @@ pub fn typed(item: &SignalItem, neighbours: &HashMap<String, Vec<String>>) -> Ve
                 )]
             })
             .unwrap_or_default(),
-        "range" => item
+        CaseSignalKind::Range => item
             .range
             .as_ref()
             .filter(|r| r.category.as_deref() == Some(MAINTENANCE_CATEGORY))
@@ -93,7 +93,7 @@ pub fn typed(item: &SignalItem, neighbours: &HashMap<String, Vec<String>>) -> Ve
                 )]
             })
             .unwrap_or_default(),
-        "notification" => {
+        CaseSignalKind::Notification => {
             let Some(n) = item.notification.as_ref() else {
                 return Vec::new();
             };

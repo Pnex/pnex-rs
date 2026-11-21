@@ -106,7 +106,7 @@ pub struct PredefinedDevice {
     pub description_i18n: Option<String>,
     #[serde(default)]
     pub revision: String,
-    pub device_type: String,
+    pub device_type: crate::catalog::DeviceType,
     /// Capability names (list of strings).
     pub capabilities: Vec<String>,
     /// MCU board name.
@@ -168,11 +168,23 @@ pub struct LatestBuild {
     pub failure_detail: Option<String>,
 }
 
+/// Where an OTA deployment stands (`ota_assignments.state`).
+#[derive(PartialEq, Eq, Debug, Clone, Copy, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum OtaPhase {
+    Pending,
+    Downloading,
+    Flashing,
+    Succeeded,
+    Failed,
+}
+
 /// Current OTA deployment status hydrated into `Device` (list + detail).
 #[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct OtaAssignmentState {
-    pub state: String,
+    pub state: OtaPhase,
     pub target_version: String,
     #[serde(default)]
     pub progress: Option<u8>,
@@ -196,7 +208,7 @@ pub struct Device {
     pub device_id: String,
     pub predefined_device_name: String,
     /// Type name (`sensor`, `actuator`, `mixed`…).
-    pub device_type: String,
+    pub device_type: crate::catalog::DeviceType,
     /// Capabilities of the predefined model.
     pub capabilities: Vec<DeviceCapability>,
     pub active: bool,

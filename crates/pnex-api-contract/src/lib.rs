@@ -56,7 +56,11 @@ pub mod as_of;
 /// 10 (2026-11-18, pipelines.md D999): the person search routes
 /// (`/extension/people/{id}/matches`) are removed; a person's profile is found
 /// by the pack's flows (action `find_profile`), its state read on the person.
-pub const CONTRACT: u32 = 10;
+/// 11 (2026-11-21, api.md D241): closed sets become enums (same wire names):
+/// case proposals, signals and reads, tour mode and link kind, device type,
+/// agent key kind, firmware chip family, OTA state, document index status.
+/// An unknown tour mode or link kind is now refused at parse time.
+pub const CONTRACT: u32 = 11;
 
 /// Routes under this prefix act on the org of their `{id}`, which must also be
 /// the `X-Org-Id` (SEC-75): generated clients send the path org there instead

@@ -115,12 +115,18 @@ pub const S3_INPUT_ONLY: [u16; 1] = [46];
 pub const S3_ADC1_PINS: [u16; 10] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 
 /// SoCs known to the chip-caps — derived from `mcu_boards.soc`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub enum Soc {
+    #[serde(rename = "esp8266")]
     Esp8266,
+    #[serde(rename = "esp32-c3")]
     Esp32C3,
+    #[serde(rename = "esp32-c6")]
     Esp32C6,
+    #[serde(rename = "esp32")]
     Esp32,
+    #[serde(rename = "esp32-s3")]
     Esp32S3,
 }
 

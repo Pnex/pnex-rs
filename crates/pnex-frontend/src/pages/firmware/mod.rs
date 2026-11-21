@@ -105,7 +105,7 @@ pub fn Firmware() -> Element {
             |p: &FirmwareProjectSummary| {
                 rsx! {
                     span { class: "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-800 w-fit",
-                        {chip_label(&p.chip_family)}
+                        {chip_label(p.chip_family.name())}
                     }
                 }
             },

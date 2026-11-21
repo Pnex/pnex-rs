@@ -181,6 +181,7 @@ Une commande est `pnex <tag> <action>`. Le tag vient du spec. L'action est l'`op
 - Route : `POST /api/v1/mcp`. Méthodes : `initialize`, `ping`, `tools/list`, `tools/call`. Une notification répond 202.
 - Protocole 2025-06-18. Le serveur accepte aussi 2025-03-26 et 2024-11-05.
 - Une réponse est plafonnée à 4 Mio. Au-delà, l'outil demande de restreindre la requête.
+- `tools/list` envoie environ 340 Ko. Un client peut limiter la liste aux tags du spec : `?tags=devices,flows` dans l'URL du serveur. `tools/call` accepte toujours tout outil exposé.
 - Motifs d'`EXCLUDED` : `destructive`, `physical`, `runtime`, `firmware`, `credential`, `access`, `outward`, `sign-off`, `assistant`, `platform`, `bulk`, `binary`, `auth`, `mcp`.
 
 ```sh
@@ -224,9 +225,8 @@ Les verbes (D242) et les enums restent à la revue humaine.
 
 ## 7. Reste à faire
 
-- Ensembles fermés encore en chaînes : `CaseProposal.kind`/`status`, `SignalItem.kind`, `CaseRead.purpose`, `TourDoc.mode`/`TourLink.kind`, `Device.device_type`, `AgentKey.kind`/`chip_family`, `OtaAssignmentState.state`, `IndexState.status`, `MediaStream.capture_on` (non fermé). Les codes de violation de documents (flow, visite, calque) restent en snake_case, hors `ALL`.
+- Les codes de violation de documents (flow, visite, calque) restent en snake_case, hors `ALL`.
 - `o2-not-configured` sert aussi à « OpenObserve injoignable » (502). Renommer ce code avec le chantier O2.
-- `tools/list` est lourd (environ 340 Ko). Un filtrage par tag (M2) reste à faire pour les clients qui chargent tous les outils.
 - Le rejeu MCP ne porte pas l'adresse du client. Sans effet aujourd'hui : les routes sous rate-limit sont exclues.
 - `pnex logout` oublie la session locale, sans révoquer le refresh token chez Rauthy (48 h au plus).
 - Le port 33418 est partagé par le MCP et la CLI : deux connexions simultanées se refusent (« port busy »).

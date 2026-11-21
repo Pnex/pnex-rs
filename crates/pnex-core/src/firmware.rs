@@ -508,8 +508,8 @@ pub struct FirmwareProjectSummary {
     pub name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
-    /// Wire id of the target chip family (`esp32`, `esp8266`…).
-    pub chip_family: String,
+    /// Target chip family.
+    pub chip_family: Soc,
     pub current_revision_number: i64,
     /// Devices attached to the project.
     #[serde(default)]
@@ -528,7 +528,7 @@ pub struct FirmwareProjectDetail {
     pub name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
-    pub chip_family: String,
+    pub chip_family: Soc,
     pub current_revision_number: i64,
     pub main_cpp: String,
     /// Catalog ids.

@@ -681,8 +681,7 @@
             "type": "string"
           },
           "kind": {
-            "description": "`number` | `bool` | `text` | `json`.",
-            "type": "string"
+            "$ref": "#/components/schemas/AgentKeyKind"
           },
           "last_seen_at": {
             "format": "date-time",
@@ -708,6 +707,16 @@
           "last_seen_at"
         ],
         "type": "object"
+      },
+      "AgentKeyKind": {
+        "description": "Kind of the values an agent sends on a key.",
+        "enum": [
+          "number",
+          "bool",
+          "text",
+          "json"
+        ],
+        "type": "string"
       },
       "AgentKeyPatch": {
         "description": "`PATCH /api/v1/devices/{id}/agent-keys/{key_id}`.",
@@ -5329,8 +5338,7 @@
             "type": "string"
           },
           "kind": {
-            "description": "`co_presence` | `stop` | `signal_loss`.",
-            "type": "string"
+            "$ref": "#/components/schemas/DetectionKind"
           },
           "params": {
             "description": "Effective thresholds of the run."
@@ -5352,8 +5360,7 @@
             ]
           },
           "status": {
-            "description": "`proposed` | `retained` | `rejected`.",
-            "type": "string"
+            "$ref": "#/components/schemas/CaseProposalStatus"
           },
           "t_end": {
             "type": [
@@ -5376,6 +5383,15 @@
           "status"
         ],
         "type": "object"
+      },
+      "CaseProposalStatus": {
+        "description": "Where a case proposal stands.",
+        "enum": [
+          "proposed",
+          "retained",
+          "rejected"
+        ],
+        "type": "string"
       },
       "CasePurgeInput": {
         "description": "Objects to purge from an archived case (cases.md K16).",
@@ -5424,7 +5440,7 @@
             "type": "array"
           },
           "purpose": {
-            "type": "string"
+            "$ref": "#/components/schemas/ReadPurpose"
           },
           "to": {
             "type": "string"
@@ -5444,6 +5460,18 @@
           "to"
         ],
         "type": "object"
+      },
+      "CaseSignalKind": {
+        "description": "What a raw signal is.",
+        "enum": [
+          "link_open",
+          "link_close",
+          "change",
+          "range",
+          "notification",
+          "occurred"
+        ],
+        "type": "string"
       },
       "CaseSignals": {
         "description": "Raw signals of a case over a window, oldest first.",
@@ -8478,6 +8506,17 @@
         ],
         "type": "object"
       },
+      "DetectionKind": {
+        "description": "What a case detector found (the name of its detector, without version).",
+        "enum": [
+          "co_presence",
+          "stop",
+          "signal_loss",
+          "zone",
+          "causal_chain"
+        ],
+        "type": "string"
+      },
       "DetectionResult": {
         "description": "Result of one inference (test endpoint, flow node).",
         "properties": {
@@ -8539,8 +8578,8 @@
             "$ref": "#/components/schemas/DeviceTokenInfo"
           },
           "device_type": {
-            "description": "Type name (`sensor`, `actuator`, `mixed`…).",
-            "type": "string"
+            "$ref": "#/components/schemas/DeviceType",
+            "description": "Type name (`sensor`, `actuator`, `mixed`…)."
           },
           "discovered_measurements": {
             "description": "Discovered measurement names (only when dynamic measurements are\nallowed).",
@@ -8709,7 +8748,7 @@
             "type": "string"
           },
           "device_type": {
-            "type": "string"
+            "$ref": "#/components/schemas/DeviceType"
           },
           "id": {
             "format": "int64",
@@ -8884,6 +8923,18 @@
           "is_active"
         ],
         "type": "object"
+      },
+      "DeviceType": {
+        "description": "Device type — `device_types.name`.",
+        "enum": [
+          "sensor",
+          "actuator",
+          "mixed",
+          "wifi_mesh",
+          "power_supply",
+          "agent"
+        ],
+        "type": "string"
       },
       "DiffClose": {
         "description": "An object archived or a link closed by a snapshot run.",
@@ -10336,7 +10387,7 @@
         "description": "Project + current revision (the editor loads this).",
         "properties": {
           "chip_family": {
-            "type": "string"
+            "$ref": "#/components/schemas/Soc"
           },
           "created_at": {
             "format": "date-time",
@@ -10389,8 +10440,8 @@
         "description": "Project list item (no code).",
         "properties": {
           "chip_family": {
-            "description": "Wire id of the target chip family (`esp32`, `esp8266`…).",
-            "type": "string"
+            "$ref": "#/components/schemas/Soc",
+            "description": "Target chip family."
           },
           "created_at": {
             "format": "date-time",
@@ -13060,7 +13111,7 @@
             ]
           },
           "status": {
-            "type": "string"
+            "$ref": "#/components/schemas/IndexStatus"
           }
         },
         "required": [
@@ -13068,6 +13119,17 @@
           "chunk_count"
         ],
         "type": "object"
+      },
+      "IndexStatus": {
+        "description": "Indexing state of a document version (`media_text_index.status`).",
+        "enum": [
+          "pending",
+          "extracting",
+          "indexed",
+          "error",
+          "needs_ocr"
+        ],
+        "type": "string"
       },
       "IngestStepView": {
         "description": "One journaled step of an import run (its run history).",
@@ -19389,7 +19451,7 @@
             ]
           },
           "state": {
-            "type": "string"
+            "$ref": "#/components/schemas/OtaPhase"
           },
           "target_version": {
             "type": "string"
@@ -19425,6 +19487,17 @@
           }
         ],
         "description": "Answer of `POST /api/v1/devices/{id}/ota`."
+      },
+      "OtaPhase": {
+        "description": "Where an OTA deployment stands (`ota_assignments.state`).",
+        "enum": [
+          "pending",
+          "downloading",
+          "flashing",
+          "succeeded",
+          "failed"
+        ],
+        "type": "string"
       },
       "OtaState": {
         "description": "Lifecycle state of an OTA assignment (lowercase on the wire).",
@@ -26423,7 +26496,7 @@
             ]
           },
           "device_type": {
-            "type": "string"
+            "$ref": "#/components/schemas/DeviceType"
           },
           "has_screen": {
             "description": "The model can carry a builtin screen (`peripherals.screen` in base),\noffered as a build option.",
@@ -27627,6 +27700,15 @@
           "detected",
           "manual",
           "import"
+        ],
+        "type": "string"
+      },
+      "ReadPurpose": {
+        "description": "Why tracks were read.",
+        "enum": [
+          "tracks",
+          "detect",
+          "snapshot"
         ],
         "type": "string"
       },
@@ -30856,8 +30938,7 @@
             "description": "`occurred`: a `fuzzy_time` property of a member, at its precision;\n`title` is the member's title."
           },
           "kind": {
-            "description": "`link_open` | `link_close` | `change` | `range` | `notification` | `occurred`.",
-            "type": "string"
+            "$ref": "#/components/schemas/CaseSignalKind"
           },
           "lane": {
             "type": "string"
@@ -31321,6 +31402,17 @@
           "timezone"
         ],
         "type": "object"
+      },
+      "Soc": {
+        "description": "SoCs known to the chip-caps — derived from `mcu_boards.soc`.",
+        "enum": [
+          "esp8266",
+          "esp32-c3",
+          "esp32-c6",
+          "esp32",
+          "esp32-s3"
+        ],
+        "type": "string"
       },
       "SocialPlatform": {
         "description": "Social platform an agent follows accounts on (D254). TikTok comes with\nits adapter (lot L3).",
@@ -33361,8 +33453,8 @@
             "type": "array"
           },
           "mode": {
-            "default": "panorama",
-            "type": "string"
+            "$ref": "#/components/schemas/TourMode",
+            "default": "panorama"
           },
           "scenes": {
             "default": [],
@@ -33420,7 +33512,7 @@
             "type": "string"
           },
           "kind": {
-            "type": "string"
+            "$ref": "#/components/schemas/TourLinkKind"
           },
           "label": {
             "type": [
@@ -33446,6 +33538,21 @@
           "to"
         ],
         "type": "object"
+      },
+      "TourLinkKind": {
+        "description": "How a link moves between scenes, derived from their floors.",
+        "enum": [
+          "walk",
+          "stair"
+        ],
+        "type": "string"
+      },
+      "TourMode": {
+        "description": "How a tour is shown. Only panoramas in V1 (the `tours.mode` column\nprepares a 3D mode).",
+        "enum": [
+          "panorama"
+        ],
+        "type": "string"
       },
       "TourScene": {
         "description": "Scene of the tour: a 360 panorama (`media_asset` of kind `panorama`)\nplaced on its floor plan (`x`/`y` in native plan px).",
@@ -75264,8 +75371,19 @@
     },
     "/api/v1/mcp": {
       "post": {
-        "description": "Model Context Protocol endpoint (Streamable HTTP, JSON answers, stateless): `initialize`, `ping`, `tools/list`, `tools/call`. The tools are the operations of this spec listed as exposed (D245); a call runs with the caller's token and rights. `X-Org-Id` on this request is the default organisation of the calls. Notifications answer 202.",
+        "description": "Model Context Protocol endpoint (Streamable HTTP, JSON answers, stateless): `initialize`, `ping`, `tools/list`, `tools/call`. The tools are the operations of this spec listed as exposed (D245); a call runs with the caller's token and rights. `X-Org-Id` on this request is the default organisation of the calls. `?tags=` limits `tools/list` to the tools of those spec tags. Notifications answer 202.",
         "operationId": "mcp",
+        "parameters": [
+          {
+            "description": "Comma-separated spec tags (`devices,flows`): `tools/list` answers only\ntheir tools. Absent = every tool.",
+            "in": "query",
+            "name": "tags",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {

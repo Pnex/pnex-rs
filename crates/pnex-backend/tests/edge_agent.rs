@@ -266,14 +266,14 @@ async fn agent_free_form_batch_is_discovered_routed_and_deduplicated() {
             .find(|k| k.key == "temp_salon")
             .expect("temp key");
         assert_eq!(temp_key.unit.as_deref(), Some("°C"));
-        assert_eq!(temp_key.kind, "number");
+        assert_eq!(temp_key.kind, pnex_core::agent::AgentKeyKind::Number);
         assert!(!temp_key.record_o2);
         assert_eq!(
             keys.iter()
                 .find(|k| k.key == "status")
                 .expect("status")
                 .kind,
-            "text"
+            pnex_core::agent::AgentKeyKind::Text
         );
 
         // Replay of the same batch (lost ack): acknowledged, not re-ingested.

@@ -7,7 +7,8 @@
 
 use pnex_core::err_codes::FIELD_INVALID;
 use pnex_core::ontology::api::{
-    CaseSnapshot, CaseSnapshotContent, CaseSnapshotFull, CaseSnapshotInput, CaseTracksQuery,
+    CaseProposalStatus, CaseSnapshot, CaseSnapshotContent, CaseSnapshotFull, CaseSnapshotInput,
+    CaseTracksQuery, ReadPurpose,
 };
 use sea_orm::prelude::DateTimeWithTimeZone;
 use sea_orm::{
@@ -64,7 +65,7 @@ pub async fn freeze(
     let reviewed = proposals(db, org_id, case_id)
         .await?
         .into_iter()
-        .filter(|p| p.status != "proposed")
+        .filter(|p| p.status != CaseProposalStatus::Proposed)
         .collect();
     let m = membership(db, org_id, case_id).await?;
     let events: Vec<_> = m.events.iter().map(|(_, o)| o.clone()).collect();
@@ -83,7 +84,7 @@ pub async fn freeze(
             };
             let reader = super::reads::Reader {
                 user_id: actor.user_id,
-                purpose: "snapshot",
+                purpose: ReadPurpose::Snapshot,
             };
             let t = tracks(db, client, org_id, reader, case_id, &q).await?;
             let size = serde_json::to_vec(&t)

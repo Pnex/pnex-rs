@@ -204,7 +204,7 @@ pub fn Devices() -> Element {
         })
         .with_td_class("font-medium text-gray-900"),
         Column::new(t!("devices-col-type").to_string(), |device: &Device| {
-            let (type_badge_class, type_label) = type_badge(&device.device_type);
+            let (type_badge_class, type_label) = type_badge(device.device_type.name());
             rsx! {
                 span { class: "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium {type_badge_class}",
                     {type_label}
@@ -1327,14 +1327,17 @@ fn type_badge(device_type: &str) -> (&'static str, String) {
 
 /// Localized OTA deployment label (states = the wire strings) + progress.
 fn ota_state_label(st: &pnex_core::OtaAssignmentState) -> String {
-    let base: String = match st.state.as_str() {
-        "pending" => t!("devices-ota-pending").to_string(),
-        "downloading" => match st.progress {
+    use pnex_core::OtaPhase;
+    let base: String = match st.state {
+        OtaPhase::Pending => t!("devices-ota-pending").to_string(),
+        OtaPhase::Downloading => match st.progress {
             Some(p) => format!("{} {p} %", t!("devices-ota-downloading")),
             None => t!("devices-ota-downloading").to_string(),
         },
-        "flashing" => t!("devices-ota-flashing").to_string(),
-        other => other.to_string(),
+        OtaPhase::Flashing => t!("devices-ota-flashing").to_string(),
+        // Only active deployments are shown on a device.
+        OtaPhase::Succeeded => "succeeded".to_string(),
+        OtaPhase::Failed => "failed".to_string(),
     };
     if let Some(err) = &st.error {
         format!("{base} — {err}")

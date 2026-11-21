@@ -11,7 +11,7 @@ use loco_rs::app::AppContext;
 use loco_rs::bgworker::BackgroundWorker;
 use pnex_core::doc_extract::{self, ExtractError, Limits};
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbErr, FromQueryResult, Statement};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::models::_entities::media_versions;
@@ -197,12 +197,31 @@ fn strip_nul(s: &str) -> String {
 
 // ─────────────────────────── Reads ───────────────────────────
 
-#[derive(Debug, Serialize, FromQueryResult, utoipa::ToSchema)]
+/// Indexing state of a document version (`media_text_index.status`).
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum IndexStatus {
+    Pending,
+    Extracting,
+    Indexed,
+    Error,
+    NeedsOcr,
+}
+
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct IndexState {
-    pub status: String,
+    pub status: IndexStatus,
     pub error_code: Option<String>,
     pub page_count: Option<i32>,
     pub chunk_count: i32,
+}
+
+#[derive(FromQueryResult)]
+struct IndexRow {
+    status: String,
+    error_code: Option<String>,
+    page_count: Option<i32>,
+    chunk_count: i32,
 }
 
 /// Index state of the current version of an asset of the org.
@@ -211,7 +230,7 @@ pub async fn state_of(
     org_id: i64,
     asset_id: Uuid,
 ) -> Result<Option<IndexState>, DbErr> {
-    IndexState::find_by_statement(stmt(
+    let row = IndexRow::find_by_statement(stmt(
         "SELECT i.status, i.error_code, i.page_count, i.chunk_count
          FROM media_text_index i
          JOIN media_assets a ON a.current_version_id = i.media_version_id
@@ -219,7 +238,14 @@ pub async fn state_of(
         vec![asset_id.into(), org_id.into()],
     ))
     .one(db)
-    .await
+    .await?;
+    Ok(row.map(|r| IndexState {
+        // The column only holds `doc_extract::STATUS_*` names.
+        status: serde_json::from_value(r.status.into()).unwrap_or(IndexStatus::Error),
+        error_code: r.error_code,
+        page_count: r.page_count,
+        chunk_count: r.chunk_count,
+    }))
 }
 
 #[derive(Debug, Serialize, FromQueryResult, utoipa::ToSchema)]

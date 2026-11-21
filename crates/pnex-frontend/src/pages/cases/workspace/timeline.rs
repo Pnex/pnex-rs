@@ -8,7 +8,7 @@
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;
-use pnex_core::ontology::api::{CaseTrack, SignalItem};
+use pnex_core::ontology::api::{CaseProposalStatus, CaseTrack, DetectionKind, SignalItem};
 use pnex_core::ontology::EVENT_OCCURRED;
 
 use super::{model, Sel, Target, Ws};
@@ -67,7 +67,7 @@ pub(super) fn Timeline() -> Element {
     let grouped = model::group_signals(&raw);
     let pending: Vec<_> = (ws.proposals)()
         .into_iter()
-        .filter(|p| p.status == "proposed")
+        .filter(|p| p.status == CaseProposalStatus::Proposed)
         .collect();
 
     // Time axis: long empty stretches between events fold when compact.
@@ -136,7 +136,7 @@ pub(super) fn Timeline() -> Element {
                 } else {
                     model::signal_title(s)
                 },
-                tip: Some(format!("{} · {}", s.kind, model::stamp(at, local))),
+                tip: Some(format!("{} · {}", s.kind.as_str(), model::stamp(at, local))),
                 kind: ItemKind::Signal,
                 dim: at > cursor,
                 ..Default::default()
@@ -146,7 +146,7 @@ pub(super) fn Timeline() -> Element {
     marks.extend(pending.iter().filter_map(|p| {
         let at = model::ms(&p.t_start)?;
         // A causal chain spans from its root cause to its effect.
-        let to = if p.kind == "causal_chain" {
+        let to = if p.kind == DetectionKind::CausalChain {
             p.t_end.as_deref().and_then(model::ms).unwrap_or(at)
         } else {
             at
@@ -511,7 +511,7 @@ fn DetectionsButton() -> Element {
     let ws = use_context::<Ws>();
     let n = (ws.proposals)()
         .iter()
-        .filter(|p| p.status == "proposed")
+        .filter(|p| p.status == CaseProposalStatus::Proposed)
         .count();
     rsx! {
         button {

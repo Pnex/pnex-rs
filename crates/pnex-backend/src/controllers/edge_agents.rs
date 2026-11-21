@@ -28,7 +28,7 @@ use crate::models::_entities::{
 };
 use pnex_core::agent::{
     agent_file_of, normalize_enroll_code, AgentEnrollRequest, AgentEnrollResponse,
-    AgentEnrollmentCreated, AgentInfo, AgentKey, AgentKeyPatch, AgentSettingsPatch,
+    AgentEnrollmentCreated, AgentInfo, AgentKey, AgentKeyKind, AgentKeyPatch, AgentSettingsPatch,
     AGENT_ENROLL_TTL_SECS,
 };
 
@@ -121,7 +121,7 @@ fn key_dto(r: agent_keys::Model) -> AgentKey {
         id: r.id,
         key: r.key,
         unit: r.unit,
-        kind: r.kind,
+        kind: serde_json::from_value(r.kind.into()).unwrap_or(AgentKeyKind::Json),
         record_o2: r.record_o2,
         first_seen_at: r.first_seen_at.to_rfc3339(),
         last_seen_at: r.last_seen_at.to_rfc3339(),

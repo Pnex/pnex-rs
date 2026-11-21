@@ -16,14 +16,35 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-/// Only document mode in V1 (the `tours.mode` column prepares the three.js
-/// mockup slice — any other value is rejected at validation).
-pub const TOUR_MODE_PANORAMA: &str = "panorama";
+/// How a tour is shown. Only panoramas in V1 (the `tours.mode` column
+/// prepares a 3D mode).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum TourMode {
+    #[default]
+    Panorama,
+}
+
+/// Panorama mode; its wire name is also the `tours.mode` column value.
+pub const TOUR_MODE_PANORAMA: TourMode = TourMode::Panorama;
+
+/// How a link moves between scenes, derived from their floors.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum TourLinkKind {
+    /// Same floor.
+    #[default]
+    Walk,
+    /// Another floor (staircase).
+    Stair,
+}
 
 /// Intra-floor link (derived, not editable).
-pub const TOUR_LINK_WALK: &str = "walk";
+pub const TOUR_LINK_WALK: TourLinkKind = TourLinkKind::Walk;
 /// Inter-floor link (staircase — derived, not editable).
-pub const TOUR_LINK_STAIR: &str = "stair";
+pub const TOUR_LINK_STAIR: TourLinkKind = TourLinkKind::Stair;
 
 /// Validation violation of the document (like `FlowViolation`): machine
 /// `code`, canonical English `message` (display fallback; the UI resolves
@@ -116,14 +137,10 @@ pub struct TourLink {
     pub yaw: f64,
     #[serde(default)]
     pub pitch: f64,
-    #[serde(default = "default_link_kind")]
-    pub kind: String,
+    #[serde(default)]
+    pub kind: TourLinkKind,
     #[serde(default)]
     pub label: Option<String>,
-}
-
-fn default_link_kind() -> String {
-    TOUR_LINK_WALK.to_string()
 }
 
 /// Full tour document (content of `tour_versions.doc`).
@@ -131,7 +148,7 @@ fn default_link_kind() -> String {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(default)]
 pub struct TourDoc {
-    pub mode: String,
+    pub mode: TourMode,
     /// Entry scene (absent = first scene of the document).
     pub start_scene: Option<String>,
     pub floors: Vec<TourFloor>,
@@ -142,7 +159,7 @@ pub struct TourDoc {
 impl Default for TourDoc {
     fn default() -> Self {
         Self {
-            mode: TOUR_MODE_PANORAMA.to_string(),
+            mode: TOUR_MODE_PANORAMA,
             start_scene: None,
             floors: Vec::new(),
             scenes: Vec::new(),
@@ -180,17 +197,6 @@ fn violation(subject: Option<&str>, code: &str, message: String) -> TourViolatio
 /// checked on the service side (`validate_doc_assets`).
 pub fn validate_tour_doc(doc: &TourDoc) -> Vec<TourViolation> {
     let mut v = Vec::new();
-    if doc.mode != TOUR_MODE_PANORAMA {
-        v.push(violation(
-            None,
-            "unknown_mode",
-            format!(
-                "unknown tour mode: {} (expected {TOUR_MODE_PANORAMA})",
-                doc.mode
-            ),
-        ));
-    }
-
     // Unique, non-empty ids per collection.
     let mut floor_ids = std::collections::HashSet::new();
     for f in &doc.floors {
@@ -619,10 +625,8 @@ mod tests {
         assert!(codes.contains(&"invalid_fov"));
         assert!(codes.contains(&"unknown_start_scene"));
 
-        // Unknown mode.
-        let mut doc = sample_doc();
-        doc.mode = "hologramme".into();
-        let violations = validate_tour_doc(&doc);
-        assert_eq!(violations[0].code, "unknown_mode");
+        // An unknown mode no longer parses.
+        let bad = serde_json::json!({"mode": "hologram"});
+        assert!(serde_json::from_value::<TourDoc>(bad).is_err());
     }
 }

@@ -314,10 +314,11 @@ pub(super) async fn predefined_list(
                 description: pd.description,
                 description_i18n: pd.description_i18n,
                 revision: pd.revision,
+                // `device_types` rows are only seeded from the catalog.
                 device_type: type_names
                     .get(&pd.device_type_id)
-                    .cloned()
-                    .unwrap_or_default(),
+                    .and_then(|n| pnex_core::catalog::DeviceType::from_name(n))
+                    .unwrap_or(pnex_core::catalog::DeviceType::Mixed),
                 capabilities: caps
                     .get(&pd.id)
                     .map(|list| list.iter().map(|c| c.name.clone()).collect())

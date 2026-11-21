@@ -104,7 +104,8 @@ pub(super) fn latest_build_dto(record: build_records::Model) -> pnex_core::Lates
 /// Active assignment → hydrated OTA status for the Device DTO.
 pub(super) fn ota_state_dto(row: ota_assignments::Model) -> pnex_core::OtaAssignmentState {
     pnex_core::OtaAssignmentState {
-        state: row.state,
+        // The column only holds the `services::ota` state names.
+        state: serde_json::from_value(row.state.into()).unwrap_or(pnex_core::OtaPhase::Pending),
         target_version: row.target_version,
         progress: row.progress.map(|p| p as u8),
         error: row.error,
@@ -140,7 +141,9 @@ pub(super) fn device_dto(
         org_id: device.org_id,
         device_id: device.device_id,
         predefined_device_name: predefined.name.clone(),
-        device_type: type_name.to_string(),
+        // `device_types` rows are only seeded from the catalog.
+        device_type: pnex_core::catalog::DeviceType::from_name(type_name)
+            .unwrap_or(pnex_core::catalog::DeviceType::Mixed),
         capabilities: capabilities
             .iter()
             .map(|c| pnex_core::DeviceCapability {

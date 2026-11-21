@@ -2069,7 +2069,6 @@ err-widget-invalid = The widget is invalid.
 err-tour-invalid = The tour is invalid.
 err-annotation-layer-invalid = The annotation layer is invalid.
 # Tour and annotation document violations (`$subject` = offending id).
-err-unknown-mode = Unknown tour mode (expected panorama)
 err-empty-id = Empty id
 err-duplicate-floor-id = Duplicate floor id
 err-duplicate-scene-id = Duplicate scene id

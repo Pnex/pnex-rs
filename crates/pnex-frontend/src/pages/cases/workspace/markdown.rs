@@ -144,7 +144,7 @@ pub(super) fn render(
     if let Some((_, reviewed)) = frozen.filter(|(_, r)| !r.is_empty()) {
         out += &format!("\n## {}\n\n", l("cw-detections"));
         for p in reviewed {
-            let key = if p.status == "retained" {
+            let key = if p.status == pnex_core::ontology::api::CaseProposalStatus::Retained {
                 "cw-md-retained"
             } else {
                 "cw-md-rejected"
@@ -235,7 +235,7 @@ mod tests {
         let words = Words {
             label: &|k| k.to_string(),
             role: &|r| r.to_uppercase(),
-            proposal: &|p| p.kind.clone(),
+            proposal: &|p| p.kind.as_str().to_string(),
         };
         let md = render(&doc, Some((&snap, &[])), false, &words);
         assert!(md.starts_with("# Leak\n"), "{md}");

@@ -25,9 +25,9 @@ use std::future::Future;
 use dioxus::prelude::*;
 use dioxus_i18n::t;
 use pnex_core::ontology::api::{
-    CaseAttachInput, CaseDetachInput, CaseEventInput, CaseProposal, CaseSignals, CaseTracks,
-    CaseTracksQuery, CaseWorkspace as Workspace, DetectQuery, ObjectInput, ObjectRef,
-    ProposalReject, ProposalRetain, SignalsQuery,
+    CaseAttachInput, CaseDetachInput, CaseEventInput, CaseProposal, CaseProposalStatus,
+    CaseSignals, CaseTracks, CaseTracksQuery, CaseWorkspace as Workspace, DetectQuery,
+    DetectionKind, ObjectInput, ObjectRef, ProposalReject, ProposalRetain, SignalsQuery,
 };
 use pnex_core::ontology::{CASE_STATUS, CASE_STATUSES};
 use serde_json::Value;
@@ -73,15 +73,17 @@ pub(super) enum Target {
 /// Title of a proposal in the user's language (also the retained event's).
 pub(super) fn proposal_title(p: &CaseProposal) -> String {
     let who = |i: usize| p.refs.get(i).map(|o| o.title.clone()).unwrap_or_default();
-    match p.kind.as_str() {
-        "co_presence" => t!("cw-proposal-co-presence", a : who(0), b : who(1)).to_string(),
-        "stop" => t!("cw-proposal-stop", who : who(0)).to_string(),
-        "signal_loss" => t!("cw-proposal-signal-loss", who : who(0)).to_string(),
-        "causal_chain" => {
+    match p.kind {
+        DetectionKind::CoPresence => {
+            t!("cw-proposal-co-presence", a : who(0), b : who(1)).to_string()
+        }
+        DetectionKind::Stop => t!("cw-proposal-stop", who : who(0)).to_string(),
+        DetectionKind::SignalLoss => t!("cw-proposal-signal-loss", who : who(0)).to_string(),
+        DetectionKind::CausalChain => {
             let last = p.refs.len().saturating_sub(1);
             t!("cw-proposal-causal-chain", cause : who(0), effect : who(last)).to_string()
         }
-        "zone" => {
+        DetectionKind::Zone => {
             let zone = p
                 .payload
                 .get("zone")
@@ -96,7 +98,6 @@ pub(super) fn proposal_title(p: &CaseProposal) -> String {
             };
             t!("cw-proposal-zone", who : title(false), zone : title(true)).to_string()
         }
-        _ => p.kind.clone(),
     }
 }
 
@@ -528,7 +529,9 @@ fn CaseWorkspaceOf(id: String) -> Element {
                     .proposals
                     .peek()
                     .iter()
-                    .find(|p| p.status == "proposed" && model::ms(&p.t_start) == Some(t))
+                    .find(|p| {
+                        p.status == CaseProposalStatus::Proposed && model::ms(&p.t_start) == Some(t)
+                    })
                     .cloned();
                 if let Some(p) = hit {
                     ws.retain(p.id.clone(), proposal_title(&p));

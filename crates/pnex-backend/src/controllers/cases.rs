@@ -411,7 +411,7 @@ async fn tracks(
 ) -> Result<Response> {
     let reader = cases::Reader {
         user_id: actor(&org).user_id,
-        purpose: "tracks",
+        purpose: pnex_core::ontology::api::ReadPurpose::Tracks,
     };
     let id = parse_uuid(&id)?;
     reply(

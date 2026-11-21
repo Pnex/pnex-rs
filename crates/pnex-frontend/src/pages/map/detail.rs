@@ -105,7 +105,13 @@ pub(super) fn PoiDetail(
     // = integer PK (D42 registry), not the slug.
     let device_index: Vec<(String, String, String)> = devices
         .iter()
-        .map(|d| (d.id.to_string(), d.device_id.clone(), d.device_type.clone()))
+        .map(|d| {
+            (
+                d.id.to_string(),
+                d.device_id.clone(),
+                d.device_type.to_string(),
+            )
+        })
         .collect();
 
     // ── Pin + preview: seeded from the POI, ONCE per POI (typed

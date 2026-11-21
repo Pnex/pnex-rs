@@ -208,6 +208,23 @@ async fn mcp_serves_tools_with_the_callers_rights() {
         assert!(names.contains(&"viz_widgets_create"));
         assert!(!names.contains(&"devices_commands") && !names.contains(&"flows_deploy"));
 
+        // `?tags=` keeps only the tools of those spec tags.
+        let res = server
+            .post("/api/v1/mcp?tags=viz,%20user-info")
+            .add_header("Authorization", format!("Bearer {}", env.alice))
+            .json(&json!({"jsonrpc": "2.0", "id": 3, "method": "tools/list"}))
+            .await;
+        let some: Value = res.json();
+        let some: Vec<_> = some["result"]["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|t| t["name"].as_str().unwrap().to_string())
+            .collect();
+        assert!(some.contains(&"viz_widgets_create".to_string()));
+        assert!(some.contains(&"user_info_get".to_string()));
+        assert!(some.len() < tools.len() && !some.contains(&"flows_list".to_string()));
+
         // The org comes from user_info_get, like any client would.
         let me = call(&server, &env.alice, 0, "user_info_get", json!({})).await;
         let org = text(&me)["orgs"][0]["id"].as_i64().unwrap();

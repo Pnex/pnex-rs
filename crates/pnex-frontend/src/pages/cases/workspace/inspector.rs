@@ -6,7 +6,9 @@
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;
-use pnex_core::ontology::api::{CaseAttachInput, CaseDetachInput, CaseEvent, CaseWorkspace};
+use pnex_core::ontology::api::{
+    CaseAttachInput, CaseDetachInput, CaseEvent, CaseProposalStatus, CaseWorkspace, DetectionKind,
+};
 use pnex_core::ontology::{EVENT_AMOUNT, EVENT_NOTE, EVENT_OCCURRED, INVOLVES_ROLES};
 use serde_json::Value;
 
@@ -125,7 +127,7 @@ fn AtCursor(workspace: CaseWorkspace) -> Element {
     signals.truncate(8);
     let mut pending: Vec<_> = (ws.proposals)()
         .into_iter()
-        .filter(|p| p.status == "proposed")
+        .filter(|p| p.status == CaseProposalStatus::Proposed)
         .collect();
     pending.sort_by_key(|p| model::ms(&p.t_start).map_or(i64::MAX, |t| (t - cursor).abs()));
     pending.truncate(8);
@@ -197,7 +199,7 @@ fn AtCursor(workspace: CaseWorkspace) -> Element {
                     div { class: "font-mono text-xs text-slate",
                         {model::ms(&p.t_start).map(|t| model::stamp(t, local)).unwrap_or_default()}
                     }
-                    if p.kind == "causal_chain" {
+                    if p.kind == DetectionKind::CausalChain {
                         ChainHops { payload: p.payload.clone() }
                     }
                 }

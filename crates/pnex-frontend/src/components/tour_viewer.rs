@@ -232,7 +232,7 @@ pub fn TourViewer(
                     target_scene: link.to.clone(),
                     target_floor: target.floor_id.clone(),
                     label: link.label.clone().unwrap_or_else(|| target.label.clone()),
-                    kind: link.kind.clone(),
+                    kind: link.kind,
                     link_id: link.id.clone(),
                 })
             })

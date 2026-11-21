@@ -11,8 +11,8 @@
 use pnex_core::err_codes::FIELD_INVALID;
 use pnex_core::geo_area::GeoArea;
 use pnex_core::ontology::api::{
-    CaseAttachInput, CaseDetected, CaseEventInput, CaseProposal, CaseWorkspace, DetectQuery,
-    ObjectRef, ProposalReject, ProposalRetain,
+    CaseAttachInput, CaseDetected, CaseEventInput, CaseProposal, CaseProposalStatus, CaseWorkspace,
+    DetectQuery, ObjectRef, ProposalReject, ProposalRetain, ReadPurpose,
 };
 use pnex_core::ontology::proposal::{DecisionKind, ProposalDecision, ProposalInput, ProposalKind};
 use pnex_core::ontology::{
@@ -148,7 +148,7 @@ pub async fn detect(
     let window = (from.timestamp_millis(), to.timestamp_millis());
     let reader = super::reads::Reader {
         user_id,
-        purpose: "detect",
+        purpose: ReadPurpose::Detect,
     };
     let loaded = load(db, client, org_id, case_id, window, None, reader).await?;
     let gap = loaded.gap_ms;
@@ -441,17 +441,17 @@ fn row_of(r: &QueryResult) -> Option<(CaseProposal, Vec<Uuid>)> {
     Some((
         CaseProposal {
             id: r.try_get::<Uuid>("", "id").ok()?.to_string(),
-            kind: kind_of(&detector).to_string(),
+            kind: serde_json::from_value(Value::from(kind_of(&detector))).ok()?,
             params: vals.get("params").cloned().unwrap_or_default(),
             t_start: ts(&instant(ms("from_ms")?)),
             t_end: ms("to_ms").map(|t| ts(&instant(t))),
             refs: Vec::new(),
             payload: vals.get("payload").cloned().unwrap_or_default(),
             // The case keeps its own words for an accepted detection.
-            status: if status == "accepted" {
-                "retained".into()
-            } else {
-                status
+            status: match status.as_str() {
+                "accepted" => CaseProposalStatus::Retained,
+                "rejected" => CaseProposalStatus::Rejected,
+                _ => CaseProposalStatus::Proposed,
             },
             reject_reason: r.try_get("", "reason").ok()?,
             event_id: r.try_get("", "applied").ok()?,

@@ -37,6 +37,29 @@ pub fn normalize_enroll_code(raw: &str) -> String {
         .collect()
 }
 
+/// Kind of the values an agent sends on a key.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum AgentKeyKind {
+    Number,
+    Bool,
+    Text,
+    Json,
+}
+
+impl AgentKeyKind {
+    /// Wire name, also the `agent_keys.kind` column value.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Number => "number",
+            Self::Bool => "bool",
+            Self::Text => "text",
+            Self::Json => "json",
+        }
+    }
+}
+
 /// One key discovered from an agent (`GET /api/v1/devices/{id}/agent-keys`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -46,8 +69,7 @@ pub struct AgentKey {
     pub key: String,
     #[serde(default)]
     pub unit: Option<String>,
-    /// `number` | `bool` | `text` | `json`.
-    pub kind: String,
+    pub kind: AgentKeyKind,
     /// OpenObserve history on/off (Valkey live cache is always on).
     pub record_o2: bool,
     #[cfg_attr(feature = "openapi", schema(format = DateTime))]

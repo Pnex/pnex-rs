@@ -182,7 +182,7 @@ pub fn add_link(doc: &mut TourDoc, from: &str, to: &str, yaw: f64, pitch: f64) -
         to: to.to_string(),
         yaw,
         pitch,
-        kind: kind.to_string(),
+        kind,
         label: None,
     });
     Some(id)

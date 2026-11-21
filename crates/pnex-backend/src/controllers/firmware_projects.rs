@@ -21,6 +21,7 @@ use crate::services::firmware_projects::{
     revision_libs, save_revision, FirmwareWriteError,
 };
 use crate::workers::firmware_check::{FirmwareCheckArgs, FirmwareCheckWorker};
+use pnex_core::caps::Soc;
 use pnex_core::firmware::{
     CreateFirmwareProject, FirmwareProjectDetail, FirmwareProjectSummary, FirmwareRevisionSummary,
     LibCatalogItem, SaveFirmwareRevision, LIB_CATALOG,
@@ -72,12 +73,17 @@ fn write_error_response(e: FirmwareWriteError) -> Response {
     }
 }
 
+/// The project's chip; the column is only written from a parsed [`Soc`].
+fn chip_of(p: &firmware_projects::Model) -> Soc {
+    Soc::from_board_soc(&p.chip_family).unwrap_or(Soc::Esp32)
+}
+
 fn summary_dto(p: &firmware_projects::Model, current: i64, devices: i64) -> FirmwareProjectSummary {
     FirmwareProjectSummary {
         id: p.id,
         name: p.name.clone(),
         description: p.description.clone(),
-        chip_family: p.chip_family.clone(),
+        chip_family: chip_of(p),
         current_revision_number: current,
         device_count: devices,
         created_at: p.created_at.to_rfc3339(),
@@ -93,7 +99,7 @@ fn detail_dto(
         id: p.id,
         name: p.name.clone(),
         description: p.description.clone(),
-        chip_family: p.chip_family.clone(),
+        chip_family: chip_of(p),
         current_revision_number: rev.revision_number,
         main_cpp: rev.main_cpp.clone(),
         lib_deps: revision_libs(rev),

@@ -45,14 +45,23 @@ struct Tool {
     path: String,
     /// `(name, in)` with `in` = `path` | `query` | `header`.
     params: Vec<(String, String)>,
+    /// Tags of the operation in the spec.
+    tags: Vec<String>,
     def: Value,
 }
 
 static TOOLS: LazyLock<Vec<(String, Tool)>> = LazyLock::new(build_tools);
 
-/// `tools/list` answer: every exposed operation.
-pub fn tool_list() -> Value {
-    Value::Array(TOOLS.iter().map(|(_, t)| t.def.clone()).collect())
+/// `tools/list` answer: every exposed operation, or only those carrying one
+/// of `tags` (spec tags) when given.
+pub fn tool_list(tags: Option<&[&str]>) -> Value {
+    Value::Array(
+        TOOLS
+            .iter()
+            .filter(|(_, t)| tags.is_none_or(|w| t.tags.iter().any(|g| w.contains(&g.as_str()))))
+            .map(|(_, t)| t.def.clone())
+            .collect(),
+    )
 }
 
 fn build_tools() -> Vec<(String, Tool)> {
@@ -139,6 +148,12 @@ fn tool(name: &str, method: Method, path: &str, op: &Value, schemas: &Value) -> 
         method,
         path: path.to_string(),
         params,
+        tags: op["tags"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|t| t.as_str().map(str::to_string))
+            .collect(),
     }
 }
 

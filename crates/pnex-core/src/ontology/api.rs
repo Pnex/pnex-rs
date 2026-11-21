@@ -1195,8 +1195,7 @@ pub struct CaseDetected {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CaseProposal {
     pub id: String,
-    /// `co_presence` | `stop` | `signal_loss`.
-    pub kind: String,
+    pub kind: DetectionKind,
     /// `<kind>@<version>`.
     pub detector: String,
     /// Effective thresholds of the run.
@@ -1208,12 +1207,48 @@ pub struct CaseProposal {
     pub refs: Vec<ObjectRef>,
     /// Where (`at: [lon, lat]`) and measures (`min_distance_m`).
     pub payload: Value,
-    /// `proposed` | `retained` | `rejected`.
-    pub status: String,
+    pub status: CaseProposalStatus,
     #[serde(default)]
     pub reject_reason: Option<String>,
     #[serde(default)]
     pub event_id: Option<String>,
+}
+
+/// What a case detector found (the name of its detector, without version).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum DetectionKind {
+    #[default]
+    CoPresence,
+    Stop,
+    SignalLoss,
+    Zone,
+    CausalChain,
+}
+
+impl DetectionKind {
+    /// Wire name, also the detector name without its version.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::CoPresence => "co_presence",
+            Self::Stop => "stop",
+            Self::SignalLoss => "signal_loss",
+            Self::Zone => "zone",
+            Self::CausalChain => "causal_chain",
+        }
+    }
+}
+
+/// Where a case proposal stands.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum CaseProposalStatus {
+    #[default]
+    Proposed,
+    Retained,
+    Rejected,
 }
 
 /// Retaining a proposal: the title of the event, written by the UI in the
@@ -1244,14 +1279,41 @@ pub struct SignalsQuery {
     pub to: Option<String>,
 }
 
+/// What a raw signal is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum CaseSignalKind {
+    #[default]
+    LinkOpen,
+    LinkClose,
+    Change,
+    Range,
+    Notification,
+    Occurred,
+}
+
+impl CaseSignalKind {
+    /// Wire name.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::LinkOpen => "link_open",
+            Self::LinkClose => "link_close",
+            Self::Change => "change",
+            Self::Range => "range",
+            Self::Notification => "notification",
+            Self::Occurred => "occurred",
+        }
+    }
+}
+
 /// One raw signal around the case members, computed on read; retaining it
 /// makes an event. `lane` is the member it concerns.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct SignalItem {
     pub at: String,
-    /// `link_open` | `link_close` | `change` | `range` | `notification` | `occurred`.
-    pub kind: String,
+    pub kind: CaseSignalKind,
     pub lane: String,
     #[serde(default)]
     pub link: Option<LinkView>,
@@ -1451,6 +1513,16 @@ pub struct CaseLayout {
     pub positions: std::collections::BTreeMap<String, (f64, f64)>,
 }
 
+/// Why tracks were read.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum ReadPurpose {
+    Tracks,
+    Detect,
+    Snapshot,
+}
+
 /// A logged read of persons' tracks (K38): who, for what (`tracks`,
 /// `detect`, `snapshot`), which objects (`gone` = purged since), which window.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -1458,7 +1530,7 @@ pub struct CaseLayout {
 pub struct CaseRead {
     pub at: String,
     pub who: Option<String>,
-    pub purpose: String,
+    pub purpose: ReadPurpose,
     pub objects: Vec<ObjectRef>,
     #[serde(default)]
     pub gone: usize,
