@@ -8509,7 +8509,9 @@
           "stop",
           "signal_loss",
           "zone",
-          "causal_chain"
+          "causal_chain",
+          "early_bet",
+          "entry_timing"
         ],
         "type": "string"
       },

@@ -1230,6 +1230,10 @@ pub enum DetectionKind {
     SignalLoss,
     Zone,
     CausalChain,
+    /// A prediction market bet before the news (markets pack, D924).
+    EarlyBet,
+    /// A trading account entering ahead of moves or around releases (markets pack, D930).
+    EntryTiming,
 }
 
 impl DetectionKind {
@@ -1241,6 +1245,8 @@ impl DetectionKind {
             Self::SignalLoss => "signal_loss",
             Self::Zone => "zone",
             Self::CausalChain => "causal_chain",
+            Self::EarlyBet => "early_bet",
+            Self::EntryTiming => "entry_timing",
         }
     }
 }

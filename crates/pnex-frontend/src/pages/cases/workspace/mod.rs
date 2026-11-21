@@ -98,6 +98,7 @@ pub(super) fn proposal_title(p: &CaseProposal) -> String {
             };
             t!("cw-proposal-zone", who : title(false), zone : title(true)).to_string()
         }
+        DetectionKind::EarlyBet | DetectionKind::EntryTiming => p.kind.as_str().to_string(),
     }
 }
 
