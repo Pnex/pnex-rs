@@ -13,7 +13,7 @@ Une application (D433) peut avoir une interface construite dans PneX, sans code.
 - **Application** : objet D433 de l'org. Elle a une clé, un périmètre (types d'objets), des ensembles d'objets, des actions permises, et en option un compte de service.
 - **Écran** : document de mise en page versionné, rattaché à une application. Techniquement, c'est un tableau de bord avec `app_id`.
 - **Écran d'accueil** (`home`) : écran ouvert par défaut.
-- **Ensemble d'objets** (D434) : requête nommée de l'application (type, filtres, tri). Un filtre peut porter un paramètre `$nom`.
+- **Ensemble d'objets** (D434) : requête de l'application, enregistrée sous un nom (type, filtres, tri). Un filtre peut porter un paramètre `$nom`.
 - **Variable** : valeur nommée, partagée entre les écrans d'une application, pour une session.
 - **Action permise** (D440) : action `type.action` que les écrans peuvent déclencher.
 - **Widget de données** : widget qui lit ou écrit des objets. Il existe seulement dans un écran d'application.

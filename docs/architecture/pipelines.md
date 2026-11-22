@@ -771,7 +771,7 @@ tests:
 
 - PE5.5 (choix de Shan, 2026-11-20) : la page « Sites web » reste. Elle garde l'édition visuelle, les captures d'écran du run et la description des actions sur la page. Seul le stockage change : une règle devient un pipeline avec `browse`. `/site-recipes` disparaît alors, pas l'UI. Dépend de Q-PE2 : un pipeline d'org refuse encore `browse`.
 - PE8 : mesure autour d'événements et chaînes candidates dans `/analysis`, note de séance en règle.
-- PE9 : `HOST_DEBT` à vider (4 lignes : catalogue data.gouv.fr, recherche d'entreprise d'un nœud, réseaux des agents navigateur, adaptateurs de l'extension), lexique (Table de travail, Sonde, Requête nommée), fiches de l'assistant.
+- PE9 : `HOST_DEBT` à vider (4 lignes : catalogue data.gouv.fr, recherche d'entreprise d'un nœud, réseaux des agents navigateur, adaptateurs de l'extension).
 - D934 : un `call` d'un pipeline d'org ne trouve que les fonctions des packs (`<pack>/<nom>`), pas celles de l'org.
 - D946 : les pipelines des packs restent hors des exécutions enchaînées. `after` d'un pipeline du moteur n'est pas appliqué.
 - D941 : cible `series` non codée.

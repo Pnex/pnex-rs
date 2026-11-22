@@ -258,6 +258,9 @@ Chaque concept a un seul nom dans chaque langue, un seul composant et une seule 
 | Lignes versionnées qu'un pipeline lit et écrit (D569, Q-P7) | Table | Table | ni « jeu de données », ni « dataset » à l'écran (sauf images de Vision Lab et ressources data.gouv.fr) |
 | Document YAML d'étapes qui lit une source ou des tables et écrit une table ou l'ontologie (D934) | Pipeline | Pipeline | pas « flux », pas « flow », pas « import » |
 | Opération fermée d'un pipeline : `fetch`, `read`, `sql`, `write`… (D936) | Étape | Step | pas « traitement », pas « transformation », pas « nœud » (= flow) |
+| Résultat nommé d'une étape, lu par l'étape suivante, qui vit le temps de l'exécution (D935) | Table de travail | Working table | pas « table temporaire », pas « table » seule (= Table versionnée) |
+| Lecture qui montre ce qui passe en un point, sans rien écrire : nœud d'affichage d'un flow, ou pipeline lu jusqu'à une étape (D944) | Sonde | Probe | — |
+| `SELECT` à paramètres typés livré par un pack, joué depuis Analyse (D948) | Requête nommée | Named query | pas « ensemble d'objets » (= application, D434) |
 | Un passage d'un pipeline (D358) | Exécution | Run | pas « passage » (= règle de navigation), pas « job » |
 | Fiche d'un travail exécuté dans un bac à sable, identité de service de l'org (D757) | Agent | Agent | seul dans le menu Agents ; ailleurs « agent navigateur » et « agent edge » restent qualifiés |
 | Un passage d'un agent dans son bac (D731) | Exécution | Run | pas « run » en français, pas « job » (= travail du runner) |
@@ -275,7 +278,7 @@ Chaque concept a un seul nom dans chaque langue, un seul composant et une seule 
 | Faille connue trouvée par le scan d'une image (D720) | Faille | Flaw | pas « vulnérabilité », pas « CVE » à l'écran |
 | Lignes écrites par les conteneurs d'une exécution ou d'un build (D733) | Journal | Log | pas « logs » en français |
 | Une cible et ce dont elle dépend, exécutés dans l'ordre (D575) | Exécution enchaînée | Chained run | pas « build » (= compilation de firmware) |
-| Condition sur le résultat d'un traitement avant sa validation (D576) | Contrôle | Check | — |
+| Condition sur les lignes d'une écriture avant sa validation (D576) | Contrôle | Check | — |
 | Accès enregistré à une base ou une API externe, ou point d'arrivée d'appels signés, identifiants au coffre (D352, D791) | Connecteur | Connector | pas « connexion » (= se connecter), pas « source » |
 | Connecteur qui reçoit les appels signés d'un autre système (D795) | Webhook | Webhook | pas « crochet », pas « point de terminaison » |
 | Compartiment de l'org porté par une table ou un objet : il faut une habilitation pour chacun (D798) | Marquage | Marking | pas « étiquette » (= classement libre D288), pas « label de sécurité » |
@@ -294,7 +297,7 @@ Chaque concept a un seul nom dans chaque langue, un seul composant et une seule 
 | Programme construit sur les données d'une org : par un compte de service (D433), ou par ses écrans dans PneX (D506) | Application | Application | ni « intégration », ni « connecteur » (= fournisseur) |
 | Vue d'une application, avec sa version publiée (D507) | Écran | Screen | ni « page d'application » |
 | Valeur passée entre les widgets d'une application, le temps de la session (D509) | Variable | Variable | — |
-| Requête nommée d'une application (D434) | Ensemble d'objets | Object set | — |
+| Requête D185 enregistrée sous un nom par une application (D434) | Ensemble d'objets | Object set | pas « requête nommée » (= requête d'un pack, D948) |
 | Vue d'un dossier : chaque acteur est un fil dans le temps (storyline) | Histoire | Story | ni l'historique des versions, ni la frise |
 | Événement d'un dossier qui déplace de l'argent (montant + payeur + bénéficiaire) | Versement | Payment | ni « paiement », ni « transaction » |
 | Vue d'un dossier : diagramme de Sankey des versements | Argent | Money | pas « Flux » (= streams) |

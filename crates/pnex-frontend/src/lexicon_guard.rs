@@ -107,11 +107,24 @@ const RULES: &[Rule] = &[
         use_instead: "webhook",
         allowed_keys: &["sym-"],
     },
-    // pipelines.md D358: the words of a pipeline screen.
+    // pipelines.md D358, D936: the words of a pipeline screen.
     Rule {
         scope: Scope::Fr,
         term: "transformation",
-        use_instead: "traitement",
+        use_instead: "étape",
+        allowed_keys: &[],
+    },
+    // pipelines.md D935: a step's named result is a working table.
+    Rule {
+        scope: Scope::Fr,
+        term: "table temporaire",
+        use_instead: "table de travail",
+        allowed_keys: &[],
+    },
+    Rule {
+        scope: Scope::EnAndCards,
+        term: "temporary table",
+        use_instead: "working table",
         allowed_keys: &[],
     },
     Rule {
