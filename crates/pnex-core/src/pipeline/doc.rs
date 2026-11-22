@@ -1187,8 +1187,8 @@ impl Document {
         out
     }
 
-    /// What an org may not write in its own pipeline (D934): a navigation
-    /// (Q-PE2 open), a share into another org (R1), pack settings, rows
+    /// What an org may not write in its own pipeline (D934): a share into
+    /// another org (R1), pack settings, rows
     /// asked again of a pack pipeline, and a
     /// schedule or order of its own (the pipeline's schedule route does
     /// both). Its tests' recorded answers are inline and stay small.
@@ -1211,7 +1211,6 @@ impl Document {
         }
         for (i, s) in self.steps.iter().enumerate() {
             match s {
-                Step::Browse(_) => bad(format!("steps.{i}"), "org_unsupported"),
                 Step::Write(w) if w.objects.as_ref().is_some_and(|o| o.share.is_some()) => {
                     bad(format!("steps.{i}.objects.share"), "org_unsupported")
                 }
@@ -1240,6 +1239,10 @@ impl Document {
     /// each other write target needs the right of its own route (R2).
     pub fn rights(&self) -> Vec<&'static str> {
         let mut out = vec!["datasets:read", "datasets:write"];
+        // A navigation plays in the starter's browser agent, like a site rule (D782).
+        if self.steps.iter().any(|s| matches!(s, Step::Browse(_))) {
+            out.push("site-recipes:write");
+        }
         for s in &self.steps {
             let Step::Write(w) = s else { continue };
             for (set, right) in [
@@ -1925,5 +1928,14 @@ mod tests {
             ]
         );
         assert!(!valid_table(" padded") && !valid_table("") && !valid_table("a\nb"));
+
+        // Q-PE2: a navigation is the org's, under the right of a site rule.
+        let b = doc(json!([
+            {"enumerate": {"as": "p", "track": true, "cross": [{"as": "url", "objects": {"type": "person", "property": "url"}}]}},
+            {"browse": {"as": "page", "for_each": "p", "site": "www.example.org", "steps": [{"open": "{{url}}"}]}},
+            {"write": {"from": "page", "table": {"name": "Pages", "replace": false}}}
+        ]));
+        assert!(b.org_violations().is_empty());
+        assert!(b.rights().contains(&"site-recipes:write"));
     }
 }

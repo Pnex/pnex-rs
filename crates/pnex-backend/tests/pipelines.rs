@@ -590,3 +590,86 @@ async fn an_org_pipeline_runs_on_the_server() {
     })
     .await;
 }
+
+/// Q-PE2: an org's pipeline navigates; its row resumes with the extracts
+/// under the rights its starter still holds (R2).
+#[tokio::test]
+#[serial]
+async fn an_org_pipeline_browses_and_resumes_under_its_starters_rights() {
+    with_app(|server, env, ctx| async move {
+        use sea_orm::ConnectionTrait;
+        let org = personal_org(&server, &env.alice).await;
+        let document = "key: b\nhosts: [www.example.org]\nsteps:\n  - enumerate: {as: p, track: true, cross: [{as: url, objects: {type: person, property: url}}]}\n  - browse: {as: page, for_each: p, site: www.example.org, steps: [{open: \"{{url}}\"}, {extract: {all_text: true, as: profile}}]}\n  - write: {from: page, table: {name: Pages}}\n";
+        let (s, p) = call(
+            &server,
+            "POST",
+            "/api/v1/pipelines",
+            &env.alice,
+            org,
+            Some(json!({ "name": "pages", "document": document })),
+        )
+        .await;
+        assert_eq!(s, 201, "{p}");
+        let id = p["id"].as_str().unwrap().to_string();
+        let alice: i64 = ctx
+            .db
+            .query_one_raw(sea_orm::Statement::from_string(
+                sea_orm::DatabaseBackend::Postgres,
+                format!("SELECT user_id FROM organization_members WHERE org_id = {org}"),
+            ))
+            .await
+            .unwrap()
+            .unwrap()
+            .try_get("", "user_id")
+            .unwrap();
+        let waiting = |item: &str| {
+            format!(
+                "INSERT INTO pipeline_items (org_id, pipeline, item, state, args, updated_at) \
+                 VALUES ({org}, '{id}', '{item}', 'waiting', '{{\"row\": {{\"url\": \"https://www.example.org/{item}\"}}}}', now())"
+            )
+        };
+        let state = |item: &'static str| {
+            let (db, id) = (ctx.db.clone(), id.clone());
+            async move {
+                let r = db
+                    .query_one_raw(sea_orm::Statement::from_string(
+                        sea_orm::DatabaseBackend::Postgres,
+                        format!("SELECT state, code FROM pipeline_items WHERE org_id = {org} AND pipeline = '{id}' AND item = '{item}'"),
+                    ))
+                    .await
+                    .unwrap()
+                    .unwrap();
+                (
+                    r.try_get::<String>("", "state").unwrap(),
+                    r.try_get::<Option<String>>("", "code").unwrap(),
+                )
+            }
+        };
+        use pnex_backend::services::pipeline_engine::store::resume_row;
+        let text = || Some(vec![("profile".to_string(), "Hello".to_string())]);
+
+        ctx.db.execute_unprepared(&waiting("a")).await.unwrap();
+        resume_row(&ctx, org, &id, "a", Some(alice), text()).await.unwrap();
+        assert_eq!(state("a").await.0, "done");
+        let (_, all) = call(&server, "GET", "/api/v1/datasets", &env.alice, org, None).await;
+        let pages = all["results"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|d| d["name"] == "Pages")
+            .expect("its table");
+        assert_eq!(pages["rows"], 1, "{pages}");
+
+        // The starter lost their rights while the page was read.
+        ctx.db.execute_unprepared(&waiting("b")).await.unwrap();
+        ctx.db
+            .execute_unprepared(&format!(
+                "UPDATE organization_members SET role = 'viewer' WHERE org_id = {org}"
+            ))
+            .await
+            .unwrap();
+        resume_row(&ctx, org, &id, "b", Some(alice), text()).await.unwrap();
+        assert_eq!(state("b").await, ("failed".into(), Some("access-denied".into())));
+    })
+    .await;
+}

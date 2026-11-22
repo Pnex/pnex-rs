@@ -1657,37 +1657,66 @@ pub async fn resume_row(
     user: Option<i64>,
     extracts: Option<Vec<(String, String)>>,
 ) -> Result<bool, DatasetError> {
-    let Some(sp) = shipped().iter().find(|s| s.id() == pipeline) else {
-        return Ok(true);
+    // A pack's pipeline by `<pack>/<key>`, an org's own by its id (D934).
+    let (pack, doc, own) = match shipped().iter().find(|s| s.id() == pipeline) {
+        Some(sp) => (sp.pack.as_str(), std::borrow::Cow::Borrowed(&sp.doc), None),
+        None => {
+            let Ok(id) = Uuid::parse_str(pipeline) else {
+                return Ok(true);
+            };
+            match crate::services::pipelines::resumable(&ctx.db, org, id, user).await? {
+                None => return Ok(true),
+                Some(Ok((doc, version))) => ("", std::borrow::Cow::Owned(doc), Some((id, version))),
+                Some(Err((code, args))) => {
+                    save(
+                        &ctx.db,
+                        org,
+                        pipeline,
+                        item,
+                        "failed",
+                        Some(&fail(code, args)),
+                        None,
+                        1,
+                        0,
+                        None,
+                    )
+                    .await?;
+                    return Ok(true);
+                }
+            }
+        }
     };
-    let keep = match sp.doc.steps.get(1) {
+    let keep = match doc.steps.get(1) {
         Some(pnex_core::pipeline::doc::Step::Browse(b)) => b.keep,
         _ => true,
     };
     let lock = TenantLock::acquire(&ctx.db, ns::PIPELINE_RUN, org, Duration::from_secs(120))
         .await
         .map_err(|_| DatasetError::TransactionOpen)?;
-    let out = resume_locked(ctx, org, sp, item, user, extracts).await;
+    let out = resume_locked(ctx, org, pipeline, pack, &doc, own, item, user, extracts).await;
     lock.release().await;
-    ask_later(Some(ctx), org, user, &sp.id(), out?);
+    ask_later(Some(ctx), org, user, pipeline, out?);
     Ok(keep)
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn resume_locked(
     ctx: &AppContext,
     org: i64,
-    sp: &Shipped,
+    id: &str,
+    pack: &str,
+    doc: &Document,
+    own: Option<(Uuid, i32)>,
     item: &str,
     user: Option<i64>,
     extracts: Option<Vec<(String, String)>>,
 ) -> Result<Vec<serde_json::Map<String, Value>>, DatasetError> {
-    let id = sp.id();
     let waiting = ctx
         .db
         .query_one_raw(stmt(
             "SELECT args FROM pipeline_items \
              WHERE org_id = $1 AND pipeline = $2 AND item = $3 AND state = 'waiting'",
-            vec![org.into(), id.clone().into(), item.into()],
+            vec![org.into(), id.into(), item.into()],
         ))
         .await?;
     let Some(args) = waiting.and_then(|r| r.try_get::<Value>("", "args").ok()) else {
@@ -1697,18 +1726,18 @@ async fn resume_locked(
         Some(Value::Object(m)) => m.clone(),
         _ => serde_json::Map::new(),
     };
-    let (items, shas) = known(&ctx.db, org, &id).await?;
-    let mut inputs = inputs(&ctx.db, org, &sp.doc, Utc::now().naive_utc(), shas).await?;
-    inputs.functions = call_functions(&sp.pack, &sp.doc);
-    inputs.extractors = model_extractors(&sp.pack, &sp.doc);
+    let (items, shas) = known(&ctx.db, org, id).await?;
+    let mut inputs = inputs(&ctx.db, org, doc, Utc::now().naive_utc(), shas).await?;
+    inputs.functions = call_functions(pack, doc);
+    inputs.extractors = model_extractors(pack, doc);
     let store = datasets::store_of(&ctx.config)?;
     let mut sink = DatasetSink {
         db: &ctx.db,
         store: &store,
         org,
         ctx: Some(ctx),
-        pipeline: &id,
-        own: None,
+        pipeline: id,
+        own,
         user,
         asked: Vec::new(),
     };
@@ -1719,7 +1748,7 @@ async fn resume_locked(
     };
     let extracts = extracts.map(super::extract_rows);
     let (it, failure, rows) = super::resume(
-        &sp.doc,
+        doc,
         &inputs,
         &HttpTransport,
         &mut sink,
@@ -1742,7 +1771,7 @@ async fn resume_locked(
     save(
         &ctx.db,
         org,
-        &id,
+        id,
         item,
         state,
         failure.as_ref(),

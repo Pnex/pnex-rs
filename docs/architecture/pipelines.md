@@ -271,7 +271,7 @@ sequenceDiagram
   S->>S: dataset.committed sur pnex:ds:v1:{org}
 ```
 
-Le serveur prend les exécutions des pipelines d'org dans `pipeline_jobs` et joue leurs étapes, comme celles d'un pipeline de pack. Au début de l'exécution, il relit les droits de qui l'a lancée : chaque cible d'écriture demande le droit de sa route (`ontology:write` pour des objets). Un pipeline d'org n'écrit jamais la table d'un import (`table_reserved`). Il ne peut ni naviguer (`browse`), ni partager vers une autre org (`share`), ni lire les réglages d'un pack (`requires`), ni porter son propre horaire (`schedule`, `after`) : la route de planification et les exécutions enchaînées s'en chargent. Les réponses de ses tests sont écrites dans le document (`given:`, `tables:` en CSV), 64 Ko au plus.
+Le serveur prend les exécutions des pipelines d'org dans `pipeline_jobs` et joue leurs étapes, comme celles d'un pipeline de pack. Au début de l'exécution, il relit les droits de qui l'a lancée : chaque cible d'écriture demande le droit de sa route (`ontology:write` pour des objets). Un pipeline d'org n'écrit jamais la table d'un import (`table_reserved`). Une étape `browse` joue dans l'agent navigateur de qui a lancé l'exécution (D782) et demande `site-recipes:write`. À la reprise de la ligne, le serveur relit ses droits. S'il en a perdu un, la ligne échoue (`access-denied`). Un pipeline d'org ne peut ni partager vers une autre org (`share`), ni lire les réglages d'un pack (`requires`), ni porter son propre horaire (`schedule`, `after`) : la route de planification et les exécutions enchaînées s'en chargent. Les réponses de ses tests sont écrites dans le document (`given:`, `tables:` en CSV), 64 Ko au plus.
 
 Le SQL d'une étape `sql` est une entrée hostile (D572). Une session par exécution n'enregistre que les tables déclarées en entrée. Le moteur refuse DDL, DML et instructions de session sur le plan logique. Les fonctions sont en liste blanche, conversions D301 comprises. La mémoire est bornée, avec débordement disque, délai et plafond d'octets.
 
@@ -609,7 +609,7 @@ Seul le S3 de PneX. Aucun identifiant de compartiment tiers.
 Écriture retour, tables virtuelles, réplication logique, Elasticsearch, SFTP, OAuth2 avec consentement.
 
 ### D934 — Un seul document : le pipeline
-Toute ingestion est un pipeline YAML. Bornée par D998 : pas de lien déduit dans un pipeline sans ligne d'écart. Choix de Shan (2026-11-21) : une seule sorte. `/api/v1/pipelines` sert le pipeline d'org : versionné, `tests:` facultatifs mais joués avant l'enregistrement, réponses écrites dans le document. Il lit tout hôte public derrière la garde R8, la cadence D938 et le quota de l'org. `browse`, `share`, `requires`, `schedule` et `after` lui sont refusés. Son horaire reste la route D575.
+Toute ingestion est un pipeline YAML. Bornée par D998 : pas de lien déduit dans un pipeline sans ligne d'écart. Choix de Shan (2026-11-21) : une seule sorte. `/api/v1/pipelines` sert le pipeline d'org : versionné, `tests:` facultatifs mais joués avant l'enregistrement, réponses écrites dans le document. Il lit tout hôte public derrière la garde R8, la cadence D938 et le quota de l'org. `share`, `requires`, `schedule` et `after` lui sont refusés. Son horaire reste la route D575. Choix de Shan (2026-11-22, Q-PE2) : il peut naviguer (`browse`) aux conditions de D782, avec le droit `site-recipes:write`.
 
 ### D935 — Tout intermédiaire est une table de travail
 Une table de travail vit le temps du run, dans la zone de transit, sous le quota de l'org.
@@ -769,7 +769,7 @@ tests:
 
 **Lots du moteur non finis :**
 
-- PE5.5 (choix de Shan, 2026-11-20) : la page « Sites web » reste. Elle garde l'édition visuelle, les captures d'écran du run et la description des actions sur la page. Seul le stockage change : une règle devient un pipeline avec `browse`. `/site-recipes` disparaît alors, pas l'UI. Dépend de Q-PE2 : un pipeline d'org refuse encore `browse`.
+- PE5.5 (choix de Shan, 2026-11-20) : la page « Sites web » reste. Elle garde l'édition visuelle, les captures d'écran du run et la description des actions sur la page. Seul le stockage change : une règle devient un pipeline avec `browse`. `/site-recipes` disparaît alors, pas l'UI.
 - PE8 : mesure autour d'événements et chaînes candidates dans `/analysis`, note de séance en règle.
 - PE9 : `HOST_DEBT` à vider (3 lignes : catalogue data.gouv.fr, réseaux des agents navigateur, adaptateurs de l'extension).
 - D934 : un `call` d'un pipeline d'org ne trouve que les fonctions des packs (`<pack>/<nom>`), pas celles de l'org.
@@ -815,5 +815,4 @@ tests:
 - TLS sans vérification du certificat (SEC-64) : `sslrootcert` par connecteur à la première demande.
 - Elasticsearch : attendre un besoin réel.
 - Q-CN2 : un `POST` en lecture (API de recherche), drapeau à ouvrir au premier besoin.
-- Q-PE2 : un pipeline d'org peut-il appeler `browse` avec une session d'agent ? Proposition : oui, aux conditions de D782.
 - Jeton OAuth2 non rafraîchi pendant un run. Erreur de statut REST sans le code HTTP dans `args`.

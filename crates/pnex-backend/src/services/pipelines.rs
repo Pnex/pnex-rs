@@ -707,6 +707,68 @@ async fn claim(db: &DatabaseConnection) -> Result<Option<Job>, DbErr> {
     .transpose()
 }
 
+/// What the member who started a run no longer holds of its document's
+/// rights and markings (R2); `None` when nothing is missing or nobody
+/// started it.
+async fn denied(
+    db: &DatabaseConnection,
+    org: i64,
+    user: Option<i64>,
+    doc: &Document,
+    document: &str,
+) -> Result<Option<(&'static str, serde_json::Value)>, DbErr> {
+    use pnex_core::err_codes;
+    let Some(user) = user else {
+        return Ok(None);
+    };
+    let grants = crate::services::iam::store::member_grants(db, org, user).await?;
+    if let Some(p) = doc
+        .rights()
+        .into_iter()
+        .find(|p| !grants.as_ref().is_some_and(|g| g.can(p)))
+    {
+        return Ok(Some((
+            err_codes::ACCESS_DENIED,
+            serde_json::json!({ "permission": p }),
+        )));
+    }
+    let missing = missing_markings(db, org, user, document).await?;
+    Ok((!missing.is_empty()).then(|| {
+        (
+            err_codes::MARKING_REQUIRED,
+            serde_json::json!({ "markings": missing }),
+        )
+    }))
+}
+
+/// The current version of an org's own pipeline, for a row its navigation
+/// resumes (D995). `Err` inside: the starter lost a right or a marking since.
+pub async fn resumable(
+    db: &DatabaseConnection,
+    org: i64,
+    id: Uuid,
+    user: Option<i64>,
+) -> Result<Option<Result<(Document, i32), (&'static str, serde_json::Value)>>, DbErr> {
+    let Some(row) = db
+        .query_one_raw(stmt(
+            "SELECT document, version FROM pipelines WHERE id = $1 AND org_id = $2",
+            vec![id.into(), org.into()],
+        ))
+        .await?
+    else {
+        return Ok(None);
+    };
+    let document: String = row.try_get("", "document")?;
+    let version: i32 = row.try_get("", "version")?;
+    let Ok(doc) = checked(&document) else {
+        return Ok(None);
+    };
+    Ok(Some(match denied(db, org, user, &doc, &document).await? {
+        Some(no) => Err(no),
+        None => Ok((doc, version)),
+    }))
+}
+
 /// Runs one job: the version it names, under the rights its starter still
 /// holds (R2). `Err`: its failure code and arguments.
 async fn run_job(ctx: &AppContext, job: &Job) -> Result<(), (String, serde_json::Value)> {
@@ -739,29 +801,11 @@ async fn run_job(ctx: &AppContext, job: &Job) -> Result<(), (String, serde_json:
             serde_json::Value::Null,
         )
     })?;
-    if let Some(user) = job.started_by {
-        let grants = crate::services::iam::store::member_grants(&ctx.db, job.org_id, user)
-            .await
-            .map_err(db_failure)?;
-        if let Some(p) = doc
-            .rights()
-            .into_iter()
-            .find(|p| !grants.as_ref().is_some_and(|g| g.can(p)))
-        {
-            return Err((
-                err_codes::ACCESS_DENIED.to_string(),
-                serde_json::json!({ "permission": p }),
-            ));
-        }
-        let missing = missing_markings(&ctx.db, job.org_id, user, &document)
-            .await
-            .map_err(db_failure)?;
-        if !missing.is_empty() {
-            return Err((
-                err_codes::MARKING_REQUIRED.to_string(),
-                serde_json::json!({ "markings": missing }),
-            ));
-        }
+    if let Some((code, args)) = denied(&ctx.db, job.org_id, job.started_by, &doc, &document)
+        .await
+        .map_err(db_failure)?
+    {
+        return Err((code.to_string(), args));
     }
     use crate::services::pipeline_engine::store;
     let out = store::run_own(
