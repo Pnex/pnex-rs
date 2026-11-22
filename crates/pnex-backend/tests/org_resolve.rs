@@ -135,13 +135,30 @@ async fn node_scores_register_candidates() {
             .as_i64()
             .unwrap();
         let register = spawn_register().await;
-        unsafe { std::env::set_var("PNEX_COMPANY_SEARCH_URL", &register) };
+        let set_register = |url: String| {
+            let db = db.clone();
+            async move {
+                use sea_orm::ConnectionTrait;
+                db.execute_unprepared(&format!(
+                    "INSERT INTO packs (org_id, key, version, settings) VALUES ({org}, 'prospecting_b2b_fr', '4.2.0', \
+                     jsonb_build_object('company_register_url', '{url}')) \
+                     ON CONFLICT (org_id, key) DO UPDATE SET settings = EXCLUDED.settings"
+                ))
+                .await
+                .unwrap();
+            }
+        };
         unsafe { std::env::set_var("PNEX_FLOW_RUNTIME_TOKEN", "tok-or-1") };
         SEEN.lock().unwrap().clear();
         let flow = deploy(&db, org, json!([
             {"id": "r", "kind": "org_resolve", "config": {"limit": 2}}
         ])).await;
         let node = |id: &str| json!({"org_id": org, "flow_id": flow, "version": 1, "node_id": id});
+
+        // No pack, no register: the node cannot ask anyone.
+        let (_, r) = node_call(&server, json!({"node": node("r"), "query": {"name": "x"}})).await;
+        assert_eq!(r["code"], json!("org-resolve-unavailable"), "{r}");
+        set_register(register.clone()).await;
 
         // Name and city: one clear match, candidates best first.
         let (st, r) = node_call(&server, json!({"node": node("r"), "query": {"name": "Mécaworks France SAS", "city": "Amboise"}})).await;
@@ -177,10 +194,9 @@ async fn node_scores_register_candidates() {
         assert_eq!(res.status_code().as_u16(), 401);
 
         // The register down: a coded failure.
-        unsafe { std::env::set_var("PNEX_COMPANY_SEARCH_URL", "http://127.0.0.1:9/search") };
+        set_register("http://127.0.0.1:9/search".into()).await;
         let (_, r) = node_call(&server, json!({"node": node("r"), "query": {"name": "Mecaworks"}})).await;
         assert_eq!((r["port"].clone(), r["code"].clone()), (json!(2), json!("org-resolve-unavailable")));
-        unsafe { std::env::remove_var("PNEX_COMPANY_SEARCH_URL") };
         unsafe { std::env::remove_var("PNEX_FLOW_RUNTIME_TOKEN") };
     })
     .await;

@@ -60,6 +60,8 @@ The **Find a company** node (palette, Ingestion) looks up a name in the public c
 - **to review**: ambiguous or nothing found; send it to a list a person checks.
 - **failed**: `msg.error`.
 
+The register's address is the **Company register** setting of the **B2B prospecting, France layer** pack: without that pack, or with the setting empty, the node fails with *org-resolve-unavailable*.
+
 It writes nothing. Treat a match as a proposal: write what follows as to be validated.
 
 ## Target lists

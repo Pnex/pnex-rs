@@ -32,6 +32,7 @@
 # a captured profile.
 # Since 4.0.0 the press import writes news items of the `watch` pack,
 # linked by `item_about` (breaking).
+# Since 4.2.0 the company register org_resolve asks is a setting.
 # Since 4.1.0 public contracts won (DECP), building permits for premises
 # (Sitadel), regulated releases (AMF, by LEI) and the inspections of the
 # sites' classified installations (Géorisques, by SIRET) are news items too,
@@ -39,11 +40,19 @@
 key: prospecting_b2b_fr
 name: B2B prospecting, France layer
 names: {fr: "Prospection B2B, couche France"}
-version: "4.1.0"
+version: "4.2.0"
 requires: [companies_fr, prospecting_b2b]
 description: "The French layer of B2B prospecting: target lists from the company register (a saved search becomes accounts to target, without touching the status of known accounts), legal announcements as signals, and the SIREN of list contacts."
 descriptions: {fr: "La couche France de la prospection B2B : listes de ciblage depuis le registre des entreprises (une recherche enregistrée devient des comptes à cibler, sans toucher au statut des comptes connus), annonces légales en signaux, et SIREN des contacts de liste."}
 settings:
+  - key: company_register_url
+    name: Company register
+    names: {fr: "Registre des entreprises"}
+    description: "The search address of the company register the org_resolve flow node asks. Empty: the node fails with org-resolve-unavailable."
+    descriptions: {fr: "L'adresse de recherche du registre des entreprises que le nœud de flow org_resolve interroge. Vide : le nœud échoue avec org-resolve-unavailable."}
+    kind: text
+    max_len: 500
+    default: "https://recherche-entreprises.api.gouv.fr/search"
   - key: tender_descriptors
     name: Tender descriptors followed
     names: {fr: "Descripteurs d'appels d'offres suivis"}

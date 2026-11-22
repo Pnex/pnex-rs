@@ -1,7 +1,8 @@
 //! The `org_resolve` node (crm.md D332): a company name (and a
 //! place) → scored SIREN candidates from the public company register
 //! (the French company search API). Writes nothing; the thresholds are read
-//! from the deployed node, never from the runtime (R1).
+//! from the deployed node, never from the runtime (R1). The register's
+//! address is a setting of the pack that ships the node's flows.
 
 use std::time::Duration;
 
@@ -22,12 +23,7 @@ const TIMEOUT: Duration = Duration::from_secs(15);
 const DAILY_CALLS: u64 = 2000;
 /// Entries read from the register per lookup, before scoring.
 const PER_PAGE: &str = "10";
-const REGISTER_URL: &str = "https://recherche-entreprises.api.gouv.fr/search";
-
-/// The register, overridable for tests (`PNEX_COMPANY_SEARCH_URL`).
-fn register_url() -> String {
-    std::env::var("PNEX_COMPANY_SEARCH_URL").unwrap_or_else(|_| REGISTER_URL.to_string())
-}
+const REGISTER_SETTING: &str = "prospecting_b2b_fr.company_register_url";
 
 fn http() -> &'static reqwest::Client {
     static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
@@ -95,8 +91,8 @@ struct Page {
 }
 
 /// One page of the register for `name`, narrowed to `postcode` if given.
-async fn lookup(name: &str, postcode: &str) -> Result<Vec<Hit>, String> {
-    let mut url = reqwest::Url::parse(&register_url()).map_err(|e| e.to_string())?;
+async fn lookup(register: &str, name: &str, postcode: &str) -> Result<Vec<Hit>, String> {
+    let mut url = reqwest::Url::parse(register).map_err(|e| e.to_string())?;
     url.query_pairs_mut()
         .append_pair("q", name)
         .append_pair("per_page", PER_PAGE);
@@ -165,6 +161,17 @@ pub async fn run(
     if q.name.is_empty() || !short(&q.name) || !short(&q.city) || !short(&q.postcode) {
         return Ok(failed(err_codes::ORG_RESOLVE_QUERY_INVALID, Value::Null));
     }
+    let register =
+        match crate::services::ontology::packs::setting_value(&ctx.db, org_id, REGISTER_SETTING)
+            .await
+        {
+            Ok(Some(Value::String(s))) if !s.trim().is_empty() => s,
+            Ok(_) => return Ok(failed(err_codes::ORG_RESOLVE_UNAVAILABLE, Value::Null)),
+            Err(e) => {
+                tracing::warn!(org_id, error = ?e, "org resolve register setting unreadable");
+                return Ok(failed(err_codes::ORG_RESOLVE_UNAVAILABLE, Value::Null));
+            }
+        };
     let cap = daily_cap(ctx);
     match crate::services::flow_ai::count_daily(ctx, "org-resolve", org_id, cap).await {
         Ok(()) => {}
@@ -177,9 +184,9 @@ pub async fn run(
         }
     }
     // A wrong postcode must not hide the company: retried without it.
-    let mut hits = lookup(&q.name, &q.postcode).await;
+    let mut hits = lookup(&register, &q.name, &q.postcode).await;
     if !q.postcode.is_empty() && matches!(&hits, Ok(h) if h.is_empty()) {
-        hits = lookup(&q.name, "").await;
+        hits = lookup(&register, &q.name, "").await;
     }
     let hits = match hits {
         Ok(h) => h,

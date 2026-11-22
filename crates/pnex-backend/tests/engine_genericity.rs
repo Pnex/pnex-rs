@@ -325,11 +325,6 @@ const HOST_DEBT: &[(&str, &[&str], &str)] = &[
         "catalogue mode of source_resolve (PE4)",
     ),
     (
-        "pnex-backend/src/services/org_resolve.rs",
-        &["recherche-entreprises.api.gouv.fr"],
-        "company lookup of a flow node, to become a declared connector (external-apps.md D441)",
-    ),
-    (
         "pnex-core/src/browser_agent.rs",
         &[
             "www.linkedin.com",
