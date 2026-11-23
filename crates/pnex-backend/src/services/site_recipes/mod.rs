@@ -1,6 +1,6 @@
 //! Site navigation rules and their run journal (agents.md D323,
-//! D326). A recipe is YAML anchored on one web site (normalised host,
-//! [`site_host`]); saving bumps its version. A run records the YAML it
+//! D326). A rule is an org pipeline whose navigation is anchored on one web
+//! site (normalised host, [`site_host`], PE5.5). A run records the YAML it
 //! played (a studio run plays an unsaved draft), its steps as they finish,
 //! its extracts and the storage keys of its screenshots and PDFs. The
 //! browser part lives in [`browser`].
@@ -15,14 +15,11 @@ pub mod purpose;
 use std::collections::BTreeMap;
 
 use pnex_core::site_recipe::{
-    site_host, validate, Recipe, RunEngine, RunExtract, RunStatus, RunStep, SiteRecipe,
-    SiteRecipeRun, SiteRecipeVersion, Violation, WebSite,
+    site_host, validate, Recipe, RunEngine, RunExtract, RunStatus, RunStep, SiteRecipeRun,
+    Violation, WebSite,
 };
 use sea_orm::prelude::DateTimeWithTimeZone;
-use sea_orm::{
-    ConnectionTrait, DatabaseBackend, DatabaseConnection, FromQueryResult, Statement,
-    TransactionTrait,
-};
+use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, FromQueryResult, Statement};
 use uuid::Uuid;
 
 /// Largest recipe YAML, bytes.
@@ -36,8 +33,6 @@ fn stmt(sql: &str, values: Vec<sea_orm::Value>) -> Statement {
 pub enum RecipeError {
     Invalid(Vec<Violation>),
     NotFound,
-    NameTaken,
-    VersionConflict,
     Db(sea_orm::DbErr),
 }
 
@@ -62,37 +57,74 @@ pub fn parse(yaml: &str) -> Result<Recipe, Vec<Violation>> {
     validate(&doc)
 }
 
-// ───────────────────────────── recipes ─────────────────────────────
+// ───────────────────────────── rules ─────────────────────────────
 
-#[derive(Debug, Clone, FromQueryResult)]
-struct RecipeRow {
-    id: Uuid,
-    site: String,
-    name: String,
-    yaml: String,
-    version: i32,
-    created_at: DateTimeWithTimeZone,
-    updated_at: DateTimeWithTimeZone,
+/// The rule of an unsaved pipeline document (a studio draft).
+pub fn draft(document: &str) -> Result<Recipe, RecipeError> {
+    let not_rule = || {
+        RecipeError::Invalid(vec![Violation {
+            path: "document".into(),
+            token: "not_a_rule".into(),
+        }])
+    };
+    let doc = match crate::services::pipelines::checked(document) {
+        Ok(d) => d,
+        Err(crate::services::pipelines::PipelineError::Document(v)) => {
+            return Err(RecipeError::Invalid(
+                v.into_iter()
+                    .map(|v| Violation {
+                        path: v.path,
+                        token: v.token,
+                    })
+                    .collect(),
+            ))
+        }
+        Err(_) => return Err(not_rule()),
+    };
+    pnex_core::site_recipe::rule_of(&doc).ok_or_else(not_rule)
 }
 
-const RECIPE_COLUMNS: &str = "id, site, name, yaml, version, created_at, updated_at";
-
-impl RecipeRow {
-    fn view(&self) -> SiteRecipe {
-        SiteRecipe {
-            id: self.id.to_string(),
-            site: self.site.clone(),
-            name: self.name.clone(),
-            yaml: self.yaml.clone(),
-            version: self.version,
-            recipe: parse(&self.yaml).ok(),
-            created_at: self.created_at.to_rfc3339(),
-            updated_at: self.updated_at.to_rfc3339(),
-        }
+/// The rule of the org's pipeline `id` and its version (PE5.5).
+pub async fn rule(
+    db: &DatabaseConnection,
+    org_id: i64,
+    id: Uuid,
+) -> Result<(Recipe, i32), RecipeError> {
+    use crate::services::pipelines::{get, PipelineError};
+    match get(db, org_id, id).await {
+        Ok(p) => p.rule.map(|r| (r, p.version)).ok_or(RecipeError::NotFound),
+        Err(PipelineError::Db(e)) => Err(RecipeError::Db(e)),
+        Err(_) => Err(RecipeError::NotFound),
     }
 }
 
-/// Web sites of the org: one per host carrying a recipe or crawled by a
+/// The org's pipelines that are site rules, with their id and version.
+pub async fn rules(
+    db: &DatabaseConnection,
+    org_id: i64,
+) -> Result<Vec<(Uuid, i32, Recipe)>, sea_orm::DbErr> {
+    #[derive(FromQueryResult)]
+    struct Row {
+        id: Uuid,
+        version: i32,
+        document: String,
+    }
+    let rows = Row::find_by_statement(stmt(
+        "SELECT id, version, document FROM pipelines WHERE org_id = $1 AND document LIKE '%browse%'",
+        vec![org_id.into()],
+    ))
+    .all(db)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .filter_map(|r| {
+            let doc = serde_saphyr::from_str(&r.document).ok()?;
+            Some((r.id, r.version, pnex_core::site_recipe::rule_of(&doc)?))
+        })
+        .collect())
+}
+
+/// Web sites of the org: one per host carrying a rule or crawled by a
 /// `crawl_site` mission (same host key, D307), most recently run first.
 pub async fn sites(
     db: &DatabaseConnection,
@@ -103,7 +135,6 @@ pub async fn sites(
     #[derive(FromQueryResult)]
     struct Row {
         site: String,
-        recipes: i64,
         pages: i64,
         last_run_at: Option<DateTimeWithTimeZone>,
         last_status: Option<String>,
@@ -112,12 +143,19 @@ pub async fn sites(
     struct Count {
         n: i64,
     }
+    let mut per_site: BTreeMap<String, i64> = BTreeMap::new();
+    for (_, _, r) in rules(db, org_id).await? {
+        *per_site
+            .entry(site_host(&r.site).unwrap_or(r.site))
+            .or_default() += 1;
+    }
+    let hosts: Vec<String> = per_site.keys().cloned().collect();
     const HOSTS: &str = "WITH hosts AS ( \
-        SELECT site FROM site_recipes WHERE org_id = $1 \
+        SELECT unnest($2::text[]) AS site \
         UNION SELECT substr(site, 10) FROM site_pages WHERE org_id = $1 AND site LIKE 'web:site:%')";
     let count = Count::find_by_statement(stmt(
         &format!("{HOSTS} SELECT count(*)::bigint AS n FROM hosts"),
-        vec![org_id.into()],
+        vec![org_id.into(), hosts.clone().into()],
     ))
     .one(db)
     .await?
@@ -125,15 +163,14 @@ pub async fn sites(
     let rows = Row::find_by_statement(stmt(
         &format!(
             "{HOSTS} SELECT h.site, \
-             (SELECT count(*) FROM site_recipes r WHERE r.org_id = $1 AND r.site = h.site)::bigint AS recipes, \
              (SELECT count(*) FROM site_pages p WHERE p.org_id = $1 AND p.site = 'web:site:' || h.site)::bigint AS pages, \
              l.started_at AS last_run_at, l.status AS last_status \
              FROM hosts h \
              LEFT JOIN LATERAL (SELECT started_at, status FROM recipe_runs x \
                  WHERE x.org_id = $1 AND x.site = h.site ORDER BY started_at DESC LIMIT 1) l ON true \
-             ORDER BY l.started_at DESC NULLS LAST, h.site LIMIT $2 OFFSET $3"
+             ORDER BY l.started_at DESC NULLS LAST, h.site LIMIT $3 OFFSET $4"
         ),
-        vec![org_id.into(), limit.into(), offset.into()],
+        vec![org_id.into(), hosts.into(), limit.into(), offset.into()],
     ))
     .all(db)
     .await?;
@@ -141,218 +178,14 @@ pub async fn sites(
         count,
         rows.into_iter()
             .map(|r| WebSite {
+                recipes: per_site.get(&r.site).copied().unwrap_or(0),
                 site: r.site,
-                recipes: r.recipes,
                 pages: r.pages,
                 last_run_at: r.last_run_at.map(|t| t.to_rfc3339()),
                 last_status: r.last_status.as_deref().map(RunStatus::parse),
             })
             .collect(),
     ))
-}
-
-/// Recipes of the org, of one site when given (any spelling of its host).
-pub async fn list(
-    db: &DatabaseConnection,
-    org_id: i64,
-    site: Option<&str>,
-) -> Result<Vec<SiteRecipe>, sea_orm::DbErr> {
-    let site = site.map(|s| site_host(s).unwrap_or_else(|| s.trim().to_string()));
-    let rows = RecipeRow::find_by_statement(stmt(
-        &format!(
-            "SELECT {RECIPE_COLUMNS} FROM site_recipes WHERE org_id = $1 \
-             AND ($2::text IS NULL OR site = $2) ORDER BY site, name LIMIT 500"
-        ),
-        vec![org_id.into(), site.into()],
-    ))
-    .all(db)
-    .await?;
-    Ok(rows.iter().map(RecipeRow::view).collect())
-}
-
-pub async fn get(
-    db: &DatabaseConnection,
-    org_id: i64,
-    id: Uuid,
-) -> Result<SiteRecipe, RecipeError> {
-    RecipeRow::find_by_statement(stmt(
-        &format!("SELECT {RECIPE_COLUMNS} FROM site_recipes WHERE org_id = $1 AND id = $2"),
-        vec![org_id.into(), id.into()],
-    ))
-    .one(db)
-    .await?
-    .map(|r| r.view())
-    .ok_or(RecipeError::NotFound)
-}
-
-fn unique_violation(e: &sea_orm::DbErr) -> bool {
-    e.to_string().contains("site_recipes_org_id_site_name_key")
-}
-
-pub async fn create(
-    db: &DatabaseConnection,
-    org_id: i64,
-    user_id: i64,
-    yaml: &str,
-) -> Result<SiteRecipe, RecipeError> {
-    let recipe = parse(yaml).map_err(RecipeError::Invalid)?;
-    let site = site_host(&recipe.site).expect("validated site");
-    let txn = db.begin().await?;
-    let row = RecipeRow::find_by_statement(stmt(
-        &format!(
-            "INSERT INTO site_recipes (id, org_id, site, name, yaml, created_by, updated_by) \
-             VALUES ($1, $2, $3, $4, $5, $6, $6) RETURNING {RECIPE_COLUMNS}"
-        ),
-        vec![
-            Uuid::new_v4().into(),
-            org_id.into(),
-            site.into(),
-            recipe.name.clone().into(),
-            yaml.to_string().into(),
-            user_id.into(),
-        ],
-    ))
-    .one(&txn)
-    .await
-    .map_err(|e| {
-        if unique_violation(&e) {
-            RecipeError::NameTaken
-        } else {
-            RecipeError::Db(e)
-        }
-    })?
-    .expect("RETURNING");
-    keep_version(&txn, &row, user_id).await?;
-    txn.commit().await?;
-    Ok(row.view())
-}
-
-/// Files the row's YAML under its version (D221).
-async fn keep_version<C: ConnectionTrait>(
-    db: &C,
-    row: &RecipeRow,
-    user_id: i64,
-) -> Result<(), sea_orm::DbErr> {
-    db.execute_raw(stmt(
-        "INSERT INTO site_recipe_versions (recipe_id, version, yaml, created_by) VALUES ($1, $2, $3, $4) \
-         ON CONFLICT (recipe_id, version) DO NOTHING",
-        vec![
-            row.id.into(),
-            row.version.into(),
-            row.yaml.clone().into(),
-            user_id.into(),
-        ],
-    ))
-    .await?;
-    Ok(())
-}
-
-/// Replaces the YAML; `expected_version` set and stale → conflict.
-pub async fn update(
-    db: &DatabaseConnection,
-    org_id: i64,
-    user_id: i64,
-    id: Uuid,
-    yaml: &str,
-    expected_version: Option<i32>,
-) -> Result<SiteRecipe, RecipeError> {
-    let recipe = parse(yaml).map_err(RecipeError::Invalid)?;
-    let current = get(db, org_id, id).await?;
-    if expected_version.is_some_and(|v| v != current.version) {
-        return Err(RecipeError::VersionConflict);
-    }
-    let site = site_host(&recipe.site).expect("validated site");
-    let txn = db.begin().await?;
-    let row = RecipeRow::find_by_statement(stmt(
-        &format!(
-            "UPDATE site_recipes SET site = $3, name = $4, yaml = $5, version = version + 1, \
-             updated_by = $6, updated_at = now() \
-             WHERE org_id = $1 AND id = $2 AND version = $7 RETURNING {RECIPE_COLUMNS}"
-        ),
-        vec![
-            org_id.into(),
-            id.into(),
-            site.into(),
-            recipe.name.clone().into(),
-            yaml.to_string().into(),
-            user_id.into(),
-            current.version.into(),
-        ],
-    ))
-    .one(&txn)
-    .await
-    .map_err(|e| {
-        if unique_violation(&e) {
-            RecipeError::NameTaken
-        } else {
-            RecipeError::Db(e)
-        }
-    })?
-    .ok_or(RecipeError::VersionConflict)?;
-    keep_version(&txn, &row, user_id).await?;
-    txn.commit().await?;
-    Ok(row.view())
-}
-
-/// Saved versions of a recipe, newest first.
-pub async fn versions(
-    db: &DatabaseConnection,
-    org_id: i64,
-    id: Uuid,
-) -> Result<Vec<SiteRecipeVersion>, RecipeError> {
-    get(db, org_id, id).await?;
-    #[derive(FromQueryResult)]
-    struct Row {
-        version: i32,
-        yaml: String,
-        author: Option<String>,
-        created_at: DateTimeWithTimeZone,
-    }
-    let rows = Row::find_by_statement(stmt(
-        "SELECT v.version, v.yaml, u.email AS author, v.created_at FROM site_recipe_versions v \
-         LEFT JOIN users u ON u.id = v.created_by WHERE v.recipe_id = $1 ORDER BY v.version DESC LIMIT 500",
-        vec![id.into()],
-    ))
-    .all(db)
-    .await?;
-    Ok(rows
-        .into_iter()
-        .map(|r| SiteRecipeVersion {
-            version: r.version,
-            yaml: r.yaml,
-            author: r.author,
-            created_at: r.created_at.to_rfc3339(),
-        })
-        .collect())
-}
-
-/// Makes an old version the active one: saved again as a new version.
-pub async fn restore(
-    db: &DatabaseConnection,
-    org_id: i64,
-    user_id: i64,
-    id: Uuid,
-    version: i32,
-) -> Result<SiteRecipe, RecipeError> {
-    let old = versions(db, org_id, id)
-        .await?
-        .into_iter()
-        .find(|v| v.version == version)
-        .ok_or(RecipeError::NotFound)?;
-    update(db, org_id, user_id, id, &old.yaml, None).await
-}
-
-pub async fn delete(db: &DatabaseConnection, org_id: i64, id: Uuid) -> Result<(), RecipeError> {
-    let res = db
-        .execute_raw(stmt(
-            "DELETE FROM site_recipes WHERE org_id = $1 AND id = $2",
-            vec![org_id.into(), id.into()],
-        ))
-        .await?;
-    if res.rows_affected() == 0 {
-        return Err(RecipeError::NotFound);
-    }
-    Ok(())
 }
 
 // ───────────────────────────── runs ─────────────────────────────
@@ -954,16 +787,18 @@ pub async fn start_run(
         None => None,
         Some(raw) => Some(Uuid::parse_str(raw).map_err(|_| StartError::BadRecipeId)?),
     };
-    let saved = match recipe_id {
-        Some(id) => Some(get(&ctx.db, org_id, id).await.map_err(StartError::Recipe)?),
-        None => None,
-    };
-    let (yaml, version) = match (&input.yaml, &saved) {
-        (Some(y), _) => (y.clone(), None),
-        (None, Some(r)) => (r.yaml.clone(), Some(r.version)),
+    let (recipe, version) = match (&input.document, recipe_id) {
+        (Some(d), _) => (draft(d).map_err(StartError::Recipe)?, None),
+        (None, Some(id)) => {
+            let (r, v) = rule(&ctx.db, org_id, id)
+                .await
+                .map_err(StartError::Recipe)?;
+            (r, Some(v))
+        }
         (None, None) => return Err(StartError::NoRecipe),
     };
-    let recipe = parse(&yaml).map_err(|v| StartError::Recipe(RecipeError::Invalid(v)))?;
+    // JSON is YAML: the run keeps the text of what it played.
+    let yaml = serde_json::to_string(&recipe).expect("recipe serializes");
     let params: BTreeMap<String, String> = input
         .params
         .into_iter()

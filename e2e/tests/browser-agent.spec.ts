@@ -114,23 +114,35 @@ test.describe('browser agent', { tag: ['@extension'] }, () => {
 
       // A rule played by this agent in its own session (D781): the search typed,
       // its cards read, each result opened.
-      const yaml = [
-        `name: ${prefix} search`,
-        // The scheme as granted: a bare host means https.
-        'site: http://localhost',
-        'params: [query]',
-        'steps:',
-        `  - open: "http://localhost:${port}/"`,
-        '  - type: {text: "{{query}}"}',
-        '  - press: Enter',
-        '  - wait: {text: "Results for"}',
-        '  - extract: {cards: {selector: "li.result", fields: {name: {selector: ".name"}, link: {selector: "a", attr: href}}}, as: results}',
-        '  - for_each: {from: results, link: link, max: 2, steps: [{extract: {selector: "h1", as: who}}]}',
-      ].join('\n');
-      const run = await api.post('/site-recipes/runs', { yaml, params: { query: 'ada' }, engine: 'extension' });
+      // A site rule is an org pipeline (PE5.5): the start gives its parameters,
+      // then its navigation plays. JSON is YAML.
+      const document = JSON.stringify({
+        key: 'site_rule',
+        name: `${prefix} search`,
+        hosts: ['localhost'],
+        steps: [
+          { enumerate: { as: 'start', track: true, cross: [{ as: 'query', asked: [] }] } },
+          {
+            browse: {
+              as: 'page', for_each: 'start',
+              // The scheme as granted: a bare host means https.
+              site: 'http://localhost',
+              steps: [
+                { open: `http://localhost:${port}/` },
+                { type: { text: '{{query}}' } },
+                { press: 'Enter' },
+                { wait: { text: 'Results for' } },
+                { extract: { cards: { selector: 'li.result', fields: { name: { selector: '.name' }, link: { selector: 'a', attr: 'href' } } }, as: 'results' } },
+                { for_each: { from: 'results', link: 'link', max: 2, steps: [{ extract: { selector: 'h1', as: 'who' } }] } },
+              ],
+            },
+          },
+        ],
+      });
+      const run = await api.post('/navigations', { document, params: { query: 'ada' }, engine: 'extension' });
       expect(run.engine).toBe('extension');
-      await expect.poll(async () => (await api.get(`/site-recipes/runs/${run.id}`)).status, { timeout: 150_000 }).toBe('ok');
-      const done = await api.get(`/site-recipes/runs/${run.id}`);
+      await expect.poll(async () => (await api.get(`/navigations/${run.id}`)).status, { timeout: 150_000 }).toBe('ok');
+      const done = await api.get(`/navigations/${run.id}`);
       const byName = Object.fromEntries(done.extracts.map((e: { name: string; text: string }) => [e.name, e]));
       expect(byName.results.cards.map((c: { name: string }) => c.name)).toEqual(['Ada Lovelace', 'Ada King']);
       expect(byName['who.1'].text).toBe('ada');

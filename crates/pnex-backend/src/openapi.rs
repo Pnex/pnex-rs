@@ -102,7 +102,7 @@ pub fn spec() -> utoipa::openapi::OpenApi {
         controllers::memory::openapi(),
         controllers::events::openapi(),
         controllers::time_ranges::openapi(),
-        controllers::site_recipes::openapi(),
+        controllers::navigations::openapi(),
         controllers::web_search::openapi(),
         controllers::mailboxes::openapi(),
         controllers::proposals::openapi(),

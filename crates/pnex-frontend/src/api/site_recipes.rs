@@ -1,110 +1,126 @@
-//! Site navigation rules API (agents.md D323–D326): web sites,
-//! recipes, test runs on the server browser and the run journal.
+//! Site navigation rules (agents.md D323–D326): web sites, rules (org
+//! pipelines that navigate, PE5.5), plays on the server browser and the
+//! navigation journal.
 
-use pnex_core::site_recipe::{
-    Recipe, RunInput, SiteRecipe, SiteRecipeDraft, SiteRecipeInput, SiteRecipeRun, WebSite,
-};
+use pnex_core::pipelines::Pipeline;
+use pnex_core::site_recipe::{site_host, Recipe, RunInput, SiteRecipe, SiteRecipeRun, WebSite};
 use pnex_core::Paginated;
 
 use crate::api::client;
 use crate::api::error::ApiError;
 use crate::api::media::urlencode;
+use crate::api::pipelines;
 
 /// `GET /api/v1/web-sites`, every page.
 pub async fn sites() -> Result<Vec<WebSite>, ApiError> {
     client::request_all("/api/v1/web-sites").await
 }
 
-/// `GET /api/v1/site-recipes?site=…`, every page.
-pub async fn list(site: &str) -> Result<Vec<SiteRecipe>, ApiError> {
-    client::request_all(&format!("/api/v1/site-recipes?site={}", urlencode(site))).await
+/// The rule view of a pipeline that is one.
+fn view(p: Pipeline) -> Option<SiteRecipe> {
+    let rule = p.rule?;
+    Some(SiteRecipe {
+        id: p.id,
+        site: site_host(&rule.site).unwrap_or_else(|| rule.site.clone()),
+        name: rule.name.clone(),
+        yaml: p.document,
+        version: p.version,
+        recipe: Some(rule),
+        created_at: p.created_at,
+        updated_at: p.updated_at,
+    })
 }
 
-/// `GET /api/v1/site-recipes`, every recipe of the org.
+/// Every rule of the org: its pipelines that are site rules.
 pub async fn all() -> Result<Vec<SiteRecipe>, ApiError> {
-    client::request_all("/api/v1/site-recipes").await
+    Ok(pipelines::list()
+        .await?
+        .into_iter()
+        .filter_map(view)
+        .collect())
 }
 
-/// `POST /api/v1/site-recipes/validate` — 400 = `site-recipe-invalid`.
-pub async fn validate(yaml: &str) -> Result<Recipe, ApiError> {
-    let body = SiteRecipeDraft {
-        yaml: yaml.to_string(),
-    };
-    client::request(
-        reqwest::Method::POST,
-        "/api/v1/site-recipes/validate",
-        Some(serde_json::to_value(body).unwrap_or_default()),
-    )
-    .await
+/// The rules of one site (any spelling of its host).
+pub async fn list(site: &str) -> Result<Vec<SiteRecipe>, ApiError> {
+    let site = site_host(site).unwrap_or_else(|| site.trim().to_string());
+    Ok(all()
+        .await?
+        .into_iter()
+        .filter(|r| r.site == site)
+        .collect())
 }
 
-/// `POST /api/v1/site-recipes`.
-pub async fn create(yaml: &str) -> Result<SiteRecipe, ApiError> {
-    let body = SiteRecipeInput {
-        yaml: yaml.to_string(),
-        expected_version: None,
-    };
-    client::request(
-        reqwest::Method::POST,
-        "/api/v1/site-recipes",
-        Some(serde_json::to_value(body).unwrap_or_default()),
-    )
-    .await
+/// Checks a rule's pipeline document: its rule, or why not.
+pub async fn validate(document: &str) -> Result<Recipe, ApiError> {
+    pipelines::validate(document).await?.rule.ok_or_else(|| {
+        ApiError::local(
+            pnex_core::err_codes::SITE_RECIPE_INVALID,
+            "This pipeline is not a site rule.",
+            None,
+        )
+    })
 }
 
-/// `PUT /api/v1/site-recipes/{id}` — 409 when saved in between.
-pub async fn update(id: &str, yaml: &str, expected_version: i32) -> Result<SiteRecipe, ApiError> {
-    let body = SiteRecipeInput {
-        yaml: yaml.to_string(),
-        expected_version: Some(expected_version),
-    };
-    client::request(
-        reqwest::Method::PUT,
-        &format!("/api/v1/site-recipes/{}", urlencode(id)),
-        Some(serde_json::to_value(body).unwrap_or_default()),
-    )
-    .await
+/// Saves a new rule. A pipeline name is unique in the org, a rule's per
+/// site: the pipeline carries both.
+pub async fn create(document: &str) -> Result<SiteRecipe, ApiError> {
+    let rule = validate(document).await?;
+    let site = site_host(&rule.site).unwrap_or_else(|| rule.site.clone());
+    let p = pipelines::create(&format!("{} · {site}", rule.name), document).await?;
+    view(p).ok_or_else(|| {
+        ApiError::local(
+            pnex_core::err_codes::SITE_RECIPE_INVALID,
+            "Not a site rule.",
+            None,
+        )
+    })
 }
 
-/// `DELETE /api/v1/site-recipes/{id}`.
+/// Saves a new version — 409 when saved in between.
+pub async fn update(
+    id: &str,
+    document: &str,
+    expected_version: i32,
+) -> Result<SiteRecipe, ApiError> {
+    let p = pipelines::update(id, document, expected_version).await?;
+    view(p).ok_or_else(|| {
+        ApiError::local(
+            pnex_core::err_codes::SITE_RECIPE_INVALID,
+            "Not a site rule.",
+            None,
+        )
+    })
+}
+
 pub async fn delete(id: &str) -> Result<(), ApiError> {
-    client::request_opt::<serde_json::Value>(
-        reqwest::Method::DELETE,
-        &format!("/api/v1/site-recipes/{}", urlencode(id)),
-        None,
-    )
-    .await
-    .map(|_| ())
+    pipelines::delete(id).await
 }
 
-/// `POST /api/v1/site-recipes/runs` — answers the run, `running`.
+/// `POST /api/v1/navigations` — answers the run, `running`.
 pub async fn play(input: &RunInput) -> Result<SiteRecipeRun, ApiError> {
     client::request(
         reqwest::Method::POST,
-        "/api/v1/site-recipes/runs",
+        "/api/v1/navigations",
         Some(serde_json::to_value(input).unwrap_or_default()),
     )
     .await
 }
 
-/// `GET /api/v1/site-recipes/runs?site=…` — journal of a site.
+/// `GET /api/v1/navigations?site=…` — journal of a site.
 pub async fn runs(site: &str, limit: i64) -> Result<Paginated<SiteRecipeRun>, ApiError> {
     client::request(
         reqwest::Method::GET,
-        &format!(
-            "/api/v1/site-recipes/runs?site={}&limit={limit}",
-            urlencode(site)
-        ),
+        &format!("/api/v1/navigations?site={}&limit={limit}", urlencode(site)),
         None,
     )
     .await
 }
 
-/// `GET /api/v1/site-recipes/runs/{id}` — steps, extracts, changes.
+/// `GET /api/v1/navigations/{id}` — steps, extracts, changes.
 pub async fn run(id: &str) -> Result<SiteRecipeRun, ApiError> {
     client::request(
         reqwest::Method::GET,
-        &format!("/api/v1/site-recipes/runs/{}", urlencode(id)),
+        &format!("/api/v1/navigations/{}", urlencode(id)),
         None,
     )
     .await
@@ -113,18 +129,18 @@ pub async fn run(id: &str) -> Result<SiteRecipeRun, ApiError> {
 /// Path of a run file (`step-3.jpg`, `pdf-5.pdf`).
 pub fn file_path(run_id: &str, file: &str) -> String {
     format!(
-        "/api/v1/site-recipes/runs/{}/files/{}",
+        "/api/v1/navigations/{}/files/{}",
         urlencode(run_id),
         urlencode(file)
     )
 }
 
-/// `GET /api/v1/site-recipes/runs/{id}/live`: the last live view frame,
-/// empty when there is none (204).
+/// `GET /api/v1/navigations/{id}/live`: the last live view frame, empty
+/// when there is none (204).
 pub async fn live(run_id: &str) -> Result<Vec<u8>, ApiError> {
     client::request_bytes(
         reqwest::Method::GET,
-        &format!("/api/v1/site-recipes/runs/{}/live", urlencode(run_id)),
+        &format!("/api/v1/navigations/{}/live", urlencode(run_id)),
     )
     .await
 }
@@ -178,31 +194,44 @@ pub async fn endpoint_test(id: &str) -> Result<BrowserTestResult, ApiError> {
     .await
 }
 
-/// `GET /api/v1/site-recipes/{id}/versions`, every page (newest first).
+/// The rule's versions, newest first.
 pub async fn versions(
     id: &str,
 ) -> Result<Vec<pnex_core::site_recipe::SiteRecipeVersion>, ApiError> {
-    client::request_all(&format!("/api/v1/site-recipes/{}/versions", urlencode(id))).await
+    Ok(pipelines::versions(id)
+        .await?
+        .into_iter()
+        .map(|v| pnex_core::site_recipe::SiteRecipeVersion {
+            version: v.version,
+            yaml: v.document,
+            author: v.author,
+            created_at: v.created_at,
+        })
+        .collect())
 }
 
-/// `POST /api/v1/site-recipes/{id}/versions/{version}/restore`.
+/// Makes an old version the active one: saved again as a new version.
 pub async fn restore(id: &str, version: i32) -> Result<SiteRecipe, ApiError> {
-    client::request(
-        reqwest::Method::POST,
-        &format!(
-            "/api/v1/site-recipes/{}/versions/{version}/restore",
-            urlencode(id)
-        ),
-        None,
-    )
-    .await
+    let current = pipelines::get(id).await?.version;
+    let old = versions(id)
+        .await?
+        .into_iter()
+        .find(|v| v.version == version)
+        .ok_or_else(|| {
+            ApiError::local(
+                pnex_core::err_codes::SITE_RECIPE_NOT_FOUND,
+                "No such version.",
+                None,
+            )
+        })?;
+    update(id, &old.yaml, current).await
 }
 
-/// `GET /api/v1/site-recipes/{id}/schedule`.
+/// `GET /api/v1/pipelines/{id}/flows`: the deployed flows that play it.
 pub async fn schedule(id: &str) -> Result<pnex_core::site_recipe::SiteRecipeSchedule, ApiError> {
     client::request(
         reqwest::Method::GET,
-        &format!("/api/v1/site-recipes/{}/schedule", urlencode(id)),
+        &format!("/api/v1/pipelines/{}/flows", urlencode(id)),
         None,
     )
     .await

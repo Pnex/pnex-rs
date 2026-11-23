@@ -48,16 +48,15 @@ pub async fn start(
     let Ok(recipe_id) = Uuid::parse_str(&config.recipe_id) else {
         return Ok(Some(refused(err_codes::SITE_RECIPE_NOT_FOUND, Value::Null)));
     };
-    let saved = match super::get(&ctx.db, org_id, recipe_id).await {
+    let (recipe, version) = match super::rule(&ctx.db, org_id, recipe_id).await {
         Ok(r) => r,
         Err(RecipeError::NotFound) => {
             return Ok(Some(refused(err_codes::SITE_RECIPE_NOT_FOUND, Value::Null)))
         }
         Err(_) => return Ok(Some(unavailable())),
     };
-    let Ok(recipe) = super::parse(&saved.yaml) else {
-        return Ok(Some(refused(err_codes::SITE_RECIPE_INVALID, Value::Null)));
-    };
+    // JSON is YAML: the run keeps the text of what it played.
+    let yaml = serde_json::to_string(&recipe).expect("recipe serializes");
     let mut params = config.params.clone();
     params.extend(req.params.clone());
     let params: BTreeMap<String, String> = params
@@ -94,9 +93,9 @@ pub async fn start(
     };
     let new = NewRun {
         recipe_id: Some(recipe_id),
-        recipe_version: Some(saved.version),
+        recipe_version: Some(version),
         recipe: &recipe,
-        yaml: &saved.yaml,
+        yaml: &yaml,
         params: &params,
         trigger: purpose.kind(),
         user_id: None,
@@ -366,7 +365,7 @@ pub async fn deploy_violations(
         };
         let found = db
             .query_one_raw(stmt(
-                "SELECT 1 AS x FROM site_recipes WHERE org_id = $1 AND id = $2",
+                "SELECT 1 AS x FROM pipelines WHERE org_id = $1 AND id = $2",
                 vec![org_id.into(), id.into()],
             ))
             .await?;

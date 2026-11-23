@@ -1,7 +1,7 @@
-//! Site navigation rules API (agents.md D323–D326): web sites of the
-//! org, recipes anchored on them, test runs on the server browser and the
-//! run journal with its screenshots and PDFs. Org from the principal (R1),
-//! `site-recipes:*` checked by the IAM extractor (R2).
+//! Navigations API (agents.md D323–D326): web sites of the org, plays of
+//! its site rules (org pipelines that navigate, PE5.5) on the server browser
+//! and the journal with its screenshots and PDFs. Org from the principal
+//! (R1), rights checked by the IAM extractor (R2).
 
 use axum::extract::{Path, Query, State};
 use axum::http::{header, StatusCode};
@@ -10,10 +10,7 @@ use axum::Json;
 use loco_rs::controller::format;
 use loco_rs::prelude::*;
 use pnex_core::err_codes;
-use pnex_core::site_recipe::{
-    Recipe, RunInput, SiteRecipe, SiteRecipeDraft, SiteRecipeInput, SiteRecipeRun,
-    SiteRecipeSchedule, SiteRecipeVersion, WebSite,
-};
+use pnex_core::site_recipe::{RunInput, SiteRecipeRun, SiteRecipeSchedule, WebSite};
 use serde::Deserialize;
 use uuid::Uuid;
 
@@ -27,22 +24,11 @@ pub fn routes() -> Routes {
     Routes::new()
         .prefix("/api/v1")
         .add("/web-sites", get(sites))
-        .add("/site-recipes", get(list).post(create))
-        .add("/site-recipes/validate", post(validate))
-        .add("/site-recipes/runs", get(runs).post(run_create))
-        .add("/site-recipes/runs/{id}", get(run_get))
-        .add("/site-recipes/runs/{id}/files/{file}", get(run_file))
-        .add("/site-recipes/runs/{id}/live", get(run_live))
-        .add(
-            "/site-recipes/{id}",
-            get(get_one).put(update).delete(remove),
-        )
-        .add("/site-recipes/{id}/versions", get(versions_list))
-        .add("/site-recipes/{id}/schedule", get(schedule))
-        .add(
-            "/site-recipes/{id}/versions/{version}/restore",
-            post(versions_restore),
-        )
+        .add("/navigations", get(runs).post(run_create))
+        .add("/navigations/{id}", get(run_get))
+        .add("/navigations/{id}/files/{file}", get(run_file))
+        .add("/navigations/{id}/live", get(run_live))
+        .add("/pipelines/{id}/flows", get(schedule))
         .add(
             "/browser-endpoints",
             get(endpoints_list).post(endpoints_create),
@@ -57,17 +43,10 @@ pub fn routes() -> Routes {
 fn recipe_error(e: RecipeError) -> Result<Response> {
     match e {
         RecipeError::Invalid(v) => Ok(super::violations_error(err_codes::SITE_RECIPE_INVALID, v)),
-        RecipeError::NameTaken => Ok(super::field_error("name", err_codes::FIELD_UNIQUE)),
         RecipeError::NotFound => Err(super::coded_error(
             StatusCode::NOT_FOUND,
             err_codes::SITE_RECIPE_NOT_FOUND,
-            "Site recipe not found.",
-            None,
-        )),
-        RecipeError::VersionConflict => Err(super::coded_error(
-            StatusCode::CONFLICT,
-            err_codes::SITE_RECIPE_VERSION_CONFLICT,
-            "The recipe was saved by someone else since it was read.",
+            "Site rule not found.",
             None,
         )),
         RecipeError::Db(e) => Err(super::db_error(e)),
@@ -95,10 +74,10 @@ struct PageQuery {
 #[utoipa::path(
     get,
     path = "/api/v1/web-sites",
-    tag = "site-recipes",
+    tag = "navigations",
     operation_id = "web_sites_list",
     summary = "List web sites",
-    description = "Web sites of the organization: one per normalised host carrying a navigation recipe, with the recipe count and the last run. Most recently run first. Any member.",
+    description = "Web sites of the organization: one per normalised host carrying a site rule (a pipeline that navigates it) or crawled, with the rule count and the last run. Most recently run first. Requires `pipelines:read`.",
     params(PageQuery),
     responses((status = 200, body = pnex_core::Paginated<WebSite>)),
     security(("bearer" = [], "org" = []))
@@ -121,241 +100,18 @@ async fn sites(
     }
 }
 
-#[derive(Debug, Deserialize, utoipa::IntoParams)]
-#[into_params(parameter_in = Query)]
-struct ListQuery {
-    /// Host or address of a site (any spelling: normalised).
-    site: Option<String>,
-    #[param(value_type = Option<i64>)]
-    limit: Option<String>,
-    #[param(value_type = Option<i64>)]
-    offset: Option<String>,
-}
-
 #[utoipa::path(
     get,
-    path = "/api/v1/site-recipes",
-    tag = "site-recipes",
-    operation_id = "site_recipes_list",
-    summary = "List site recipes",
-    description = "Navigation recipes of the organization, of one site with `site`. Each carries its YAML and the parsed recipe. Any member.",
-    params(ListQuery),
-    responses((status = 200, body = pnex_core::Paginated<SiteRecipe>)),
-    security(("bearer" = [], "org" = []))
-)]
-async fn list(
-    State(ctx): State<AppContext>,
-    org: OrgContext,
-    Query(q): Query<ListQuery>,
-) -> Result<Response> {
-    let page = PageParams::from(q.limit.as_deref(), q.offset.as_deref());
-    let site = q.site.as_deref().filter(|s| !s.trim().is_empty());
-    let all = match recipes::list(&ctx.db, org.org.id, site).await {
-        Ok(v) => v,
-        Err(e) => return Err(super::db_error(e)),
-    };
-    let count = all.len() as i64;
-    let results: Vec<SiteRecipe> = all
-        .into_iter()
-        .skip(page.offset as usize)
-        .take(page.limit as usize)
-        .collect();
-    let filters: Vec<(String, String)> = site
-        .map(|s| ("site".to_string(), s.to_string()))
-        .into_iter()
-        .collect();
-    format::json(pagination::envelope(
-        "/api/v1/site-recipes",
-        &filters,
-        page,
-        count,
-        results,
-    ))
-}
-
-#[utoipa::path(
-    post,
-    path = "/api/v1/site-recipes/validate",
-    tag = "site-recipes",
-    operation_id = "site_recipes_validate",
-    summary = "Check a site recipe",
-    description = "Parses and checks a recipe draft without saving it; answers the parsed recipe (its step list). Any member.",
-    request_body = SiteRecipeDraft,
-    responses(
-        (status = 200, body = Recipe),
-        (status = 400, description = "`site-recipe-invalid`: `errors.violations` lists `{path, token}`", body = crate::openapi::ErrorDetail)
-    ),
-    security(("bearer" = [], "org" = []))
-)]
-async fn validate(_org: OrgContext, Json(input): Json<SiteRecipeDraft>) -> Result<Response> {
-    match recipes::parse(&input.yaml) {
-        Ok(r) => format::json(r),
-        Err(v) => recipe_error(RecipeError::Invalid(v)),
-    }
-}
-
-#[utoipa::path(
-    post,
-    path = "/api/v1/site-recipes",
-    tag = "site-recipes",
-    operation_id = "site_recipes_create",
-    summary = "Create a site recipe",
-    description = "Saves a navigation recipe (YAML) on the site it names; version 1. Requires a writer role.",
-    request_body = SiteRecipeInput,
-    responses(
-        (status = 201, body = SiteRecipe),
-        (status = 400, description = "`site-recipe-invalid` (violations) or `field-invalid` (`name = unique` on the site)", body = crate::openapi::ErrorDetail)
-    ),
-    security(("bearer" = [], "org" = []))
-)]
-async fn create(
-    State(ctx): State<AppContext>,
-    org: OrgContext,
-    Json(input): Json<SiteRecipeInput>,
-) -> Result<Response> {
-    match recipes::create(&ctx.db, org.org.id, org.auth.user.id, &input.yaml).await {
-        Ok(r) => Ok((StatusCode::CREATED, format::json(r)).into_response()),
-        Err(e) => recipe_error(e),
-    }
-}
-
-#[utoipa::path(
-    get,
-    path = "/api/v1/site-recipes/{id}",
-    tag = "site-recipes",
-    operation_id = "site_recipes_get",
-    summary = "Get a site recipe",
-    description = "Any member.",
-    params(("id" = String, Path, format = "uuid", description = "Recipe id (UUID)")),
-    responses(
-        (status = 200, body = SiteRecipe),
-        (status = 404, description = "`site-recipe-not-found`", body = crate::openapi::ErrorDetail)
-    ),
-    security(("bearer" = [], "org" = []))
-)]
-async fn get_one(
-    State(ctx): State<AppContext>,
-    org: OrgContext,
-    Path(id): Path<Uuid>,
-) -> Result<Response> {
-    match recipes::get(&ctx.db, org.org.id, id).await {
-        Ok(r) => format::json(r),
-        Err(e) => recipe_error(e),
-    }
-}
-
-#[utoipa::path(
-    put,
-    path = "/api/v1/site-recipes/{id}",
-    tag = "site-recipes",
-    operation_id = "site_recipes_update",
-    summary = "Replace a site recipe",
-    description = "Replaces the YAML and bumps the version. With `expected_version`, a save made in between answers 409. Requires a writer role.",
-    params(("id" = String, Path, format = "uuid", description = "Recipe id (UUID)")),
-    request_body = SiteRecipeInput,
-    responses(
-        (status = 200, body = SiteRecipe),
-        (status = 400, description = "`site-recipe-invalid` (violations) or `field-invalid` (`name = unique` on the site)", body = crate::openapi::ErrorDetail),
-        (status = 404, description = "`site-recipe-not-found`", body = crate::openapi::ErrorDetail),
-        (status = 409, description = "`site-recipe-version-conflict`", body = crate::openapi::ErrorDetail)
-    ),
-    security(("bearer" = [], "org" = []))
-)]
-async fn update(
-    State(ctx): State<AppContext>,
-    org: OrgContext,
-    Path(id): Path<Uuid>,
-    Json(input): Json<SiteRecipeInput>,
-) -> Result<Response> {
-    match recipes::update(
-        &ctx.db,
-        org.org.id,
-        org.auth.user.id,
-        id,
-        &input.yaml,
-        input.expected_version,
-    )
-    .await
-    {
-        Ok(r) => format::json(r),
-        Err(e) => recipe_error(e),
-    }
-}
-
-#[utoipa::path(
-    delete,
-    path = "/api/v1/site-recipes/{id}",
-    tag = "site-recipes",
-    operation_id = "site_recipes_delete",
-    summary = "Delete a site recipe",
-    description = "Deletes the recipe; its runs stay in the journal. Requires a writer role.",
-    params(("id" = String, Path, format = "uuid", description = "Recipe id (UUID)")),
-    responses(
-        (status = 204, description = "Deleted"),
-        (status = 404, description = "`site-recipe-not-found`", body = crate::openapi::ErrorDetail)
-    ),
-    security(("bearer" = [], "org" = []))
-)]
-async fn remove(
-    State(ctx): State<AppContext>,
-    org: OrgContext,
-    Path(id): Path<Uuid>,
-) -> Result<Response> {
-    match recipes::delete(&ctx.db, org.org.id, id).await {
-        Ok(()) => Ok(StatusCode::NO_CONTENT.into_response()),
-        Err(e) => recipe_error(e),
-    }
-}
-
-#[utoipa::path(
-    get,
-    path = "/api/v1/site-recipes/{id}/versions",
-    tag = "site-recipes",
-    operation_id = "site_recipes_versions_list",
-    summary = "List the versions of a site recipe",
-    description = "Every saved version of the recipe with its YAML and author, newest first. Any member.",
-    params(
-        ("id" = String, Path, format = "uuid", description = "Recipe id (UUID)"),
-        PageQuery
-    ),
-    responses(
-        (status = 200, body = pnex_core::Paginated<SiteRecipeVersion>),
-        (status = 404, description = "`site-recipe-not-found`", body = crate::openapi::ErrorDetail)
-    ),
-    security(("bearer" = [], "org" = []))
-)]
-async fn versions_list(
-    State(ctx): State<AppContext>,
-    org: OrgContext,
-    Path(id): Path<Uuid>,
-    Query(q): Query<PageQuery>,
-) -> Result<Response> {
-    let page = PageParams::from(q.limit.as_deref(), q.offset.as_deref());
-    let all = match recipes::versions(&ctx.db, org.org.id, id).await {
-        Ok(v) => v,
-        Err(e) => return recipe_error(e),
-    };
-    // shortcut: the service caps the history at its 500 newest versions (restore
-    // reads the same list); push LIMIT/OFFSET into it if recipes get edited more.
-    pagination::paged(
-        &format!("/api/v1/site-recipes/{id}/versions"),
-        &[],
-        page,
-        all,
-    )
-}
-
-#[utoipa::path(
-    get,
-    path = "/api/v1/site-recipes/{id}/schedule",
-    tag = "site-recipes",
-    operation_id = "site_recipes_schedule",
-    summary = "When a site recipe plays next",
-    description = "The deployed flows whose triggers reach a node playing the recipe, with their cron expressions and repeat intervals, and the next cron times across them (UTC). Any member.",
-    params(("id" = String, Path, format = "uuid", description = "Recipe id (UUID)")),
+    path = "/api/v1/pipelines/{id}/flows",
+    tag = "navigations",
+    operation_id = "pipelines_flows",
+    summary = "Flows that play a site rule",
+    description = "The deployed flows whose triggers reach a node playing the site rule of this pipeline, with their cron expressions and repeat intervals, and the next cron times across them (UTC). Requires `pipelines:read`.",
+    params(("id" = String, Path, format = "uuid", description = "Pipeline id (UUID)")),
     responses(
         (status = 200, body = SiteRecipeSchedule),
-        (status = 404, description = "`site-recipe-not-found`", body = crate::openapi::ErrorDetail)
+        (status = 403, description = "`access-denied`", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "`site-recipe-not-found`: no such pipeline, or it is not a site rule", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
 )]
@@ -364,7 +120,7 @@ async fn schedule(
     org: OrgContext,
     Path(id): Path<Uuid>,
 ) -> Result<Response> {
-    if let Err(e) = recipes::get(&ctx.db, org.org.id, id).await {
+    if let Err(e) = recipes::rule(&ctx.db, org.org.id, id).await {
         return recipe_error(e);
     }
     match recipes::flow_node::schedule(&ctx.db, org.org.id, id).await {
@@ -375,40 +131,11 @@ async fn schedule(
 
 #[utoipa::path(
     post,
-    path = "/api/v1/site-recipes/{id}/versions/{version}/restore",
-    tag = "site-recipes",
-    operation_id = "site_recipes_versions_restore",
-    summary = "Restore a version of a site recipe",
-    description = "Makes an earlier version the active one: its YAML is saved again as a new version. Requires a writer role.",
-    params(
-        ("id" = String, Path, format = "uuid", description = "Recipe id (UUID)"),
-        ("version" = i32, Path, description = "Version number to restore")
-    ),
-    responses(
-        (status = 200, body = SiteRecipe),
-        (status = 400, description = "`site-recipe-invalid`: the old version no longer passes the rules", body = crate::openapi::ErrorDetail),
-        (status = 404, description = "`site-recipe-not-found`: unknown recipe or version", body = crate::openapi::ErrorDetail)
-    ),
-    security(("bearer" = [], "org" = []))
-)]
-async fn versions_restore(
-    State(ctx): State<AppContext>,
-    org: OrgContext,
-    Path((id, version)): Path<(Uuid, i32)>,
-) -> Result<Response> {
-    match recipes::restore(&ctx.db, org.org.id, org.auth.user.id, id, version).await {
-        Ok(r) => format::json(r),
-        Err(e) => recipe_error(e),
-    }
-}
-
-#[utoipa::path(
-    post,
-    path = "/api/v1/site-recipes/runs",
-    tag = "site-recipes",
-    operation_id = "site_recipes_runs_create",
-    summary = "Play a site recipe",
-    description = "Starts a run on the server browser: a saved recipe (`recipe_id`), or a draft (`yaml`, with `recipe_id` to file it under that recipe). Answers at once with the run, `running`; its steps fill in as they finish (poll the run). `resume` starts at a step, on the page an earlier run of the site was on after the step before; the earlier steps and their extracts are taken over from that run. Visits the site from the server, or from a browser agent of the org in the user's own session (the caller's browser, else a common one) when the rule declares `session: required` or `engine: extension` is asked: the run waits queued up to 30 minutes for one, is played from its start (no `resume`), and its pages are checked against the rule's site on return (100 such runs per day). A run the site blocks on the server browser (429, 403) goes on to a browser agent of the org, unless `engine: server_browser` was asked. Requires a writer role.",
+    path = "/api/v1/navigations",
+    tag = "navigations",
+    operation_id = "navigations_create",
+    summary = "Play a site rule",
+    description = "Starts a navigation on the server browser: a saved site rule (`recipe_id`, the id of its pipeline), or a draft (`document`, the pipeline document of a rule, with `recipe_id` to file it under that rule). Answers at once with the run, `running`; its steps fill in as they finish (poll the run). `resume` starts at a step, on the page an earlier run of the site was on after the step before; the earlier steps and their extracts are taken over from that run. Visits the site from the server, or from a browser agent of the org in the user's own session (the caller's browser, else a common one) when the rule declares `session: required` or `engine: extension` is asked: the run waits queued up to 30 minutes for one, is played from its start (no `resume`), and its pages are checked against the rule's site on return (100 such runs per day). A run the site blocks on the server browser (429, 403) goes on to a browser agent of the org, unless `engine: server_browser` was asked. Requires `browse:use`.",
     request_body = RunInput,
     responses(
         (status = 202, body = SiteRecipeRun),
@@ -493,11 +220,11 @@ struct RunsQuery {
 
 #[utoipa::path(
     get,
-    path = "/api/v1/site-recipes/runs",
-    tag = "site-recipes",
-    operation_id = "site_recipes_runs_list",
-    summary = "List site recipe runs",
-    description = "Run journal, newest first: of a site (`site`) or of a recipe (`recipe_id`). Any member.",
+    path = "/api/v1/navigations",
+    tag = "navigations",
+    operation_id = "navigations_list",
+    summary = "List navigations",
+    description = "Navigation journal, newest first: of a site (`site`) or of a site rule (`recipe_id`). Requires `pipelines:read`.",
     params(RunsQuery),
     responses(
         (status = 200, body = pnex_core::Paginated<SiteRecipeRun>),
@@ -542,7 +269,7 @@ async fn runs(
     .await
     {
         Ok((count, rows)) => format::json(pagination::envelope(
-            "/api/v1/site-recipes/runs",
+            "/api/v1/navigations",
             &filters,
             page,
             count,
@@ -554,11 +281,11 @@ async fn runs(
 
 #[utoipa::path(
     get,
-    path = "/api/v1/site-recipes/runs/{id}",
-    tag = "site-recipes",
-    operation_id = "site_recipes_runs_get",
-    summary = "Get a site recipe run",
-    description = "A run with its steps (status, reason, address, screenshot file), its extracts and, per extract, what changed since the previous finished run of the same recipe. Any member.",
+    path = "/api/v1/navigations/{id}",
+    tag = "navigations",
+    operation_id = "navigations_get",
+    summary = "Get a navigation",
+    description = "A run with its steps (status, reason, address, screenshot file), its extracts and, per extract, what changed since the previous finished run of the same rule. Requires `pipelines:read`.",
     params(("id" = String, Path, format = "uuid", description = "Run id (UUID)")),
     responses(
         (status = 200, body = SiteRecipeRun),
@@ -580,11 +307,11 @@ async fn run_get(
 
 #[utoipa::path(
     get,
-    path = "/api/v1/site-recipes/runs/{id}/files/{file}",
-    tag = "site-recipes",
-    operation_id = "site_recipes_runs_file",
+    path = "/api/v1/navigations/{id}/files/{file}",
+    tag = "navigations",
+    operation_id = "navigations_file",
     summary = "Download a file of a run",
-    description = "A step screenshot (`step-<n>.jpg`, JPEG) or a fetched PDF (`pdf-<n>.pdf`, always as an attachment). Any member.",
+    description = "A step screenshot (`step-<n>.jpg`, JPEG) or a fetched PDF (`pdf-<n>.pdf`, always as an attachment). Requires `pipelines:read`.",
     params(
         ("id" = String, Path, format = "uuid", description = "Run id (UUID)"),
         ("file" = String, Path, description = "File name, from the run's steps or extracts")
@@ -641,11 +368,11 @@ async fn run_file(
 
 #[utoipa::path(
     get,
-    path = "/api/v1/site-recipes/runs/{id}/live",
-    tag = "site-recipes",
-    operation_id = "site_recipes_runs_live",
+    path = "/api/v1/navigations/{id}/live",
+    tag = "navigations",
+    operation_id = "navigations_live",
     summary = "Live view of a run",
-    description = "The last view of the server browser while a studio run plays (JPEG, a new one about every 1.5 s, gone some seconds after the run); 204 when there is none. Any member.",
+    description = "The last view of the server browser while a studio run plays (JPEG, a new one about every 1.5 s, gone some seconds after the run); 204 when there is none. Requires `pipelines:read`.",
     params(
         ("id" = String, Path, format = "uuid", description = "Run id (UUID)")
     ),
@@ -681,14 +408,6 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
     #[derive(utoipa::OpenApi)]
     #[openapi(paths(
         sites,
-        list,
-        validate,
-        create,
-        get_one,
-        update,
-        remove,
-        versions_list,
-        versions_restore,
         schedule,
         run_create,
         runs,
@@ -749,7 +468,7 @@ async fn endpoint_view(
 #[utoipa::path(
     get,
     path = "/api/v1/browser-endpoints",
-    tag = "site-recipes",
+    tag = "navigations",
     operation_id = "browser_endpoints_list",
     summary = "List browser endpoints",
     description = "CDP browsers the organization plays its navigation rules on, with the default. The token is a vault reference, never its value. Without any, runs use the platform browser. Any member.",
@@ -777,7 +496,7 @@ async fn endpoints_list(
 #[utoipa::path(
     post,
     path = "/api/v1/browser-endpoints",
-    tag = "site-recipes",
+    tag = "navigations",
     operation_id = "browser_endpoints_create",
     summary = "Create a browser endpoint",
     description = "Registers a CDP browser (`wss://…`, `ws://…` or `http(s)://host:port`). The address must pass the egress policy (no internal host). A typed `token` value is stored in the org vault and sent as `Authorization: Bearer`. The first endpoint, or one with `is_default`, becomes the org default. Owner or admin only.",
@@ -807,7 +526,7 @@ async fn endpoints_create(
 #[utoipa::path(
     put,
     path = "/api/v1/browser-endpoints/{id}",
-    tag = "site-recipes",
+    tag = "navigations",
     operation_id = "browser_endpoints_update",
     summary = "Replace a browser endpoint",
     description = "Full replacement; an absent `token` keeps the current one. Owner or admin only.",
@@ -840,7 +559,7 @@ async fn endpoints_update(
 #[utoipa::path(
     delete,
     path = "/api/v1/browser-endpoints/{id}",
-    tag = "site-recipes",
+    tag = "navigations",
     operation_id = "browser_endpoints_delete",
     summary = "Delete a browser endpoint",
     description = "Deletes the endpoint and its dedicated token. Rules that named it fail until edited. Owner or admin only.",
@@ -865,7 +584,7 @@ async fn endpoints_delete(
 #[utoipa::path(
     post,
     path = "/api/v1/browser-endpoints/{id}/test",
-    tag = "site-recipes",
+    tag = "navigations",
     operation_id = "browser_endpoints_test",
     summary = "Test a browser endpoint",
     description = "From the server: reads `/json/version` with the token, opens a fresh browser context, loads a public page with a screenshot, and checks that an internal address is refused. Answers each check, the engine and the latency; nothing is stored. Owner or admin only.",

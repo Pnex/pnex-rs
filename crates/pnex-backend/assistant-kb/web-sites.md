@@ -4,13 +4,13 @@ title: Websites and navigation rules
 kind: feature
 pages: /web-sites, /web-sites/:site
 nodes: agent_run, agent_run_finished, site_crawl
-err_codes: site-recipe-invalid, site-recipe-not-found, site-recipe-version-conflict, site-recipe-run-not-found, site-recipe-param-missing, site-recipe-unavailable, browser-endpoint-not-found, browser-endpoint-name-taken, site-crawl-url-invalid, site-crawl-invalid, ai-site-recipe-saved-only
+err_codes: site-recipe-invalid, site-recipe-not-found, site-recipe-run-not-found, site-recipe-param-missing, site-recipe-unavailable, browser-endpoint-not-found, browser-endpoint-name-taken, site-crawl-url-invalid, site-crawl-invalid, ai-site-recipe-saved-only
 tools: list_site_recipes, get_site_recipe, try_site_recipe, get_site_recipe_run, propose_site_recipe
 tags: website candidate, candidat, presence web, présence web, website, site web, navigation rule, règle, studio, play, lecture, step, étape, screenshot, capture, retention, conservation, media, médias, extract, extrait, pdf, programme, scraping, collecte, browser, navigateur, obscura, journal, crawl, parcours, écart, finding, conformité, compliance, partenaire, partner, CPF, Qualiopi, preuve, proof
 ---
 The Websites page (Sources menu) lists the websites walked by navigation rules or crawled by a browser mission (Crawl a site), with their rules, crawled pages and last run. A crawled site without a rule opens in the studio with a starter rule. Opening a website shows its studio: the rules of the site, the run step by step, what it extracted and the run journal.
 
-A navigation rule is YAML bound to one website: `name`, `site` (a host or an address; `la-strat.fr` and `https://www.la-strat.fr/x` are the same site), optional `params` (filled in at each run, used as `{{name}}`), optional `allow_hosts` (other hosts a PDF may come from), optional `browser` (the name of a browser of the organization) and `steps`. It is configuration, never code: no form input, no login.
+A navigation rule is bound to one website: a name, the site (a host or an address; `la-strat.fr` and `https://www.la-strat.fr/x` are the same site), optional parameters (filled in at each run, used as `{{name}}`, lower case), other hosts a PDF may come from, an optional browser of the organization and its steps. It is configuration, never code: no form input, no login. A rule is saved as a pipeline of the organization (`key: site_rule`): an `enumerate` step whose `asked` axis holds the parameters, then a `browse` step with the site and the steps; the **Code** tab shows that document. It also appears on the Pipelines page; editing it there in another shape takes it off the Websites page.
 
 ## Steps
 
@@ -26,11 +26,11 @@ A navigation rule is YAML bound to one website: `name`, `site` (a host or an add
 
 ## What you can do
 
-- `session: required` (top of the rule, next to `site`): the site needs the user signed in, so the rule always plays in a browser agent of the organization, never on the server browser; Play does that by itself. The assistant cannot try such a rule ("This rule needs your own signed-in session"): the user plays it from the studio. A rule the server browser gets blocked on (too many requests, forbidden) also goes on to a browser agent of the organization by itself.
+- `session: required` (in the `browse` step, next to `site`): the site needs the user signed in, so the rule always plays in a browser agent of the organization, never on the server browser; Play does that by itself. The assistant cannot try such a rule ("This rule needs your own signed-in session"): the user plays it from the studio. A rule the server browser gets blocked on (too many requests, forbidden) also goes on to a browser agent of the organization by itself.
 - **Play in my browser** (studio header): the same rule is played by your browser agent, in your own session, for sites that need you signed in. The run waits up to 30 minutes for the agent ("Waiting for your browser agent…"), always starts from the first step, and stops as failed if a page leaves the rule's site. Without a paired browser agent of yours (Sources > Browser agents), a common one of the organization plays it.
 
 - **Add a website** (header), type its host: the studio opens with a starter rule.
-- The studio is laid out like the Vision Lab: the screenshot of the selected step fills the page, the player is under it, the rule in a column on the right. The **Code** tab shows the rule as YAML (a YAML with an error must be fixed before leaving the tab); **Extracts** shows what the run read.
+- The studio is laid out like the Vision Lab: the screenshot of the selected step fills the page, the player is under it, the rule in a column on the right. The **Code** tab shows the rule's pipeline document (a YAML with an error must be fixed before leaving the tab); **Extracts** shows what the run read.
 - **Rule** tab (right column, the **Rule** button shows or hides it): drag an action (**+ Open**, **+ Click**, **+ Wait**…) into the column, or click it to add it after the chosen step; drag a block to reorder it; click a block to edit it in place (target, value, optional) or **Delete the step**.
 - **Rule settings** (bottom of the Rule tab): name, site, parameters, other hosts allowed for PDFs, browser, **Screenshot retention** (how long the screenshots and PDFs of the runs are kept: none, 7 to 365 days, kept; 30 days by default; the extract text and the journal stay); **Delete the rule** keeps its runs in the journal.
 - **Run** plays the rule shown, saved or not, on the server browser. While it plays, the stage shows the server browser live (badge **Live**, a new view about every 1.5 s). The run then replays like a recording in the player under the screenshot: Play walks the steps (one mark per step on the timeline), each with its screenshot (the clicked target outlined in red), address and time; a failed step is red with its reason.
@@ -50,7 +50,7 @@ The assistant can list and read the rules (list_site_recipes, get_site_recipe), 
 - Element not found on the page: the text or selector changed; edit the step, or mark it `optional: true` if it may be absent.
 - Check failed: the page no longer holds what the rule expects; open the step screenshot.
 - The site answered an error, limits the rate, or forbids the page in its robots.txt: the run concludes nothing; play it again later.
-- Address off the site: a click led elsewhere; add the host to `allow_hosts` only for a PDF.
+- Address off the site: a click led elsewhere; add the host to the other hosts of the rule only for a PDF.
 - Server browser unreachable: test the browser on the Organization page.
 
 A failed run never closes or changes anything: it is only a red line in the journal.

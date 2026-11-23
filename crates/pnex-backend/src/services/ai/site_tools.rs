@@ -1,6 +1,6 @@
 //! Navigation rule tools of the assistant (agents.md D324, N4): list
 //! and read the rules of the org, try a saved rule on the server browser,
-//! read a run, propose a rule. The assistant never saves a rule: a
+//! read a run, propose a rule (an org pipeline, PE5.5). The assistant never saves a rule: a
 //! proposal opens in the studio from the button under the answer, the
 //! human saves it (D144). What a run brings back is website content: handed to the model
 //! as delimited data, never as instructions (D208).
@@ -44,7 +44,7 @@ fn recipe_error(e: RecipeError) -> ToolError {
         ),
         RecipeError::Invalid(v) => ToolError {
             message: format!(
-                "the rule YAML is invalid: {}; fix these paths and try again",
+                "the rule's pipeline document is invalid: {}; fix these paths and try again",
                 serde_json::to_string(&v).unwrap_or_default()
             ),
             code: Some(err_codes::SITE_RECIPE_INVALID),
@@ -59,30 +59,37 @@ pub async fn list_site_recipes(
     deps: &ToolDeps<'_>,
     args: &Value,
 ) -> Result<ToolOutcome, ToolError> {
-    let site = args.get("site").and_then(Value::as_str);
-    let rules = recipes::list(deps.db, deps.org_id, site)
+    let site = args
+        .get("site")
+        .and_then(Value::as_str)
+        .map(|s| pnex_core::site_recipe::site_host(s).unwrap_or_else(|| s.trim().to_string()));
+    let rules = recipes::rules(deps.db, deps.org_id)
         .await
         .map_err(internal("listing navigation rules"))?;
     let rules: Vec<Value> = rules
         .iter()
-        .map(|r| {
-            json!({
-                "recipe_id": r.id,
-                "site": r.site,
+        .filter_map(|(id, version, r)| {
+            let host = pnex_core::site_recipe::site_host(&r.site);
+            if site.is_some() && host != site {
+                return None;
+            }
+            Some(json!({
+                "recipe_id": id.to_string(),
+                "site": host,
                 "name": r.name,
-                "version": r.version,
-                "params": r.recipe.as_ref().map(|x| x.params.clone()).unwrap_or_default(),
-                "steps": r.recipe.as_ref().map_or(0, |x| x.steps.len()),
-            })
+                "version": version,
+                "params": r.params,
+                "steps": r.steps.len(),
+            }))
         })
         .collect();
     outcome(json!({ "rules": rules }))
 }
 
-/// One rule: its YAML and its last runs.
+/// One rule: its pipeline document and its last runs.
 pub async fn get_site_recipe(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutcome, ToolError> {
     let id = uuid_arg(args, "recipe_id")?;
-    let r = recipes::get(deps.db, deps.org_id, id)
+    let (r, version) = recipes::rule(deps.db, deps.org_id, id)
         .await
         .map_err(recipe_error)?;
     let (_, runs) = recipes::runs(deps.db, deps.org_id, None, Some(id), 5, 0)
@@ -98,8 +105,9 @@ pub async fn get_site_recipe(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOu
         })
         .collect();
     outcome(json!({
-        "recipe_id": r.id, "site": r.site, "name": r.name, "version": r.version,
-        "yaml": r.yaml, "runs": runs,
+        "recipe_id": id.to_string(), "site": pnex_core::site_recipe::site_host(&r.site),
+        "name": r.name, "version": version,
+        "document": pnex_core::site_recipe::rule_yaml(&r), "runs": runs,
     }))
 }
 
@@ -108,7 +116,7 @@ pub async fn get_site_recipe(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOu
 /// send data to any site through a URL (SEC-71); it goes through
 /// `propose_site_recipe`, the human saves it, then it is tried by id.
 pub async fn try_site_recipe(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutcome, ToolError> {
-    if args.get("yaml").is_some() || args.get("recipe_id").and_then(Value::as_str).is_none() {
+    if args.get("document").is_some() || args.get("recipe_id").and_then(Value::as_str).is_none() {
         return Err(coded(
             err_codes::AI_SITE_RECIPE_SAVED_ONLY,
             "try_site_recipe only plays a saved rule (recipe_id): propose a draft with propose_site_recipe, the user saves it in the studio, then try it by its recipe_id",
@@ -144,7 +152,7 @@ pub async fn try_site_recipe(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOu
     };
     let input = RunInput {
         recipe_id: str_of("recipe_id"),
-        yaml: None,
+        document: None,
         params,
         resume,
         // The assistant plays on the server browser only, never in a person's
@@ -222,21 +230,19 @@ pub async fn propose_site_recipe(
     deps: &ToolDeps<'_>,
     args: &Value,
 ) -> Result<ToolOutcome, ToolError> {
-    let yaml = args
-        .get("yaml")
+    let document = args
+        .get("document")
         .and_then(Value::as_str)
-        .ok_or_else(|| ToolError::from("argument 'yaml' missing or not a string"))?;
-    let recipe = recipes::parse(yaml).map_err(|v| recipe_error(RecipeError::Invalid(v)))?;
+        .ok_or_else(|| ToolError::from("argument 'document' missing or not a string"))?;
+    let recipe = recipes::draft(document).map_err(recipe_error)?;
     let recipe_id = match args.get("recipe_id").and_then(Value::as_str) {
         Some(raw) => {
             let id =
                 Uuid::parse_str(raw).map_err(|_| ToolError::from("recipe_id is not a UUID"))?;
-            Some(
-                recipes::get(deps.db, deps.org_id, id)
-                    .await
-                    .map_err(recipe_error)?
-                    .id,
-            )
+            recipes::rule(deps.db, deps.org_id, id)
+                .await
+                .map_err(recipe_error)?;
+            Some(id.to_string())
         }
         None => None,
     };
@@ -318,7 +324,7 @@ pub(super) fn tools() -> Vec<ToolDef> {
         ToolDef {
             spec: ToolSpec {
                 name: "get_site_recipe",
-                description: "Reads one navigation rule: its YAML (name, site, params, allow_hosts, browser, captures, steps) and its last 5 runs. Read-only.",
+                description: "Reads one navigation rule: its pipeline document (key site_rule: hosts, an enumerate step whose asked axis holds the params, a browse step with site, session, browser, captures and the navigation steps) and its last 5 runs. Read-only.",
                 input_schema: serde_json::from_str(r#"{"type":"object","properties":{"recipe_id":{"type":"string"}},"required":["recipe_id"]}"#).expect("static schema"),
             },
             summary: |v| {
@@ -349,8 +355,8 @@ pub(super) fn tools() -> Vec<ToolDef> {
         ToolDef {
             spec: ToolSpec {
                 name: "propose_site_recipe",
-                description: "Proposes a navigation rule to the user: the YAML is checked, nothing is saved. The user opens it in the website studio from the button under your answer, plays it and saves it (a new rule, or a new version of recipe_id). Steps: open (path of the site), click {text|text_contains|selector|role+name, optional}, scroll, wait {ms|text}, follow_pdf {link_text_contains|href_contains, as}, extract {selector|between [a,b]|all_text: true|cards {selector, fields {name: {selector, attr}}, max}, as}, assert {page_contains|not_empty|count_min|url_contains}, type {text, selector|role} (a search field only, never a form nor a sign-in), press (Enter|Tab|Escape|ArrowDown|ArrowUp), for_each {from: cards extract, link: its link field, max ≤ 10, steps} (each link opened, its extracts named as.n). A site that needs the user signed in gets `session: required`: such a rule plays in the user's browser agent, never through try_site_recipe. Once saved, try it with try_site_recipe.",
-                input_schema: serde_json::from_str(r#"{"type":"object","properties":{"yaml":{"type":"string"},"recipe_id":{"type":"string"}},"required":["yaml"]}"#).expect("static schema"),
+                description: "Proposes a navigation rule to the user: a pipeline document, checked, nothing is saved. Its form: `key: site_rule`, `name`, `hosts: [site host, off-site PDF hosts]`, `steps: [{enumerate: {as: start, track: true, cross: [{as: <first param, or run>, asked: [<other params>]}]}}, {browse: {as: page, for_each: start, site, session?, browser?, captures?, steps: [...]}}]`; a step names a parameter as {{name}}. The user opens it in the website studio from the button under your answer, plays it and saves it (a new rule, or a new version of recipe_id). Steps: open (path of the site), click {text|text_contains|selector|role+name, optional}, scroll, wait {ms|text}, follow_pdf {link_text_contains|href_contains, as}, extract {selector|between [a,b]|all_text: true|cards {selector, fields {name: {selector, attr}}, max}, as}, assert {page_contains|not_empty|count_min|url_contains}, type {text, selector|role} (a search field only, never a form nor a sign-in), press (Enter|Tab|Escape|ArrowDown|ArrowUp), for_each {from: cards extract, link: its link field, max ≤ 10, steps} (each link opened, its extracts named as.n). A site that needs the user signed in gets `session: required`: such a rule plays in the user's browser agent, never through try_site_recipe. Once saved, try it with try_site_recipe.",
+                input_schema: serde_json::from_str(r#"{"type":"object","properties":{"document":{"type":"string"},"recipe_id":{"type":"string"}},"required":["document"]}"#).expect("static schema"),
             },
             summary: |v| {
             let n = shown(&v["name"]);

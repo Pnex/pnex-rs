@@ -688,10 +688,8 @@ pub fn validate(doc: &Value) -> Result<Recipe, Vec<Violation>> {
         out.push(v("params", format!("max_items:{PARAMS_MAX}")));
     }
     for (i, p) in params.iter().enumerate() {
-        let ok = !p.is_empty()
-            && p.len() <= 40
-            && p.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
-        if !ok {
+        // A column of the rule's pipeline (PE5.5).
+        if p.len() > 40 || !crate::pipeline::doc::valid_name(p) || p == RULE_RUN {
             out.push(v(format!("params.{i}"), "invalid"));
         }
     }
@@ -1001,6 +999,125 @@ pub fn to_yaml(r: &Recipe) -> String {
     out
 }
 
+// ───────────────────────── rule as a pipeline ─────────────────────────
+
+/// Key of a site rule's pipeline (PE5.5).
+pub const RULE_KEY: &str = "site_rule";
+/// Column of the one row a start gives to a rule without parameters.
+pub const RULE_RUN: &str = "run";
+const RULE_ROWS: &str = "start";
+const RULE_PAGE: &str = "page";
+
+/// Checks steps against the parameters they may name (`{{name}}`).
+pub fn check_steps(steps: &[Step], params: &[String]) -> Vec<Violation> {
+    let mut names = Vec::new();
+    let mut out = Vec::new();
+    for (i, s) in steps.iter().enumerate() {
+        out.extend(check_step(i, s, params, &mut names));
+    }
+    out
+}
+
+/// The org pipeline of a rule (PE5.5): the start gives its parameters as one
+/// row, then its navigation plays. Its extracts stay in the run journal.
+pub fn rule_document(r: &Recipe) -> Value {
+    let site = site_host(&r.site).unwrap_or_else(|| r.site.clone());
+    let mut hosts = vec![site.clone()];
+    hosts.extend(
+        r.allow_hosts
+            .iter()
+            .filter(|h| site_host(h).as_ref() != Some(&site))
+            .cloned(),
+    );
+    let (first, rest) = match r.params.split_first() {
+        Some((p, rest)) => (p.clone(), rest.to_vec()),
+        None => (RULE_RUN.to_string(), Vec::new()),
+    };
+    let mut browse = serde_json::json!({
+        "as": RULE_PAGE, "for_each": RULE_ROWS, "site": r.site, "steps": r.steps,
+    });
+    for (k, v) in [
+        ("session", &r.session),
+        ("browser", &r.browser),
+        ("captures", &r.captures),
+    ] {
+        if let Some(v) = v {
+            browse[k] = Value::String(v.clone());
+        }
+    }
+    serde_json::json!({
+        "key": RULE_KEY,
+        "name": r.name,
+        "hosts": hosts,
+        "steps": [
+            {"enumerate": {"as": RULE_ROWS, "track": true,
+                "cross": [{"as": first, "asked": rest}]}},
+            {"browse": browse},
+        ],
+    })
+}
+
+/// The rule a pipeline is, when it is one: an asked row, then a navigation.
+pub fn rule_of(doc: &crate::pipeline::Document) -> Option<Recipe> {
+    use crate::pipeline::doc::Step as P;
+    let [P::Enumerate(e), P::Browse(b)] = doc.steps.as_slice() else {
+        return None;
+    };
+    let [axis] = e.cross.as_slice() else {
+        return None;
+    };
+    let asked = axis.asked.as_ref()?;
+    let params = if axis.as_ == RULE_RUN && asked.is_empty() {
+        Vec::new()
+    } else {
+        std::iter::once(axis.as_.clone())
+            .chain(asked.iter().cloned())
+            .collect()
+    };
+    let site = site_host(&b.site);
+    Some(Recipe {
+        name: doc.name.clone(),
+        site: b.site.clone(),
+        allow_hosts: doc
+            .hosts
+            .iter()
+            .filter(|h| site_host(h) != site)
+            .cloned()
+            .collect(),
+        params,
+        browser: b.browser.clone(),
+        captures: b.captures.clone(),
+        session: b.session.clone(),
+        steps: b.steps.clone(),
+    })
+}
+
+/// The rule's pipeline as YAML, one navigation step per line (what the
+/// visual editor saves).
+pub fn rule_yaml(r: &Recipe) -> String {
+    let doc = rule_document(r);
+    let mut out = format!(
+        "key: {RULE_KEY}\nname: {}\nhosts: {}\nsteps:\n  - enumerate: {}\n  - browse:\n",
+        doc["name"],
+        flow(&doc["hosts"]),
+        flow(&doc["steps"][0]["enumerate"])
+    );
+    if let Some(m) = doc["steps"][1]["browse"].as_object() {
+        for (k, v) in m.iter().filter(|(k, _)| *k != "steps") {
+            out += &format!("      {k}: {}\n", flow(v));
+        }
+    }
+    out += "      steps:\n";
+    for step in &r.steps {
+        if let Ok(Value::Object(m)) = serde_json::to_value(step) {
+            for (action, v) in m {
+                out += &format!("        - {action}: {}\n", flow(&v));
+            }
+        }
+    }
+    out
+}
+
 // ───────────────────────────── API ─────────────────────────────
 
 /// A saved recipe.
@@ -1032,24 +1149,6 @@ pub struct SiteRecipeVersion {
     pub author: Option<String>,
     #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub created_at: String,
-}
-
-/// Create or replace a recipe.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-pub struct SiteRecipeInput {
-    pub yaml: String,
-    /// Version the edit was made on (update only): another save in
-    /// between answers 409.
-    #[serde(default)]
-    pub expected_version: Option<i32>,
-}
-
-/// Check a draft without saving it.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-pub struct SiteRecipeDraft {
-    pub yaml: String,
 }
 
 /// A web site of the org: the recipes anchored on it and its last run.
@@ -1303,9 +1402,10 @@ pub struct RulePlan {
 pub struct RunInput {
     #[serde(default)]
     pub recipe_id: Option<String>,
-    /// Draft to play instead of the saved version.
+    /// Pipeline document of a draft rule, played instead of the saved
+    /// version.
     #[serde(default)]
-    pub yaml: Option<String>,
+    pub document: Option<String>,
     /// Values of the recipe's `params`.
     #[serde(default)]
     pub params: BTreeMap<String, String>,
@@ -1598,5 +1698,39 @@ mod tests {
             site_base("www.la-strat.fr").as_deref(),
             Some("https://www.la-strat.fr")
         );
+    }
+
+    #[test]
+    fn a_rule_round_trips_through_its_pipeline() {
+        let rule = validate(&serde_json::json!({
+            "name": "Programme", "site": "www.example.org", "params": ["code", "year"],
+            "allow_hosts": ["files.example.net"], "captures": "days:7", "session": "required",
+            "steps": [{"open": "/p/{{code}}/{{year}}"}, {"extract": {"as": "t", "all_text": true}}]
+        }))
+        .unwrap();
+        let doc: crate::pipeline::Document = serde_json::from_value(rule_document(&rule)).unwrap();
+        assert_eq!(doc.violations(), Vec::new());
+        assert_eq!(rule_of(&doc), Some(rule.clone()));
+        // Without parameters, the start gives one row all the same.
+        let bare = Recipe {
+            params: Vec::new(),
+            steps: vec![Step::Open("/".into())],
+            ..rule
+        };
+        let doc: crate::pipeline::Document = serde_json::from_value(rule_document(&bare)).unwrap();
+        assert_eq!(doc.violations(), Vec::new());
+        assert_eq!(rule_of(&doc), Some(bare.clone()));
+        // A step naming a parameter the rule lacks is refused in the pipeline too.
+        let bad = serde_json::from_value::<crate::pipeline::Document>(rule_document(&Recipe {
+            steps: vec![Step::Open("/{{nope}}".into())],
+            ..bare
+        }))
+        .unwrap();
+        let tokens: Vec<String> = bad
+            .violations()
+            .into_iter()
+            .map(|v| format!("{} {}", v.path, v.token))
+            .collect();
+        assert_eq!(tokens, ["steps.1.browse.steps.0 unknown_param:nope"]);
     }
 }

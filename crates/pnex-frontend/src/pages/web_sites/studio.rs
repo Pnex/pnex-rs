@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 use dioxus::prelude::*;
 use dioxus_i18n::t;
 use pnex_core::site_recipe::{
-    new_step, to_yaml, validate, Recipe, RunEngine, RunInput, RunResume, RunStatus, SiteRecipe,
+    new_step, rule_yaml, validate, Recipe, RunEngine, RunInput, RunResume, RunStatus, SiteRecipe,
     SiteRecipeRun, SiteRecipeVersion, Violation, ACTIONS,
 };
 
@@ -70,6 +70,8 @@ fn check(r: &Recipe) -> Vec<Violation> {
 }
 
 fn violation_place(path: &str) -> String {
+    // The server checks the rule's pipeline: its navigation is step 1.
+    let path = path.strip_prefix("steps.1.browse.").unwrap_or(path);
     match path
         .strip_prefix("steps.")
         .and_then(|n| n.parse::<usize>().ok())
@@ -110,7 +112,8 @@ pub fn WebSiteStudio(site: String) -> Element {
     let mut gen = use_signal(|| 0u64);
     let drag = use_signal(|| None::<Drag>);
     let navigator = use_navigator();
-    let can_write = can("site-recipes:write");
+    let can_write = can("pipelines:write");
+    let can_play = can("browse:use");
 
     let recipes = use_resource(move || async move {
         let _ = reload();
@@ -177,7 +180,7 @@ pub fn WebSiteStudio(site: String) -> Element {
                 Some(r) => open_recipe(r.clone()),
                 None => {
                     let r = starter(&site.peek());
-                    yaml.set(to_yaml(&r));
+                    yaml.set(rule_yaml(&r));
                     recipe.set(r);
                     editing.set(Some(Editing::New));
                     // A new rule is unsaved until saved, even untouched.
@@ -234,7 +237,7 @@ pub fn WebSiteStudio(site: String) -> Element {
             return;
         }
         if to == Tab::Code {
-            yaml.set(to_yaml(&recipe.read()));
+            yaml.set(rule_yaml(&recipe.read()));
         }
         if from == Tab::Code && !violations().is_empty() {
             message.set(Some(t!("web-sites-yaml-fix-first").to_string()));
@@ -249,7 +252,7 @@ pub fn WebSiteStudio(site: String) -> Element {
         if tab() == Tab::Code {
             yaml()
         } else {
-            to_yaml(&recipe.read())
+            rule_yaml(&recipe.read())
         }
     };
 
@@ -280,7 +283,7 @@ pub fn WebSiteStudio(site: String) -> Element {
                 Some(Editing::Saved { id, .. }) => Some(id),
                 _ => None,
             },
-            yaml: Some(current_yaml()),
+            document: Some(current_yaml()),
             params: params(),
             resume,
             engine,
@@ -398,7 +401,7 @@ pub fn WebSiteStudio(site: String) -> Element {
 
     let new_rule = move |_| {
         let r = starter(&site());
-        yaml.set(to_yaml(&r));
+        yaml.set(rule_yaml(&r));
         recipe.set(r);
         editing.set(Some(Editing::New));
         dirty.set(true);
@@ -462,7 +465,7 @@ pub fn WebSiteStudio(site: String) -> Element {
             group: None,
         })
         .collect();
-    let can_delete = can("site-recipes:delete") && matches!(editing(), Some(Editing::Saved { .. }));
+    let can_delete = can("pipelines:delete") && matches!(editing(), Some(Editing::Saved { .. }));
     let rule_button = if column() {
         format!("{BTN_SECONDARY_SM} border-signal text-signal")
     } else {
@@ -508,7 +511,7 @@ pub fn WebSiteStudio(site: String) -> Element {
                 }
                 button {
                     class: BTN_SECONDARY_SM,
-                    disabled: !can_write || has_errors || missing_param || running,
+                    disabled: !can_play || has_errors || missing_param || running,
                     title: "{play_title}",
                     onclick: play,
                     if running {
@@ -519,7 +522,7 @@ pub fn WebSiteStudio(site: String) -> Element {
                 }
                 button {
                     class: BTN_SECONDARY_SM,
-                    disabled: !can_write || has_errors || missing_param || running,
+                    disabled: !can_play || has_errors || missing_param || running,
                     title: t!("web-sites-play-browser-help").to_string(),
                     "data-testid": "web-sites-play-browser",
                     onclick: play_mine,

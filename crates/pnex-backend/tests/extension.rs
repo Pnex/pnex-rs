@@ -1722,15 +1722,15 @@ async fn a_rule_run_plays_on_the_starters_browser_and_stays_on_its_site() {
         let install = Install::new();
         let a = pair(&server, &env.alice, org, &install).await;
         let yaml = "name: search\nsite: example.org\nparams: [query]\nsteps:\n  - open: \"/\"\n  - type: {text: \"{{query}}\"}\n  - press: Enter\n  - extract: {all_text: true, as: page}\n";
-        let start = |query: &str| json!({ "yaml": yaml, "params": { "query": query }, "engine": "extension" });
-        let (s, run) = call(&server, "POST", "/api/v1/site-recipes/runs", &env.alice, org, Some(start("jane doe"))).await;
+        let start = |query: &str| json!({ "document": rule_doc(yaml), "params": { "query": query }, "engine": "extension" });
+        let (s, run) = call(&server, "POST", "/api/v1/navigations", &env.alice, org, Some(start("jane doe"))).await;
         assert_eq!(s, 202, "{run}");
         assert_eq!(run["engine"], "extension");
         let id = run["id"].as_str().unwrap().to_string();
         // No resume on a browser agent: it plays a rule from its start.
         let mut resumed = start("x");
         resumed["resume"] = json!({ "run_id": id, "step": 1 });
-        let (s, _) = call(&server, "POST", "/api/v1/site-recipes/runs", &env.alice, org, Some(resumed)).await;
+        let (s, _) = call(&server, "POST", "/api/v1/navigations", &env.alice, org, Some(resumed)).await;
         assert_eq!(s, 400);
 
         let mut ws = open(&server, &install, &a).await;
@@ -1763,7 +1763,7 @@ async fn a_rule_run_plays_on_the_starters_browser_and_stays_on_its_site() {
         // Its end frees the agent, told at once.
         assert_eq!(recv(&mut ws).await, ServerMsg::Runs { runs: vec![] });
         sync(&mut ws).await;
-        let (_, done) = call(&server, "GET", &format!("/api/v1/site-recipes/runs/{id}"), &env.alice, org, None).await;
+        let (_, done) = call(&server, "GET", &format!("/api/v1/navigations/{id}"), &env.alice, org, None).await;
         assert_eq!(done["status"], "ok", "{done}");
         assert_eq!(done["steps"].as_array().unwrap().len(), 1);
         assert!(done["steps"][0].get("screenshot").is_none(), "an agent stores no screenshot");
@@ -1778,7 +1778,7 @@ async fn a_rule_run_plays_on_the_starters_browser_and_stays_on_its_site() {
         assert_eq!(s, 400);
 
         // A step off the site ends the run as failed.
-        let (_, second) = call(&server, "POST", "/api/v1/site-recipes/runs", &env.alice, org, Some(start("john"))).await;
+        let (_, second) = call(&server, "POST", "/api/v1/navigations", &env.alice, org, Some(start("john"))).await;
         let id2 = second["id"].as_str().unwrap().to_string();
         let mut ws = { drop(ws); open(&server, &install, &a).await };
         assert!(matches!(recv(&mut ws).await, ServerMsg::Missions { .. }));
@@ -1790,7 +1790,7 @@ async fn a_rule_run_plays_on_the_starters_browser_and_stays_on_its_site() {
                 "index": 0, "action": "open", "label": "/", "status": "ok", "url": "https://evil.example/", "ms": 5 })).unwrap(),
         }).await;
         sync(&mut ws).await;
-        let (_, failed) = call(&server, "GET", &format!("/api/v1/site-recipes/runs/{id2}"), &env.alice, org, None).await;
+        let (_, failed) = call(&server, "GET", &format!("/api/v1/navigations/{id2}"), &env.alice, org, None).await;
         assert_eq!((failed["status"].as_str(), failed["reason"].as_str()), (Some("failed"), Some("off-site")), "{failed}");
         assert_eq!(failed["steps"][0]["reason"], "off-site");
     })
@@ -1810,10 +1810,10 @@ async fn a_rule_needing_a_session_goes_to_an_agent_and_a_blocked_run_moves_over(
         let (s, e) = call(
             &server,
             "POST",
-            "/api/v1/site-recipes/runs",
+            "/api/v1/navigations",
             &env.alice,
             org,
-            Some(json!({ "yaml": yaml })),
+            Some(json!({ "document": rule_doc(yaml) })),
         )
         .await;
         assert_eq!(
@@ -1827,10 +1827,10 @@ async fn a_rule_needing_a_session_goes_to_an_agent_and_a_blocked_run_moves_over(
         let (s, run) = call(
             &server,
             "POST",
-            "/api/v1/site-recipes/runs",
+            "/api/v1/navigations",
             &env.alice,
             org,
-            Some(json!({ "yaml": yaml })),
+            Some(json!({ "document": rule_doc(yaml) })),
         )
         .await;
         assert_eq!(s, 202, "{run}");
@@ -1878,7 +1878,7 @@ async fn a_rule_needing_a_session_goes_to_an_agent_and_a_blocked_run_moves_over(
         let (_, moved) = call(
             &server,
             "GET",
-            &format!("/api/v1/site-recipes/runs/{}", blocked.id),
+            &format!("/api/v1/navigations/{}", blocked.id),
             &env.alice,
             org,
             None,
@@ -2190,7 +2190,7 @@ async fn a_contacts_connections_keep_only_people_at_the_chosen_organizations() {
         assert!(c["explored_at"].is_string(), "{c}");
 
         // The raw cards of everyone met are gone from the run.
-        let (_, r) = call(&server, "GET", &format!("/api/v1/site-recipes/runs/{run}"), &env.alice, org, None).await;
+        let (_, r) = call(&server, "GET", &format!("/api/v1/navigations/{run}"), &env.alice, org, None).await;
         assert!(!r.to_string().contains("Paul Durand"), "{r}");
 
         // A hidden list stops at the connections step with its own code.
@@ -2326,4 +2326,10 @@ async fn a_member_shares_their_own_connections_with_a_team_org_and_stops() {
         assert_eq!(knows(true).await, 0, "nothing shared once off");
     })
     .await;
+}
+
+/// The pipeline document of a rule written in the rule format (PE5.5).
+fn rule_doc(yaml: &str) -> String {
+    let r = pnex_backend::services::site_recipes::parse(yaml).unwrap();
+    pnex_core::site_recipe::rule_yaml(&r)
 }

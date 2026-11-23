@@ -106,6 +106,23 @@ pub struct Enumerate {
     pub again_days: Option<u32>,
 }
 
+impl Enumerate {
+    /// Columns its rows hold, as far as the document tells: each axis' own,
+    /// its `asked` and `derive` columns and its objects' title and columns.
+    pub fn columns(&self) -> Vec<String> {
+        let mut out = Vec::new();
+        for a in &self.cross {
+            out.push(a.as_.clone());
+            out.extend(a.asked.iter().flatten().cloned());
+            out.extend(a.derive.keys().cloned());
+            if let Some(o) = &a.objects {
+                out.extend(o.title.iter().chain(&o.columns).cloned());
+            }
+        }
+        out
+    }
+}
+
 /// One axis: exactly one of `values`, `setting`, `periods`, `objects`, `range`.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -1119,7 +1136,12 @@ impl Document {
         if self.steps.len() > STEPS_MAX {
             bad("steps".into(), &format!("max_items:{STEPS_MAX}"));
         }
-        if !self.steps.iter().any(|s| matches!(s, Step::Write(_))) {
+        // A navigation alone keeps its extracts in its journal (a site rule, PE5.5).
+        if !self
+            .steps
+            .iter()
+            .any(|s| matches!(s, Step::Write(_) | Step::Browse(_)))
+        {
             bad("steps".into(), "write_required");
         }
         let hosts: HashSet<String> = self
@@ -1157,6 +1179,11 @@ impl Document {
                 );
                 if i != 1 || !after_rows {
                     bad(at.clone(), "browse_position");
+                }
+                if let Some(Step::Enumerate(e)) = self.steps.first() {
+                    for v in crate::site_recipe::check_steps(&b.steps, &e.columns()) {
+                        bad(format!("{at}.{}", v.path), &v.token);
+                    }
                 }
             }
             // Rows asked again must be rows a start can ask.
@@ -1281,7 +1308,7 @@ impl Document {
         }
         // A navigation plays in the starter's browser agent, like a site rule (D782).
         if self.steps.iter().any(|s| matches!(s, Step::Browse(_))) {
-            out.push("site-recipes:write");
+            out.push("browse:use");
         }
         for s in &self.steps {
             let Step::Write(w) = s else { continue };
@@ -2019,7 +2046,7 @@ mod tests {
             {"write": {"from": "page", "table": {"name": "Pages", "replace": false}}}
         ]));
         assert!(b.org_violations().is_empty());
-        assert!(b.rights().contains(&"site-recipes:write"));
+        assert!(b.rights().contains(&"browse:use"));
     }
 
     #[test]

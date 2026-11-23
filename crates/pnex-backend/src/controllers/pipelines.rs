@@ -203,7 +203,7 @@ async fn list(
     tag = "pipelines",
     operation_id = "pipelines_create",
     summary = "Create a pipeline",
-    description = "Creates a pipeline from a YAML engine document (steps such as `fetch`, `read`, `sql`, `write`), after its `tests:` pass on the answers they hold. It may not navigate (`browse`), share into another org, read pack settings, nor set its own schedule. Requires `pipelines:write`.",
+    description = "Creates a pipeline from a YAML engine document (steps such as `fetch`, `read`, `sql`, `write`), after its `tests:` pass on the answers they hold. A navigation (`browse`) plays in the starter's browser agent. It may not share into another org, read pack settings, nor set its own schedule. A site rule (`key: site_rule`) is a pipeline too: its `rule` is answered. Requires `pipelines:write`.",
     request_body = pnex_core::pipelines::PipelineInput,
     responses(
         (status = 201, body = pnex_core::pipelines::Pipeline),

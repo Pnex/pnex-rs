@@ -160,6 +160,7 @@ mod m20261121_000165_connection_shares;
 mod m20261121_000166_org_pipelines;
 mod m20261123_000167_pipeline_cursors;
 mod m20261123_000168_import_steps_retired;
+mod m20261123_000169_site_rules_to_pipelines;
 
 pub struct Migrator;
 
@@ -316,6 +317,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20261121_000166_org_pipelines::Migration),
             Box::new(m20261123_000167_pipeline_cursors::Migration),
             Box::new(m20261123_000168_import_steps_retired::Migration),
+            Box::new(m20261123_000169_site_rules_to_pipelines::Migration),
         ]
     }
 }

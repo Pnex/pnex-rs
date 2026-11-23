@@ -164,7 +164,7 @@ pub fn app_routes() -> AppRoutes {
         .add_route(controllers::extension::routes())
         .add_route(controllers::ws_extension::routes())
         .add_route(controllers::time_ranges::routes())
-        .add_route(controllers::site_recipes::routes())
+        .add_route(controllers::navigations::routes())
         .add_route(controllers::web_search::routes())
         .add_route(controllers::mailboxes::routes())
         .add_route(controllers::proposals::routes())

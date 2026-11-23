@@ -318,124 +318,58 @@ async fn a_browser_endpoint_keeps_its_token_and_its_org() {
     .await;
 }
 
-/// A draft is checked without being saved; an old version comes back as a new
-/// one, its history kept.
+/// PE5.5: a site rule is an org pipeline. Its check answers the rule, a
+/// pipeline that is not one answers none, and the Web sites page counts it.
 #[tokio::test]
 #[serial]
-async fn a_recipe_is_validated_without_saving_and_restored_as_a_new_version() {
+async fn a_site_rule_is_an_org_pipeline() {
     with_app(|server, env| async move {
         let org = org_of(&server, &env.alice).await;
-        let other = org_of(&server, &env.bob).await;
-        let yaml = |step: &str| {
-            format!("name: programme\nsite: example.org\nsteps:\n  - open: \"{step}\"\n")
+        let rule = |step: &str| {
+            let r = pnex_backend::services::site_recipes::parse(&format!(
+                "name: programme\nsite: www.example.org\nparams: [code]\nsteps:\n  - open: \"{step}/{{{{code}}}}\"\n"
+            ))
+            .unwrap();
+            pnex_core::site_recipe::rule_yaml(&r)
         };
-
-        let (st, r) = call(
+        let (st, check) = call(
             &server,
             "POST",
-            "/api/v1/site-recipes/validate",
+            "/api/v1/pipelines/validate",
             &env.alice,
             org,
-            Some(json!({"yaml": yaml("/")})),
+            Some(json!({"document": rule("/one")})),
         )
         .await;
-        assert_eq!(st, 200, "{r}");
-        let (st, e) = call(
-            &server,
-            "POST",
-            "/api/v1/site-recipes/validate",
-            &env.alice,
-            org,
-            Some(json!({"yaml": "name: broken\nsteps: nope\n"})),
-        )
-        .await;
-        assert_eq!(
-            (st, e["error"].as_str()),
-            (400, Some("site-recipe-invalid")),
-            "{e}"
-        );
-        let (_, list) = call(
-            &server,
-            "GET",
-            "/api/v1/site-recipes",
-            &env.alice,
-            org,
-            None,
-        )
-        .await;
-        assert_eq!(list["count"], 0, "validating saves nothing: {list}");
+        assert_eq!(st, 200, "{check}");
+        assert_eq!(check["rule"]["params"], json!(["code"]), "{check}");
+        assert!(check["rights"].as_array().unwrap().contains(&json!("browse:use")), "{check}");
 
         let (st, created) = call(
             &server,
             "POST",
-            "/api/v1/site-recipes",
+            "/api/v1/pipelines",
             &env.alice,
             org,
-            Some(json!({"yaml": yaml("/one")})),
+            Some(json!({"name": "programme", "document": rule("/one")})),
         )
         .await;
         assert_eq!(st, 201, "{created}");
-        let path = format!("/api/v1/site-recipes/{}", created["id"].as_str().unwrap());
-        let (st, saved) = call(
-            &server,
-            "PUT",
-            &path,
-            &env.alice,
-            org,
-            Some(json!({"yaml": yaml("/two")})),
-        )
-        .await;
-        assert_eq!(st, 200, "{saved}");
-
-        let (st, _) = call(
-            &server,
-            "POST",
-            &format!("{path}/versions/1/restore"),
-            &env.bob,
-            other,
-            None,
-        )
-        .await;
-        assert_eq!(st, 404, "another org does not see the recipe");
-        let (st, e) = call(
-            &server,
-            "POST",
-            &format!("{path}/versions/99/restore"),
-            &env.alice,
-            org,
-            None,
-        )
-        .await;
-        assert_eq!(
-            (st, e["error"].as_str()),
-            (404, Some("site-recipe-not-found")),
-            "{e}"
-        );
-
-        let (st, restored) = call(
-            &server,
-            "POST",
-            &format!("{path}/versions/1/restore"),
-            &env.alice,
-            org,
-            None,
-        )
-        .await;
-        assert_eq!(st, 200, "{restored}");
-        assert!(
-            restored["yaml"].as_str().unwrap().contains("/one"),
-            "{restored}"
-        );
-        let (_, versions) = call(
+        assert_eq!(created["rule"]["site"], "www.example.org", "{created}");
+        let (_, sites) = call(&server, "GET", "/api/v1/web-sites", &env.alice, org, None).await;
+        assert_eq!(sites["results"][0]["site"], "example.org", "{sites}");
+        assert_eq!(sites["results"][0]["recipes"], 1, "{sites}");
+        let id = created["id"].as_str().unwrap();
+        let (st, flows) = call(
             &server,
             "GET",
-            &format!("{path}/versions"),
+            &format!("/api/v1/pipelines/{id}/flows"),
             &env.alice,
             org,
             None,
         )
         .await;
-        assert_eq!(versions["count"], 3, "the history is kept: {versions}");
+        assert_eq!((st, flows["flows"].clone()), (200, json!([])), "{flows}");
     })
     .await;
 }

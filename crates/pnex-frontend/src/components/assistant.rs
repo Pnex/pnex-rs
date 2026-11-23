@@ -808,7 +808,7 @@ fn SiteRecipeProposal(entry: AiToolTrace) -> Element {
             .and_then(|v| v.as_str())
             .map(str::to_string)
     };
-    let (yaml, recipe_id) = (arg("yaml").unwrap_or_default(), arg("recipe_id"));
+    let (yaml, recipe_id) = (arg("document").unwrap_or_default(), arg("recipe_id"));
     let open = move |_| {
         let (yaml, recipe_id) = (yaml.clone(), recipe_id.clone());
         spawn(async move {

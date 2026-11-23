@@ -167,6 +167,10 @@ pub struct Pipeline {
     pub recurrence: Option<serde_json::Value>,
     #[cfg_attr(feature = "openapi", schema(format = "date-time"))]
     pub next_run_at: Option<String>,
+    /// The site rule it is, when it is one: an asked row, then a navigation
+    /// (PE5.5). The "Web sites" page edits it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rule: Option<crate::site_recipe::Recipe>,
     #[cfg_attr(feature = "openapi", schema(format = "date-time"))]
     pub created_at: String,
     #[cfg_attr(feature = "openapi", schema(format = "date-time"))]
@@ -261,6 +265,9 @@ pub struct PipelineCheck {
     pub tests: usize,
     /// Permissions a member needs to run it.
     pub rights: Vec<String>,
+    /// The site rule it is, when it is one (PE5.5).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rule: Option<crate::site_recipe::Recipe>,
 }
 
 /// A dataset linked to another by a pipeline run.

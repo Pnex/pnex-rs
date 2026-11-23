@@ -498,7 +498,7 @@ Studio (D324) : coquille d'éditeur commune et lecteur commun (D220). La capture
 
 - **Versions** (`site_recipe_versions`) : ouvrir, comparer, rétablir.
 - **Reprendre à l'étape N** : rejoue le brouillon depuis l'étape N, sur la page atteinte après l'étape N−1.
-- **Vue en direct** : capture du navigateur toutes les 1,5 s dans Valkey (`pnex:site-recipe:live:<run>`, 20 s de vie), servie par `GET /site-recipes/runs/{id}/live`.
+- **Vue en direct** : capture du navigateur toutes les 1,5 s dans Valkey (`pnex:site-recipe:live:<run>`, 20 s de vie), servie par `GET /navigations/{id}/live`.
 - **Assistant** : outils `list_site_recipes`, `get_site_recipe`, `get_site_recipe_run`, `try_site_recipe`, `propose_site_recipe`. Les extraits arrivent au modèle entre balises `<data>` (D208). Une proposition s'ouvre en brouillon non enregistré.
 
 Règle dans un flow (D327, D786) : le nœud `agent_run` porte `recipe_id` et `params` à la place d'un agent. Le backend lit la règle dans la version déployée du flow et joue sa dernière version enregistrée. Le nœud n'attend pas la fin : le port 0 rend le run, le port 1 rend un refus. À la fin du run, le nœud `agent_run_finished` reçoit son `outcome` :
@@ -507,7 +507,7 @@ Règle dans un flow (D327, D786) : le nœud `agent_run` porte `recipe_id` et `pa
 - `failed` : le passage a échoué.
 - `broke` : le passage a échoué juste après un passage `flow` réussi.
 
-Un filtre `recipe_id` et un filtre `outcome` choisissent les fins reçues. Une notification « une fois quand ça casse » se câble derrière un `agent_run_finished` filtré sur `broke`. Le message porte `extracts` (texte par extrait) et `outputs` (média par extrait). Un run de règle n'appartient à aucune chaîne. `GET /site-recipes/{id}/schedule` donne les 5 prochaines dates depuis les inject en amont.
+Un filtre `recipe_id` et un filtre `outcome` choisissent les fins reçues. Une notification « une fois quand ça casse » se câble derrière un `agent_run_finished` filtré sur `broke`. Le message porte `extracts` (texte par extrait) et `outputs` (média par extrait). Un run de règle n'appartient à aucune chaîne. `GET /pipelines/{id}/flows` donne les 5 prochaines dates depuis les inject en amont.
 
 À chaque passage `flow` réussi, chaque extrait devient un média `document`. Une nouvelle version naît seulement si le SHA-256 change. Un pruner horaire supprime captures et PDF au-delà de la rétention `captures`. Étapes, extraits texte et journal restent.
 
@@ -784,7 +784,7 @@ Décisions liées, définies ailleurs : D123, D144 (`ai-assistant.md`, `security
 | Runners (org) | `GET /runners`, `DELETE /runners/{id}`, `POST /runners/join-tokens`, `GET/POST /runner-jobs` | `runners:*` |
 | Runner (machine) | `POST /runner/register`, `/runner/jobs/claim`, `…/{id}/heartbeat`, `…/logs`, `…/sbom`, `…/finish` | `Machine` |
 | Bac (machine) | `POST /agent-gateway/v1/messages`, `…/v1/chat/completions`, `/agent-transfer/inputs/{name}`, `/outputs/{name}`, `/caches/{name}` | `Machine` (token de run, jeton `pnart_`) |
-| Règles | `/site-recipes`, `…/validate`, `…/runs`, `…/runs/{id}` (`files`, `live`), `…/{id}/schedule`, `…/{id}/versions`, `…/versions/{version}/restore`, `GET /web-sites` | `site-recipes:*` |
+| Règles | Une règle est un pipeline d'org (`/pipelines`, PE5.5). `/navigations`, `/navigations/{id}` (`files`, `live`), `GET /pipelines/{id}/flows`, `GET /web-sites` | `pipelines:read`, `browse:use` pour jouer |
 | Navigateurs | `/browser-endpoints`, `…/{id}`, `…/{id}/test` | `browser-endpoints:*` |
 | Système | `GET/PUT /system/agent-limits` | `Platform` |
 

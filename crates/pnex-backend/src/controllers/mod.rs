@@ -62,6 +62,7 @@ pub mod memory;
 pub mod meta;
 pub mod ml_models;
 pub mod mt5;
+pub mod navigations;
 /// Notifications (D49–D54) — CRUD channels/templates + test/preview/journal.
 pub mod notify;
 pub mod oauth2;
@@ -84,7 +85,6 @@ pub mod runners;
 /// Org secrets vault (D110–D118).
 pub mod secrets;
 /// Site navigation rules, test runs and their journal (agents.md D323–D326).
-pub mod site_recipes;
 pub mod stitch_jobs;
 /// System: O2 retention/cleanup + platform status (D72).
 pub mod system;

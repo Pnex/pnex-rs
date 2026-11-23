@@ -97,10 +97,10 @@ async fn deployed_node_plays_its_rule_and_reports_when_it_breaks() {
             .as_i64()
             .unwrap();
         let created = server
-            .post("/api/v1/site-recipes")
+            .post("/api/v1/pipelines")
             .add_header("Authorization", &auth)
             .add_header("X-Org-Id", org.to_string())
-            .json(&json!({"yaml": "name: programme\nsite: example.org\nsteps:\n  - open: \"/\"\n"}))
+            .json(&json!({"name": "programme", "document": rule_doc("name: programme\nsite: example.org\nsteps:\n  - open: \"/\"\n")}))
             .await;
         assert_eq!(created.status_code().as_u16(), 201, "{}", created.text());
         let recipe_id = created.json::<Value>()["id"].as_str().unwrap().to_string();
@@ -108,7 +108,7 @@ async fn deployed_node_plays_its_rule_and_reports_when_it_breaks() {
         // Before any flow plays it, the studio says so.
         let sched = |server: &axum_test::TestServer| {
             server
-                .get(&format!("/api/v1/site-recipes/{recipe_id}/schedule"))
+                .get(&format!("/api/v1/pipelines/{recipe_id}/flows"))
                 .add_header("Authorization", &auth)
                 .add_header("X-Org-Id", org.to_string())
         };
@@ -179,10 +179,10 @@ async fn deployed_node_plays_its_rule_and_reports_when_it_breaks() {
 
         // A missing parameter is refused at once, on port 1.
         let with_param = server
-            .post("/api/v1/site-recipes")
+            .post("/api/v1/pipelines")
             .add_header("Authorization", &auth)
             .add_header("X-Org-Id", org.to_string())
-            .json(&json!({"yaml": "name: fiche\nsite: example.org\nparams: [code]\nsteps:\n  - open: \"/{{code}}\"\n"}))
+            .json(&json!({"name": "fiche", "document": rule_doc("name: fiche\nsite: example.org\nparams: [code]\nsteps:\n  - open: \"/{{code}}\"\n")}))
             .await;
         assert_eq!(with_param.status_code().as_u16(), 201, "{}", with_param.text());
         let other = deploy(&db, org, with_param.json::<Value>()["id"].as_str().unwrap()).await;
@@ -241,10 +241,10 @@ async fn a_run_resumes_only_from_a_valid_step_of_the_same_site() {
         .unwrap();
         let start = |resume: Value| {
             server
-                .post("/api/v1/site-recipes/runs")
+                .post("/api/v1/navigations")
                 .add_header("Authorization", &auth)
                 .add_header("X-Org-Id", org.to_string())
-                .json(&json!({"yaml": yaml, "resume": resume}))
+                .json(&json!({"document": rule_doc(yaml), "resume": resume}))
         };
         // Step 1 starts on the page left by step 0, which passed.
         let ok = start(json!({"run_id": earlier, "step": 1})).await;
@@ -259,10 +259,10 @@ async fn a_run_resumes_only_from_a_valid_step_of_the_same_site() {
         // Another site's run is refused.
         let other = yaml.replace("example.org", "example.com");
         let r = server
-            .post("/api/v1/site-recipes/runs")
+            .post("/api/v1/navigations")
             .add_header("Authorization", &auth)
             .add_header("X-Org-Id", org.to_string())
-            .json(&json!({"yaml": other, "resume": {"run_id": earlier, "step": 1}}))
+            .json(&json!({"document": rule_doc(&other), "resume": {"run_id": earlier, "step": 1}}))
             .await;
         assert_eq!(r.status_code().as_u16(), 400, "{}", r.text());
 
@@ -313,11 +313,11 @@ async fn the_assistant_tries_and_proposes_rules_without_saving() {
         use pnex_backend::models::_entities::sea_orm_active_enums::OrgMemberRole as R;
         let yaml = "name: programme\nsite: https://www.example.org/x\nsteps:\n  - open: \"/\"\n  - extract: {all_text: true, as: page}\n";
         // A draft is never played by the assistant (SEC-71): only a saved rule.
-        let draft = execute(&deps(R::Member), "try_site_recipe", &json!({"yaml": yaml})).await.unwrap_err();
+        let draft = execute(&deps(R::Member), "try_site_recipe", &json!({"document": rule_doc(yaml)})).await.unwrap_err();
         assert_eq!(draft.code, Some("ai-site-recipe-saved-only"));
         let missing = execute(&deps(R::Member), "try_site_recipe", &json!({"recipe_id": uuid::Uuid::new_v4().to_string()})).await.unwrap_err();
         assert_eq!(missing.code, Some("site-recipe-not-found"));
-        let p = execute(&deps(R::Member), "propose_site_recipe", &json!({"yaml": yaml})).await.unwrap().value;
+        let p = execute(&deps(R::Member), "propose_site_recipe", &json!({"document": rule_doc(yaml)})).await.unwrap().value;
         assert_eq!((p["executed"].as_bool(), p["site"].as_str()), (Some(false), Some("example.org")), "{p}");
         let list = execute(&deps(R::Member), "list_site_recipes", &json!({})).await.unwrap().value;
         assert_eq!(list["rules"], json!([]), "a proposal saves nothing");
@@ -327,4 +327,10 @@ async fn the_assistant_tries_and_proposes_rules_without_saving() {
         execute(&deps(R::Viewer), "list_site_recipes", &json!({})).await.unwrap();
     })
     .await;
+}
+
+/// The pipeline document of a rule written in the rule format (PE5.5).
+fn rule_doc(yaml: &str) -> String {
+    let r = pnex_backend::services::site_recipes::parse(yaml).unwrap();
+    pnex_core::site_recipe::rule_yaml(&r)
 }

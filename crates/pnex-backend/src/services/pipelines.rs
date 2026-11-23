@@ -140,6 +140,7 @@ pub async fn check(
         steps: doc.steps.iter().map(|s| s.name().to_string()).collect(),
         tests: doc.tests.len(),
         rights: doc.rights().into_iter().map(str::to_string).collect(),
+        rule: pnex_core::site_recipe::rule_of(&doc),
     })
 }
 
@@ -205,11 +206,16 @@ fn pipeline_select() -> String {
 }
 
 fn pipeline_of(row: &QueryResult) -> Result<Pipeline, DbErr> {
+    let document: String = row.try_get("", "document")?;
     Ok(Pipeline {
         id: row.try_get::<Uuid>("", "id")?.to_string(),
         name: row.try_get("", "name")?,
         version: row.try_get("", "version")?,
-        document: row.try_get("", "document")?,
+        rule: serde_saphyr::from_str::<Document>(&document)
+            .ok()
+            .as_ref()
+            .and_then(pnex_core::site_recipe::rule_of),
+        document,
         recurrence: row.try_get("", "recurrence")?,
         next_run_at: row.try_get("", "next_run_at")?,
         created_at: row.try_get("", "created_at")?,

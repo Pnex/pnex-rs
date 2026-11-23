@@ -67,7 +67,12 @@ pub mod as_of;
 /// document (`key`, `steps`, `tests`), no longer `transforms`; the check
 /// route answers `PipelineCheck`; a lineage link of a pack pipeline has no
 /// `pipeline_id`.
-pub const CONTRACT: u32 = 13;
+/// 14 (2026-11-23, pipelines.md PE5.5): a site rule is an org pipeline:
+/// `/site-recipes` is gone, its runs move to `/navigations` (a draft is a
+/// pipeline `document`), its flows to `/pipelines/{id}/flows`; a pipeline
+/// and its check carry `rule`; `site-recipes:*` gives way to `pipelines:*`
+/// and `browse:use`.
+pub const CONTRACT: u32 = 14;
 
 /// Routes under this prefix act on the org of their `{id}`, which must also be
 /// the `X-Org-Id` (SEC-75): generated clients send the path org there instead

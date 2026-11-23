@@ -85,7 +85,7 @@ pub fn WebSites() -> Element {
         let _ = reload();
         api::site_recipes::sites().await
     });
-    let can_write = can("site-recipes:write");
+    let can_write = can("pipelines:write");
     // Whole list loaded (one row per site): filtered and paged here.
     let query = search().trim().to_lowercase();
     let (state, all) = match &*sites.read() {

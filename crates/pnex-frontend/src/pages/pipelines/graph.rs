@@ -267,6 +267,7 @@ mod tests {
             steps: Vec::new(),
             tests: 0,
             rights: Vec::new(),
+            rule: None,
         };
         let (names, edges) = document_graph(&check);
         assert_eq!(names, ["raw", "ref", "clean"]);

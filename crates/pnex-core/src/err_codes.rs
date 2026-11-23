@@ -1005,8 +1005,6 @@ pub const MEDIA_UPLOAD_INTERRUPTED: &str = "media-upload-interrupted";
 pub const SITE_RECIPE_INVALID: &str = "site-recipe-invalid";
 /// Site recipe not found (or not in the org).
 pub const SITE_RECIPE_NOT_FOUND: &str = "site-recipe-not-found";
-/// The recipe was saved by someone else since it was read.
-pub const SITE_RECIPE_VERSION_CONFLICT: &str = "site-recipe-version-conflict";
 /// Site recipe run not found (or not in the org).
 pub const SITE_RECIPE_RUN_NOT_FOUND: &str = "site-recipe-run-not-found";
 /// A run is missing a value of the recipe's `params`; `args.param`.
@@ -1515,7 +1513,6 @@ pub const ALL: &[&str] = &[
     INGEST_SUSPICIOUS_CLOSURES,
     SITE_RECIPE_INVALID,
     SITE_RECIPE_NOT_FOUND,
-    SITE_RECIPE_VERSION_CONFLICT,
     SITE_RECIPE_RUN_NOT_FOUND,
     SITE_RECIPE_PARAM_MISSING,
     SITE_RECIPE_NO_AGENT,
