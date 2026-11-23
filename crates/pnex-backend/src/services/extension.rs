@@ -937,6 +937,14 @@ pub async fn candidates(
                 _ => 0,
             };
             let foreground = ba::runs_in_front(&agent.mode, ba::platform_of(&m.target));
+            // The pages and sites of a followed platform are its pack's (D951).
+            let follow = match &m.spec {
+                MissionSpec::FollowAccount(p) => Some(
+                    crate::services::pipeline_engine::store::follow_of(p.platform.wire())?
+                        .plan(&p.handle),
+                ),
+                _ => None,
+            };
             Some(ba::AssignedMission {
                 id: m.id,
                 spec: m.spec,
@@ -944,6 +952,7 @@ pub async fn candidates(
                 interval_secs: m.interval_secs,
                 scroll_depth,
                 foreground,
+                follow,
             })
         })
         .collect())

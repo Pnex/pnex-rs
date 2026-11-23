@@ -111,8 +111,8 @@ async fn profile_url(
     Ok(o.properties
         .get("profile_url")
         .and_then(|v| v.as_str())
-        .and_then(|u| ba::profile_of(u).ok())
-        .filter(|(n, _)| *n == NETWORK)
+        .and_then(|u| crate::services::pipeline_engine::store::profile_of(u).ok())
+        .filter(|(n, _)| n == NETWORK)
         .map(|(_, u)| u))
 }
 

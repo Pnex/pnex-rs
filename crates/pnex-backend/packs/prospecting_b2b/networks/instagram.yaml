@@ -1,0 +1,12 @@
+# A person's profile page on Instagram (D333).
+key: instagram
+domains: [instagram.com]
+site: www.instagram.com
+profiles:
+  - { path: ["{u}"], canonical: "https://www.instagram.com/{u}/" }
+names:
+  u:
+    chars: "._"
+    max: 30
+    # First path segments that are pages, not usernames.
+    not: [explore, accounts, p, reel, reels, stories, direct, tv, about, legal, developer, web]

@@ -14,32 +14,48 @@ pub fn is_list_url(url: &str) -> bool {
 }
 
 /// Videos and shorts found in one JSON document, by id.
-pub fn posts_of(body: &str, handle: &str) -> Vec<SeenPost> {
+pub fn posts_of(
+    body: &str,
+    handle: &str,
+    follow: &pnex_core::browser_agent::FollowPlan,
+) -> Vec<SeenPost> {
     let Ok(json) = serde_json::from_str::<Value>(body) else {
         return Vec::new();
     };
     let mut found = BTreeMap::new();
-    walk(&json, handle, &mut found);
+    walk(&json, handle, follow, &mut found);
     found.into_values().collect()
 }
 
-fn walk(v: &Value, handle: &str, out: &mut BTreeMap<String, SeenPost>) {
+fn walk(
+    v: &Value,
+    handle: &str,
+    follow: &pnex_core::browser_agent::FollowPlan,
+    out: &mut BTreeMap<String, SeenPost>,
+) {
     match v {
         Value::Object(map) => {
             for (key, child) in map {
-                if let Some(post) = item_of(key, child, handle) {
+                if let Some(post) = item_of(key, child, handle, follow) {
                     out.entry(post.platform_id.clone()).or_insert(post);
                 }
-                walk(child, handle, out);
+                walk(child, handle, follow, out);
             }
         }
-        Value::Array(items) => items.iter().for_each(|child| walk(child, handle, out)),
+        Value::Array(items) => items
+            .iter()
+            .for_each(|child| walk(child, handle, follow, out)),
         _ => {}
     }
 }
 
 /// One video or short card, whatever its renderer.
-fn item_of(key: &str, v: &Value, handle: &str) -> Option<SeenPost> {
+fn item_of(
+    key: &str,
+    v: &Value,
+    handle: &str,
+    follow: &pnex_core::browser_agent::FollowPlan,
+) -> Option<SeenPost> {
     let (id, title, short, length) = match key {
         "videoRenderer" => (
             v["videoId"].as_str()?,
@@ -76,11 +92,7 @@ fn item_of(key: &str, v: &Value, handle: &str) -> Option<SeenPost> {
     if !valid {
         return None;
     }
-    let url = if short {
-        format!("https://www.youtube.com/shorts/{id}")
-    } else {
-        format!("https://www.youtube.com/watch?v={id}")
-    };
+    let url = follow.post_url(handle, id, short);
     Some(SeenPost {
         platform_id: id.to_string(),
         url: url.clone(),
@@ -98,7 +110,7 @@ fn item_of(key: &str, v: &Value, handle: &str) -> Option<SeenPost> {
 /// Caption track of a watch page (`ytInitialPlayerResponse`): a track
 /// written by people when there is one, else the automatic one. Returns
 /// its language and the URL of its `json3` form.
-pub fn caption_track(player: &str) -> Option<(String, String)> {
+pub fn caption_track(player: &str, site: &str) -> Option<(String, String)> {
     let json: Value = serde_json::from_str(player).ok()?;
     let tracks = json["captions"]["playerCaptionsTracklistRenderer"]["captionTracks"].as_array()?;
     let track = tracks
@@ -106,7 +118,8 @@ pub fn caption_track(player: &str) -> Option<(String, String)> {
         .find(|t| t["kind"].as_str() != Some("asr"))
         .or_else(|| tracks.first())?;
     let base = track["baseUrl"].as_str()?;
-    if !base.starts_with("https://www.youtube.com/") {
+    // Only a track of the platform itself is fetched.
+    if !base.starts_with(site) {
         return None;
     }
     let lang = track["languageCode"].as_str().unwrap_or("und").to_string();
@@ -163,10 +176,19 @@ mod tests {
     use super::*;
 
     const FIXTURE: &str = include_str!("../../tests/fixtures/youtube_channel.json");
+    const SITE: &str = "https://www.youtube.com/";
+
+    fn plan() -> pnex_core::browser_agent::FollowPlan {
+        pnex_core::browser_agent::FollowPlan {
+            post: "https://www.youtube.com/watch?v={id}".into(),
+            short: Some("https://www.youtube.com/shorts/{id}".into()),
+            ..Default::default()
+        }
+    }
 
     #[test]
     fn reads_videos_and_shorts_of_both_layouts() {
-        let posts = posts_of(FIXTURE, "SomeChannel");
+        let posts = posts_of(FIXTURE, "SomeChannel", &plan());
         let ids: Vec<&str> = posts.iter().map(|p| p.platform_id.as_str()).collect();
         assert_eq!(
             ids,
@@ -193,16 +215,16 @@ mod tests {
         let player = r#"{"captions":{"playerCaptionsTracklistRenderer":{"captionTracks":[
             {"baseUrl":"https://www.youtube.com/api/timedtext?v=x&lang=fr&kind=asr","languageCode":"fr","kind":"asr"},
             {"baseUrl":"https://www.youtube.com/api/timedtext?v=x&lang=en","languageCode":"en"}]}}}"#;
-        let (lang, url) = caption_track(player).unwrap();
+        let (lang, url) = caption_track(player, SITE).unwrap();
         assert_eq!(lang, "en");
         assert_eq!(
             url,
             "https://www.youtube.com/api/timedtext?v=x&lang=en&fmt=json3"
         );
-        assert!(caption_track(r#"{"captions":{}}"#).is_none());
+        assert!(caption_track(r#"{"captions":{}}"#, SITE).is_none());
         let evil = r#"{"captions":{"playerCaptionsTracklistRenderer":{"captionTracks":[{"baseUrl":"https://evil.example/x","languageCode":"en"}]}}}"#;
         assert!(
-            caption_track(evil).is_none(),
+            caption_track(evil, SITE).is_none(),
             "only YouTube's own caption URLs"
         );
 

@@ -447,7 +447,7 @@ Un pipeline peut déclarer `object_hosts` : des adresses tenues par les objets d
 
 ### 4.1 Moteur et données
 
-1. Le moteur ne doit contenir aucun hôte ni nom de source en littéral hors test. `tests/engine_genericity.rs` gèle l'existant dans `HOST_DEBT` (D951).
+1. Le moteur ne doit contenir aucun hôte ni nom de source en littéral hors test. `tests/engine_genericity.rs` refuse tout hôte public (D951).
 2. Un pipeline livré doit porter `tests:`. Un seul test Rust rejoue tous les pipelines livrés, sans réseau (D945).
 3. Un fichier d'exemple de test doit faire 64 Ko au plus.
 4. Un pipeline doit lister ses `hosts`. Une valeur venue d'une ligne ne doit jamais changer l'hôte (D942).
@@ -643,7 +643,7 @@ Mesure autour d'événements et chaînes candidates vont vers `/analysis`. Les s
 Un terminal ou un modèle externe qui envoie des lignes est un webhook (D795). Les routes `/mt5/*` sont gardées (choix de Shan).
 
 ### D951 — La garde voit les fournisseurs
-`engine_genericity` refuse un hôte public en littéral. La dette `HOST_DEBT` doit être vide à la fin de PE9.
+`engine_genericity` refuse un hôte public en littéral. La dette `HOST_DEBT` est vide depuis PE9 (2026-11-23). Choix de Shan (2026-11-23) : les réseaux de profil vont dans le pack. Un fichier `packs/<pack>/networks/<clé>.yaml` déclare les domaines, les formes d'une page de profil et d'une liste d'employés, et les mots réservés. Pour une plateforme vidéo, il déclare aussi les pages lues d'un compte, les sites autorisés et les adresses d'un post. Seuls les packs livrés comptent : une org ne peut pas élargir ce qu'est un profil (D779, D976). Le serveur envoie ces pages à l'agent avec la mission.
 
 ### D952 — Remise à zéro
 Tables des anciens chargeurs supprimées et rechargées par les pipelines. Routes retirées = `feat(api)!`.
@@ -753,7 +753,7 @@ tests:
 **Lots du moteur non finis :**
 
 - PE8 : mesure autour d'événements et chaînes candidates dans `/analysis`, note de séance en règle.
-- PE9 : `HOST_DEBT` à vider (2 lignes : réseaux des agents navigateur, adaptateurs de l'extension).
+- Lecteurs vidéo de l'extension (X, YouTube, TikTok) : encore codés en Rust, sans hôte. Les écrire en règles demande des étapes génériques nouvelles (réponses réseau, mapping JSON, sous-titres). Choix à faire par Shan.
 - D946 : les pipelines des packs restent hors des exécutions enchaînées. `after` d'un pipeline du moteur n'est pas appliqué.
 - D941 : cible `series` non codée.
 - D944 : la sonde n'a pas de route.

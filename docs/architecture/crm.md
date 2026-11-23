@@ -211,7 +211,7 @@ sequenceDiagram
 
 PneX ne surveille aucun profil et ne parcourt aucun graphe social (D254). Chaque capture part d'un humain, une page à la fois, dans la session déjà connectée de son agent.
 
-- **Profil d'une personne** (D333) : six réseaux reconnus (`browser_agent::profile_of`). Toute autre page reçoit `ext-target-not-profile`. Plafond compilé : 30 captures par jour, par org et par réseau (`ext-profile-daily-cap`). Le texte va dans un document `captured_text` lié à la personne. L'adresse devient un `identifier` relié par `uses_identifier`.
+- **Profil d'une personne** (D333) : six réseaux déclarés par le pack `prospecting_b2b` (`networks/*.yaml`, D951). Toute autre page reçoit `ext-target-not-profile`. Plafond compilé : 30 captures par jour, par org et par réseau (`ext-profile-daily-cap`). Le texte va dans un document `captured_text` lié à la personne. L'adresse devient un `identifier` relié par `uses_identifier`.
 - **Lecture du profil** (D538) : le flow `captured profiles` écrit poste et société sur la personne (`personal`). Il propose `employs` quand le registre trouve la société. Il ne crée aucune personne.
 - **Liste des salariés** (D779) : seule la page des salariés d'une entreprise est admise (`browser_agent::people_page_of`, sinon `ext-target-not-people-page`). L'agent fait défiler 5 écrans. Plafond : 10 listes par jour et par org (`ext-people-daily-cap`). Le flow `captured employee lists` écrit un `list_contact` par personne nommée et propose `contact_of`. Aucune `person` n'est créée.
 - **Export de profils réseau** : l'import *Network profiles export (file)* crée une personne par `profile_url` (unique, point de contact). Un flow cherche l'employeur au registre et le propose.

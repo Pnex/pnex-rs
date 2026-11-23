@@ -1,0 +1,14 @@
+# A channel's page on YouTube (D333): `@` then the handle, or its about page.
+key: youtube
+domains: [youtube.com]
+site: www.youtube.com
+profiles:
+  - { path: ["@{h}"], canonical: "https://www.youtube.com/@{h}" }
+  - { path: ["@{h}", about], canonical: "https://www.youtube.com/@{h}" }
+names:
+  h: { chars: "._-", max: 50 }
+follow:
+  pages: ["https://www.youtube.com/@{handle}/videos", "https://www.youtube.com/@{handle}/shorts"]
+  sites: ["https://www.youtube.com/"]
+  post: "https://www.youtube.com/watch?v={id}"
+  short: "https://www.youtube.com/shorts/{id}"

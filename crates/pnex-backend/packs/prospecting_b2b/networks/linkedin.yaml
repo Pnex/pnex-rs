@@ -1,0 +1,12 @@
+# A person's profile page and a company's employee list on LinkedIn (D333,
+# D779). Search results and relation lists match no shape: refused.
+key: linkedin
+domains: [linkedin.com]
+site: www.linkedin.com
+profiles:
+  - { path: [in, "{slug}"], canonical: "https://www.linkedin.com/in/{slug}" }
+people:
+  - { path: [company, "{slug}", people], canonical: "https://www.linkedin.com/company/{slug}/people/" }
+names:
+  # Slugs may carry percent-encoded letters.
+  slug: { chars: "-_%", max: 100 }

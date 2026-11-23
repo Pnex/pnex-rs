@@ -18,7 +18,11 @@ pub fn is_list_url(url: &str) -> bool {
 pub type PostWithCaptions = (SeenPost, Option<(String, String)>);
 
 /// Posts of `handle` in one response, by id; photo posts carry no video.
-pub fn posts_of(body: &str, handle: &str) -> Vec<PostWithCaptions> {
+pub fn posts_of(
+    body: &str,
+    handle: &str,
+    follow: &pnex_core::browser_agent::FollowPlan,
+) -> Vec<PostWithCaptions> {
     let Ok(json) = serde_json::from_str::<Value>(body) else {
         return Vec::new();
     };
@@ -51,7 +55,7 @@ pub fn posts_of(body: &str, handle: &str) -> Vec<PostWithCaptions> {
             });
         let post = SeenPost {
             platform_id: id.to_string(),
-            url: format!("https://www.tiktok.com/@{author}/video/{id}"),
+            url: follow.post_url(author, id, false),
             author: author.to_string(),
             text: item["desc"].as_str().unwrap_or_default().to_string(),
             published_at: item["createTime"].as_i64().map(unix_to_rfc3339),
@@ -150,9 +154,16 @@ mod tests {
 
     const FIXTURE: &str = include_str!("../../tests/fixtures/tiktok_item_list.json");
 
+    fn plan() -> pnex_core::browser_agent::FollowPlan {
+        pnex_core::browser_agent::FollowPlan {
+            post: "https://www.tiktok.com/@{author}/video/{id}".into(),
+            ..Default::default()
+        }
+    }
+
     #[test]
     fn reads_the_account_posts_with_play_address_and_captions() {
-        let posts = posts_of(FIXTURE, "Some.Account");
+        let posts = posts_of(FIXTURE, "Some.Account", &plan());
         assert_eq!(posts.len(), 2, "the other author is skipped");
         let (clip, captions) = &posts[0];
         assert_eq!(clip.platform_id, "7420000000000000001");

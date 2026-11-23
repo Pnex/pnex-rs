@@ -134,7 +134,11 @@ async fn oppose_by(
     let mut keys = vec![person_key(person_id)];
     for row in accounts {
         if let Ok(Some(v)) = row.try_get::<Option<String>>("", "value") {
-            keys.push(ba::profile_of(&v).map(|(_, c)| c).unwrap_or(v));
+            keys.push(
+                crate::services::pipeline_engine::store::profile_of(&v)
+                    .map(|(_, c)| c)
+                    .unwrap_or(v),
+            );
         }
     }
     // Its addresses and numbers stop flows creating anything from them (D610),
@@ -335,13 +339,14 @@ pub async fn request(
 ) -> Result<ba::ProfileCapture, ExtensionError> {
     let db = &ctx.db;
     person(db, org_id, person_id).await?;
-    let (network, url) = ba::profile_of(raw_url).map_err(|r| match r {
-        ba::ProfileRefusal::NotNetwork => ExtensionError::Invalid {
-            field: "url".into(),
-            token: err_codes::FIELD_INVALID.into(),
-        },
-        ba::ProfileRefusal::NotProfile => ExtensionError::NotProfile,
-    })?;
+    let (network, url) =
+        crate::services::pipeline_engine::store::profile_of(raw_url).map_err(|r| match r {
+            ba::ProfileRefusal::NotNetwork => ExtensionError::Invalid {
+                field: "url".into(),
+                token: err_codes::FIELD_INVALID.into(),
+            },
+            ba::ProfileRefusal::NotProfile => ExtensionError::NotProfile,
+        })?;
     if opposed_any(db, org_id, &[person_key(person_id), url.clone()]).await? {
         return Err(ExtensionError::Opposed);
     }
@@ -478,13 +483,14 @@ pub async fn request_people(
 ) -> Result<ba::ProfileCapture, ExtensionError> {
     let db = &ctx.db;
     let type_key = organization(db, org_id, organization_id).await?;
-    let url = ba::people_page_of(raw_url).map_err(|r| match r {
-        ba::ProfileRefusal::NotNetwork => ExtensionError::Invalid {
-            field: "url".into(),
-            token: err_codes::FIELD_INVALID.into(),
-        },
-        ba::ProfileRefusal::NotProfile => ExtensionError::NotPeoplePage,
-    })?;
+    let url =
+        crate::services::pipeline_engine::store::people_page_of(raw_url).map_err(|r| match r {
+            ba::ProfileRefusal::NotNetwork => ExtensionError::Invalid {
+                field: "url".into(),
+                token: err_codes::FIELD_INVALID.into(),
+            },
+            ba::ProfileRefusal::NotProfile => ExtensionError::NotPeoplePage,
+        })?;
     let org_key = organization_id.to_string();
     let runs =
         purpose::pipeline_runs(db, org_id, PEOPLE_PIPELINE, "organization_id", &org_key).await?;

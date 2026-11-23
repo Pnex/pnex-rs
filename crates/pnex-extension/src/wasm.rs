@@ -465,17 +465,17 @@ impl Session {
             let next_caption = {
                 let mut p = plan.borrow_mut();
                 let now = host::now_ms();
-                let ready = p.caption_queue.front().is_some_and(|(_, _, url)| {
-                    let platform = platform_of_url(url);
-                    !p.busy.contains(platform)
+                let ready = p.caption_queue.front().is_some_and(|(mission, _, _)| {
+                    let platform = p.platform_of(mission);
+                    !p.busy.contains(&platform)
                         && p.last_nav
-                            .get(platform)
+                            .get(&platform)
                             .is_none_or(|t| now - t >= crate::NAV_GAP_MS)
                 });
                 ready.then(|| p.caption_queue.pop_front()).flatten()
             };
-            if let Some((mission_id, post, url)) = next_caption {
-                let platform = platform_of_url(&url).to_string();
+            if let Some((mission_id, post, _)) = next_caption {
+                let platform = plan.borrow().platform_of(&mission_id);
                 {
                     let mut p = plan.borrow_mut();
                     p.busy.insert(platform.clone());
@@ -496,13 +496,13 @@ impl Session {
                 let now = host::now_ms();
                 let ready = !p.downloading
                     && now >= p.next_download_at
-                    && p.downloads
-                        .front()
-                        .is_some_and(|(_, _, _, page)| !p.busy.contains(platform_of_url(page)));
+                    && p.downloads.front().is_some_and(|(mission, _, _, _)| {
+                        !p.busy.contains(&p.platform_of(mission))
+                    });
                 ready.then(|| p.downloads.pop_front()).flatten()
             };
             if let Some((mission_id, post, url, page)) = next_download {
-                let platform = platform_of_url(&page).to_string();
+                let platform = plan.borrow().platform_of(&mission_id);
                 {
                     let mut p = plan.borrow_mut();
                     p.downloading = true;
@@ -637,6 +637,23 @@ struct Plan {
 }
 
 impl Plan {
+    /// Platform of a mission's tab, and its follow plan (D951).
+    fn platform_of(&self, mission_id: &str) -> String {
+        self.missions
+            .iter()
+            .find(|m| m.id == mission_id)
+            .map(|m| ba::platform_of(&m.target).to_string())
+            .unwrap_or_default()
+    }
+
+    fn follow_of(&self, mission_id: &str) -> ba::FollowPlan {
+        self.missions
+            .iter()
+            .find(|m| m.id == mission_id)
+            .and_then(|m| m.follow.clone())
+            .unwrap_or_default()
+    }
+
     fn replace(&mut self, missions: Vec<AssignedMission>) {
         let ids: BTreeSet<&str> = missions.iter().map(|m| m.id.as_str()).collect();
         self.next.retain(|id, _| ids.contains(id.as_str()));
@@ -694,14 +711,23 @@ async fn run_mission(
     let url = match &m.spec {
         MissionSpec::CollectValue(p) => p.url.clone(),
         MissionSpec::CollectPage(p) => p.url.clone(),
-        MissionSpec::FollowAccount(p) => p.platform.list_urls(&p.handle)[0].clone(),
+        // The pack's pages of the platform, sent with the mission (D951).
+        MissionSpec::FollowAccount(_) => m
+            .follow
+            .as_ref()
+            .and_then(|f| f.pages.first().cloned())
+            .unwrap_or_default(),
         MissionSpec::WatchLive(p) => p.url.clone(),
         MissionSpec::CrawlSite(p) => format!("{}/", p.url),
         MissionSpec::CaptureProof(p) => p.url.clone(),
     };
     // Sites the mission reads: its page, or the platform's sites.
     let needed: Vec<String> = match &m.spec {
-        MissionSpec::FollowAccount(p) => p.platform.sites().iter().map(|s| s.to_string()).collect(),
+        MissionSpec::FollowAccount(_) => m
+            .follow
+            .as_ref()
+            .map(|f| f.sites.clone())
+            .unwrap_or_default(),
         _ => vec![url.clone()],
     };
     let state = |state: MissionState, code: &str| AgentMsg::State {
@@ -1083,6 +1109,7 @@ fn take_responses(tab: f64) -> Vec<(String, String)> {
 /// Posts of the platform's JSON documents, keyed by id.
 fn read_posts(
     platform: ba::SocialPlatform,
+    follow: &ba::FollowPlan,
     handle: &str,
     docs: &[(String, String)],
     posts: &mut BTreeMap<String, ba::SeenPost>,
@@ -1092,7 +1119,7 @@ fn read_posts(
     for (url, body) in docs {
         let found = match platform {
             ba::SocialPlatform::TikTok if tiktok::is_list_url(url) => {
-                tiktok::posts_of(body, handle)
+                tiktok::posts_of(body, handle, follow)
                     .into_iter()
                     .map(|(post, track)| {
                         if let Some(track) = track {
@@ -1102,9 +1129,9 @@ fn read_posts(
                     })
                     .collect()
             }
-            ba::SocialPlatform::X if x::is_timeline_url(url) => x::posts_of(body, handle),
+            ba::SocialPlatform::X if x::is_timeline_url(url) => x::posts_of(body, handle, follow),
             ba::SocialPlatform::YouTube if url.is_empty() || youtube::is_list_url(url) => {
-                youtube::posts_of(body, handle)
+                youtube::posts_of(body, handle, follow)
             }
             _ => continue,
         };
@@ -1132,7 +1159,8 @@ async fn follow_account(
     let mut end_reached = true;
     let mut deepest = 0;
     let mut tab = first_tab;
-    for (i, list) in params.platform.list_urls(&params.handle).iter().enumerate() {
+    let follow = m.follow.clone().unwrap_or_default();
+    for (i, list) in follow.pages.iter().enumerate() {
         if i > 0 {
             // Next list of the same account: same tab, human gap (D258).
             host::sleep(crate::NAV_GAP_MS).await;
@@ -1150,6 +1178,7 @@ async fn follow_account(
             if initial != "null" && !initial.is_empty() {
                 read_posts(
                     params.platform,
+                    &follow,
                     &params.handle,
                     &[(String::new(), initial)],
                     &mut posts,
@@ -1159,6 +1188,7 @@ async fn follow_account(
         }
         read_posts(
             params.platform,
+            &follow,
             &params.handle,
             &take_responses(tab),
             &mut posts,
@@ -1203,6 +1233,7 @@ async fn follow_account(
                 idle = 0;
                 read_posts(
                     params.platform,
+                    &follow,
                     &params.handle,
                     &docs,
                     &mut posts,
@@ -1266,17 +1297,6 @@ async fn follow_account(
     format!("{count} posts")
 }
 
-/// Platform key of a post page (the tab it is read in).
-fn platform_of_url(url: &str) -> &'static str {
-    if url.starts_with("https://www.youtube.com/") {
-        "youtube"
-    } else if url.starts_with("https://www.tiktok.com/") {
-        "tiktok"
-    } else {
-        "x"
-    }
-}
-
 /// Reads a post's platform captions on its page and uploads them signed
 /// (D281). YouTube only: X posts rarely carry captions.
 async fn fetch_captions(
@@ -1300,7 +1320,8 @@ async fn fetch_captions(
         }
         "youtube" => {
             let tab = plan.borrow().tabs.get(platform).copied().unwrap_or(-1.0);
-            let watch = format!("https://www.youtube.com/watch?v={post}");
+            let follow = plan.borrow().follow_of(mission_id);
+            let watch = follow.post_url("", post, false);
             let tab = match host::agent_tab(tab, &watch).await {
                 Ok(id) => id.as_f64().unwrap_or(-1.0),
                 Err(e) => return err_text(&e),
@@ -1311,7 +1332,8 @@ async fn fetch_captions(
                 .await
                 .map(|v| text(&v))
                 .unwrap_or_default();
-            let Some((lang, url)) = youtube::caption_track(&player) else {
+            let site = follow.sites.first().map(String::as_str).unwrap_or("-");
+            let Some((lang, url)) = youtube::caption_track(&player, site) else {
                 return "no-captions".into();
             };
             match host::fetch_text(&url).await {
@@ -1485,7 +1507,8 @@ async fn capture_video(
     url: &str,
     page: &str,
 ) -> String {
-    let watch_page = url == page || url.starts_with("https://www.youtube.com/");
+    // No file on a platform that only shows its page: it is recorded.
+    let watch_page = url == page;
     let fetched = if watch_page {
         None
     } else {

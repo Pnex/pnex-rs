@@ -1,0 +1,13 @@
+# A person's profile page on TikTok (D333): `@` then the handle.
+key: tiktok
+domains: [tiktok.com]
+site: www.tiktok.com
+profiles:
+  - { path: ["@{h}"], canonical: "https://www.tiktok.com/@{h}" }
+names:
+  h: { chars: "._-", max: 50 }
+follow:
+  pages: ["https://www.tiktok.com/@{handle}"]
+  # Play addresses and captions live on subdomains of tiktok.com.
+  sites: ["https://www.tiktok.com/", "https://*.tiktok.com/"]
+  post: "https://www.tiktok.com/@{author}/video/{id}"

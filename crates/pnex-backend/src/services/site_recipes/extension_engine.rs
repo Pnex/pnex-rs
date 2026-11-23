@@ -164,7 +164,7 @@ fn on_plan(plan: &RulePlan, url: &str) -> bool {
 
 /// An address that objected (D341): a profile on the opposition list.
 async fn opposed(db: &impl ConnectionTrait, org_id: i64, url: &str) -> Result<bool, DbErr> {
-    let Ok((_, canonical)) = pnex_core::browser_agent::profile_of(url) else {
+    let Ok((_, canonical)) = crate::services::pipeline_engine::store::profile_of(url) else {
         return Ok(false);
     };
     Ok(db

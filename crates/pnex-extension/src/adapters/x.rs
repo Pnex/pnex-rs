@@ -22,32 +22,40 @@ pub fn is_timeline_url(url: &str) -> bool {
 
 /// Posts of `handle` found in one response, by id. Reposts of other
 /// accounts are skipped (their author is not the followed account).
-pub fn posts_of(body: &str, handle: &str) -> Vec<SeenPost> {
+pub fn posts_of(
+    body: &str,
+    handle: &str,
+    follow: &pnex_core::browser_agent::FollowPlan,
+) -> Vec<SeenPost> {
     let Ok(json) = serde_json::from_str::<Value>(body) else {
         return Vec::new();
     };
     let mut found = BTreeMap::new();
-    walk(&json, &mut found);
+    walk(&json, follow, &mut found);
     found
         .into_values()
         .filter(|p: &SeenPost| p.author.eq_ignore_ascii_case(handle))
         .collect()
 }
 
-fn walk(v: &Value, out: &mut BTreeMap<String, SeenPost>) {
+fn walk(
+    v: &Value,
+    follow: &pnex_core::browser_agent::FollowPlan,
+    out: &mut BTreeMap<String, SeenPost>,
+) {
     match v {
         Value::Object(map) => {
-            if let Some(post) = post_of(v) {
+            if let Some(post) = post_of(v, follow) {
                 out.entry(post.platform_id.clone()).or_insert(post);
             }
-            map.values().for_each(|child| walk(child, out));
+            map.values().for_each(|child| walk(child, follow, out));
         }
-        Value::Array(items) => items.iter().for_each(|child| walk(child, out)),
+        Value::Array(items) => items.iter().for_each(|child| walk(child, follow, out)),
         _ => {}
     }
 }
 
-fn post_of(v: &Value) -> Option<SeenPost> {
+fn post_of(v: &Value, follow: &pnex_core::browser_agent::FollowPlan) -> Option<SeenPost> {
     let id = v["rest_id"].as_str()?;
     let legacy = &v["legacy"];
     let text = legacy["full_text"].as_str()?;
@@ -58,7 +66,7 @@ fn post_of(v: &Value) -> Option<SeenPost> {
     let video = best_video(legacy);
     Some(SeenPost {
         platform_id: id.to_string(),
-        url: format!("https://x.com/{author}/status/{id}"),
+        url: follow.post_url(author, id, false),
         author: author.to_string(),
         text: text.to_string(),
         published_at: legacy["created_at"].as_str().and_then(rfc3339),
@@ -114,9 +122,16 @@ mod tests {
 
     const FIXTURE: &str = include_str!("../../tests/fixtures/x_user_tweets.json");
 
+    fn plan() -> pnex_core::browser_agent::FollowPlan {
+        pnex_core::browser_agent::FollowPlan {
+            post: "https://x.com/{author}/status/{id}".into(),
+            ..Default::default()
+        }
+    }
+
     #[test]
     fn reads_the_account_posts_with_their_best_video() {
-        let posts = posts_of(FIXTURE, "example_account");
+        let posts = posts_of(FIXTURE, "example_account", &plan());
         let ids: Vec<&str> = posts.iter().map(|p| p.platform_id.as_str()).collect();
         assert_eq!(
             ids,
@@ -156,7 +171,7 @@ mod tests {
         assert!(!is_timeline_url(
             "https://x.com/i/api/graphql/abc/HomeTimeline"
         ));
-        assert!(posts_of("not json", "a").is_empty());
+        assert!(posts_of("not json", "a", &plan()).is_empty());
         assert_eq!(
             rfc3339("Mon Jan 05 01:02:03 -0130 2026").as_deref(),
             Some("2026-01-05T01:02:03-01:30")

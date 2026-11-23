@@ -63,6 +63,50 @@ pub fn shipped() -> &'static [Shipped] {
     &ALL
 }
 
+/// The profile networks the shipped packs declare (D951):
+/// `packs/<pack>/networks/<key>.yaml`. Compiled in, never an org's own: an
+/// org cannot loosen what counts as one person's profile (D779, D976).
+pub fn networks() -> &'static [pnex_core::profile_network::ProfileNetwork] {
+    use pnex_core::profile_network::{violations, ProfileNetwork};
+    static ALL: LazyLock<Vec<ProfileNetwork>> = LazyLock::new(|| {
+        let mut out = Vec::new();
+        for pack in PACKS_DIR.dirs() {
+            let key = pack.path().to_string_lossy().into_owned();
+            let Some(dir) = PACKS_DIR.get_dir(format!("{key}/networks")) else {
+                continue;
+            };
+            for f in dir.files() {
+                let text = f.contents_utf8().expect("a shipped network is UTF-8");
+                let net: ProfileNetwork = serde_saphyr::from_str(text)
+                    .unwrap_or_else(|e| panic!("{}: {e}", f.path().display()));
+                let bad = violations(&net);
+                assert!(bad.is_empty(), "{}: {bad:?}", f.path().display());
+                out.push(net);
+            }
+        }
+        out
+    });
+    &ALL
+}
+
+/// The network and canonical address of one person's profile page (D333).
+pub fn profile_of(raw: &str) -> Result<(String, String), pnex_core::browser_agent::ProfileRefusal> {
+    pnex_core::profile_network::profile_in(networks(), raw)
+}
+
+/// Canonical address of a company's employee list (D779).
+pub fn people_page_of(raw: &str) -> Result<String, pnex_core::browser_agent::ProfileRefusal> {
+    pnex_core::profile_network::people_in(networks(), raw)
+}
+
+/// How the agent follows an account of `platform`, as its pack declares it.
+pub fn follow_of(platform: &str) -> Option<&'static pnex_core::profile_network::Follow> {
+    networks()
+        .iter()
+        .find(|n| n.key == platform)
+        .and_then(|n| n.follow.as_ref())
+}
+
 /// A fixture of a pack, for its replay tests (D945).
 pub fn fixture(pack: &str, name: &str) -> Option<&'static [u8]> {
     PACKS_DIR

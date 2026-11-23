@@ -1,0 +1,18 @@
+# A person's profile page on Facebook (D333): a username, or profile.php
+# with its numeric id.
+key: facebook
+domains: [facebook.com]
+site: www.facebook.com
+profiles:
+  - { path: [profile.php], query: { id: id }, canonical: "https://www.facebook.com/profile.php?id={id}" }
+  - { path: ["{u}"], canonical: "https://www.facebook.com/{u}" }
+names:
+  id: { digits: true, max: 20 }
+  u:
+    chars: "."
+    max: 50
+    # First path segments that are pages, not usernames.
+    not: [profile.php, search, friends, groups, watch, marketplace, people, pages, events,
+      login, hashtag, gaming, reel, reels, stories, photo, photo.php, permalink.php, sharer,
+      sharer.php, home.php, help, policies, settings, notifications, messages, bookmarks,
+      saved, memories, pymk, find-friends]

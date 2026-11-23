@@ -314,31 +314,6 @@ const ENGINE_HOSTS: &[(&str, &str)] = &[
     ),
 ];
 
-/// Data sources and sites named by the engine, frozen: each line leaves with
-/// the lot that moves it to a pipeline of a pack (pipelines.md D951,
-/// lots PE2-PE9). (file, hosts, reason). A new one fails the guard; one that
-/// is gone must be removed from here.
-const HOST_DEBT: &[(&str, &[&str], &str)] = &[
-    (
-        "pnex-core/src/browser_agent.rs",
-        &[
-            "www.linkedin.com",
-            "x.com",
-            "www.facebook.com",
-            "www.instagram.com",
-            "www.tiktok.com",
-            "www.youtube.com",
-            "video.twimg.com",
-        ],
-        "profile networks of the browser agents, to become rules of a pack (PE5)",
-    ),
-    (
-        "pnex-extension/src/",
-        &["www.tiktok.com", "www.youtube.com", "x.com"],
-        "site adapters of the extension, to become rules (agents.md D780)",
-    ),
-];
-
 /// Hosts written as `"http(s)://host…` on a line.
 // shortcut: a host written without its scheme is not seen; scan bare host
 // literals too if one slips through.
@@ -371,7 +346,7 @@ fn reserved(host: &str) -> bool {
 
 #[test]
 fn engine_names_no_data_source_host() {
-    let (mut found, mut used) = (Vec::new(), BTreeSet::new());
+    let mut found = Vec::new();
     for (rel, text) in engine_sources() {
         for (n, line) in text.lines().enumerate() {
             if line.trim_start().starts_with("//") {
@@ -381,15 +356,7 @@ fn engine_names_no_data_source_host() {
                 if reserved(&host) || ENGINE_HOSTS.iter().any(|(h, _)| *h == host) {
                     continue;
                 }
-                match HOST_DEBT
-                    .iter()
-                    .position(|(file, hs, _)| rel.starts_with(file) && hs.contains(&host.as_str()))
-                {
-                    Some(i) => {
-                        used.insert((i, host));
-                    }
-                    None => found.push(format!("{rel}:{}: {host}", n + 1)),
-                }
+                found.push(format!("{rel}:{}: {host}", n + 1));
             }
         }
     }
@@ -397,21 +364,6 @@ fn engine_names_no_data_source_host() {
         found.is_empty(),
         "data source hosts in the engine (D951): declare the source in a pipeline of a pack:\n{}",
         found.join("\n")
-    );
-    let gone: Vec<String> = HOST_DEBT
-        .iter()
-        .enumerate()
-        .flat_map(|(i, (file, hs, _))| {
-            let used = &used;
-            hs.iter()
-                .filter(move |h| !used.contains(&(i, h.to_string())))
-                .map(move |h| format!("{file}: {h}"))
-        })
-        .collect();
-    assert!(
-        gone.is_empty(),
-        "hosts no longer in the engine: remove them from HOST_DEBT:\n{}",
-        gone.join("\n")
     );
 }
 

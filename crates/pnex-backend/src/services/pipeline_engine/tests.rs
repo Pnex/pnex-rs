@@ -309,12 +309,14 @@ async fn asked_rows_are_taken_with_their_columns_every_time() {
     );
 }
 
-/// D996: every profile network has its capture pipeline, on its own site
-/// and in the member's session.
+/// D996: every profile network of the packs has its capture pipeline, on
+/// the network's own site and in the member's session.
 #[test]
 fn every_profile_network_has_a_capture_pipeline() {
-    for n in pnex_core::browser_agent::PROFILE_NETWORKS {
-        let id = format!("prospecting_b2b/profile_capture_{n}");
+    let nets = super::store::networks();
+    assert_eq!(nets.len(), 6);
+    for n in nets {
+        let id = format!("prospecting_b2b/profile_capture_{}", n.key);
         let sp = shipped()
             .iter()
             .find(|p| p.id() == id)
@@ -322,11 +324,7 @@ fn every_profile_network_has_a_capture_pipeline() {
         let Some(pnex_core::pipeline::doc::Step::Browse(b)) = sp.doc.steps.get(1) else {
             panic!("{id}: browse second")
         };
-        assert_eq!(
-            Some(b.site.as_str()),
-            pnex_core::default_rules::network_site(n),
-            "{id}"
-        );
+        assert_eq!(b.site, n.site, "{id}");
         assert_eq!(b.session.as_deref(), Some("required"), "{id}");
     }
 }
@@ -496,4 +494,139 @@ async fn table_checks_refuse_or_let_the_write_through() {
     assert!(out.failure.is_none(), "{:?}", out.failure);
     assert!(wrote);
     assert_eq!(out.written, 2);
+}
+
+/// D333, D779, D951: one person's profile on each network of the packs, in
+/// its canonical form; search, relation and suggestion pages never are one
+/// (whitelist only: a capture never discovers people).
+#[test]
+fn profiles_are_canonical_and_discovery_pages_are_refused() {
+    use super::store::{people_page_of, profile_of};
+    use pnex_core::browser_agent::ProfileRefusal::{NotNetwork, NotProfile};
+    let ok = |raw: &str| profile_of(raw).unwrap();
+    for (raw, network, canonical) in [
+        (
+            "https://fr.linkedin.com/in/Jane-Doe-123/?originalSubdomain=fr",
+            "linkedin",
+            "https://www.linkedin.com/in/jane-doe-123",
+        ),
+        (
+            "https://www.linkedin.com/in/jane%C3%A9",
+            "linkedin",
+            "https://www.linkedin.com/in/jane%c3%a9",
+        ),
+        ("https://twitter.com/JaneDoe", "x", "https://x.com/janedoe"),
+        (
+            "https://x.com/jane_doe_123456",
+            "x",
+            "https://x.com/jane_doe_123456",
+        ),
+        (
+            "https://m.facebook.com/profile.php?id=1000123",
+            "facebook",
+            "https://www.facebook.com/profile.php?id=1000123",
+        ),
+        (
+            "https://www.facebook.com/jane.doe",
+            "facebook",
+            "https://www.facebook.com/jane.doe",
+        ),
+        (
+            "https://instagram.com/jane_doe/",
+            "instagram",
+            "https://www.instagram.com/jane_doe/",
+        ),
+        (
+            "https://www.tiktok.com/@jane.doe",
+            "tiktok",
+            "https://www.tiktok.com/@jane.doe",
+        ),
+        (
+            "https://www.youtube.com/@Jane/about",
+            "youtube",
+            "https://www.youtube.com/@jane",
+        ),
+    ] {
+        assert_eq!(
+            ok(raw),
+            (network.to_string(), canonical.to_string()),
+            "{raw}"
+        );
+    }
+    for raw in [
+        "https://x.com/jane_doe_1234567",
+        "https://www.facebook.com/profile.php?id=12a",
+        "https://www.tiktok.com/jane.doe",
+        "https://www.youtube.com/@Jane/videos",
+        "https://www.linkedin.com/search/results/people/?keywords=acme",
+        "https://www.linkedin.com/in/jane/details/connections/",
+        "https://www.linkedin.com/mynetwork/",
+        "https://www.linkedin.com/company/acme/people/",
+        "https://x.com/jane/followers",
+        "https://x.com/search?q=acme",
+        "https://x.com/followers",
+        "https://www.facebook.com/friends",
+        "https://www.facebook.com/jane/friends",
+        "https://www.facebook.com/profile.php",
+        "https://www.facebook.com/photo.php",
+        "https://www.instagram.com/explore/",
+        "https://www.instagram.com/jane/followers/",
+        "https://www.tiktok.com/search?q=jane",
+        "https://www.youtube.com/watch?v=abc",
+    ] {
+        assert_eq!(profile_of(raw), Err(NotProfile), "{raw}");
+    }
+    for raw in [
+        "https://example.org/jane",
+        "https://notlinkedin.com/in/jane",
+        "ftp://x.com/jane",
+        "not a url",
+        "https://user:pw@x.com/jane",
+    ] {
+        assert_eq!(profile_of(raw), Err(NotNetwork), "{raw}");
+    }
+    assert_eq!(
+        people_page_of("https://fr.linkedin.com/company/Acme-Corp/people/?keywords=x"),
+        Ok("https://www.linkedin.com/company/acme-corp/people/".into())
+    );
+    for raw in [
+        "https://www.linkedin.com/company/acme/",
+        "https://www.linkedin.com/search/results/people/?keywords=acme",
+        "https://www.linkedin.com/in/jane/",
+        "https://www.linkedin.com/company/acme/people/extra",
+    ] {
+        assert_eq!(people_page_of(raw), Err(NotProfile), "{raw}");
+    }
+    assert_eq!(
+        people_page_of("https://x.com/company/acme/people"),
+        Err(NotNetwork)
+    );
+}
+
+/// Every followed platform gets the extension's response hook: without it
+/// the agent reads no post there (TikTok shipped without it).
+#[test]
+fn the_extension_hooks_every_followed_platform() {
+    for manifest in [
+        include_str!("../../../../pnex-extension/extension/manifest.json"),
+        include_str!("../../../../pnex-extension/extension/manifest.firefox.json"),
+    ] {
+        let m: serde_json::Value = serde_json::from_str(manifest).unwrap();
+        for n in super::store::networks() {
+            let Some(f) = &n.follow else { continue };
+            let host = f.pages[0].split('/').nth(2).unwrap();
+            for script in m["content_scripts"].as_array().unwrap() {
+                let matches = script["matches"].to_string();
+                assert!(
+                    matches.contains(&format!("https://{host}/*")),
+                    "{host}: {script}"
+                );
+            }
+            assert!(
+                include_str!("../../../../pnex-extension/extension/hook.js")
+                    .contains(&format!("\"{host}\"")),
+                "{host} missing from hook.js"
+            );
+        }
+    }
 }

@@ -268,45 +268,12 @@ impl SocialPlatform {
         }
     }
 
-    /// Pages of an account the agent reads, in order (D283).
-    pub fn list_urls(self, handle: &str) -> Vec<String> {
-        match self {
-            Self::X => vec![format!("https://x.com/{handle}")],
-            Self::YouTube => vec![
-                format!("https://www.youtube.com/@{handle}/videos"),
-                format!("https://www.youtube.com/@{handle}/shorts"),
-            ],
-            Self::TikTok => vec![format!("https://www.tiktok.com/@{handle}")],
-        }
-    }
-
     /// The platform pauses its videos in a hidden tab (D269): its tab is
     /// brought to the front while the agent reads it.
     pub fn needs_foreground(self) -> bool {
         matches!(self, Self::TikTok)
     }
-
-    /// Sites the agent must be allowed on: the pages, plus where the files
-    /// come from.
-    pub fn sites(self) -> &'static [&'static str] {
-        match self {
-            Self::X => &["https://x.com/", "https://video.twimg.com/"],
-            Self::YouTube => &["https://www.youtube.com/"],
-            // Play addresses and captions live on subdomains of tiktok.com.
-            Self::TikTok => &["https://www.tiktok.com/", "https://*.tiktok.com/"],
-        }
-    }
 }
-
-/// Networks a person's profile page can be captured from (D333).
-pub const PROFILE_NETWORKS: [&str; 6] = [
-    "linkedin",
-    "x",
-    "facebook",
-    "instagram",
-    "tiktok",
-    "youtube",
-];
 
 /// Most profile captures per org and per network over 24 h (D333). Compiled:
 /// an org can only ask fewer.
@@ -322,177 +289,6 @@ pub enum ProfileRefusal {
     NotProfile,
 }
 
-/// First path segments of each network that are pages, not usernames.
-const X_RESERVED: &[&str] = &[
-    "home",
-    "explore",
-    "search",
-    "notifications",
-    "messages",
-    "i",
-    "settings",
-    "compose",
-    "hashtag",
-    "login",
-    "signup",
-    "tos",
-    "privacy",
-    "intent",
-    "share",
-    "jobs",
-    "communities",
-    "lists",
-    "bookmarks",
-    "following",
-    "followers",
-];
-const FACEBOOK_RESERVED: &[&str] = &[
-    "search",
-    "friends",
-    "groups",
-    "watch",
-    "marketplace",
-    "people",
-    "pages",
-    "events",
-    "login",
-    "hashtag",
-    "gaming",
-    "reel",
-    "reels",
-    "stories",
-    "photo",
-    "photo.php",
-    "permalink.php",
-    "sharer",
-    "sharer.php",
-    "home.php",
-    "help",
-    "policies",
-    "settings",
-    "notifications",
-    "messages",
-    "bookmarks",
-    "saved",
-    "memories",
-    "pymk",
-    "find-friends",
-];
-const INSTAGRAM_RESERVED: &[&str] = &[
-    "explore",
-    "accounts",
-    "p",
-    "reel",
-    "reels",
-    "stories",
-    "direct",
-    "tv",
-    "about",
-    "legal",
-    "developer",
-    "web",
-];
-
-/// The network and canonical address of one person's profile page (D333).
-/// Only a declared profile is ever captured: search results, relation
-/// lists and suggestion pages are refused, so the capture can never become
-/// a way to discover people (D254).
-pub fn profile_of(raw: &str) -> Result<(&'static str, String), ProfileRefusal> {
-    let url = url::Url::parse(raw.trim()).map_err(|_| ProfileRefusal::NotNetwork)?;
-    if !matches!(url.scheme(), "http" | "https") || !url.username().is_empty() {
-        return Err(ProfileRefusal::NotNetwork);
-    }
-    let host = url.host_str().unwrap_or_default().to_ascii_lowercase();
-    let segs: Vec<String> = url
-        .path_segments()
-        .map(|s| {
-            s.filter(|x| !x.is_empty())
-                .map(str::to_ascii_lowercase)
-                .collect()
-        })
-        .unwrap_or_default();
-    let segs: Vec<&str> = segs.iter().map(String::as_str).collect();
-    let on = |domain: &str| host == domain || host.ends_with(&format!(".{domain}"));
-    let name_ok = |s: &str, max: usize, extra: &str| {
-        !s.is_empty()
-            && s.len() <= max
-            && s.chars()
-                .all(|c| c.is_ascii_alphanumeric() || extra.contains(c))
-    };
-    let not_profile = Err(ProfileRefusal::NotProfile);
-    if on("linkedin.com") {
-        return match segs.as_slice() {
-            // Slugs may carry percent-encoded letters.
-            ["in", slug] if name_ok(slug, 100, "-_%") => {
-                Ok(("linkedin", format!("https://www.linkedin.com/in/{slug}")))
-            }
-            _ => not_profile,
-        };
-    }
-    if on("x.com") || on("twitter.com") {
-        return match segs.as_slice() {
-            [h] if name_ok(h, 15, "_") && !X_RESERVED.contains(h) => {
-                Ok(("x", format!("https://x.com/{h}")))
-            }
-            _ => not_profile,
-        };
-    }
-    if on("facebook.com") {
-        return match segs.as_slice() {
-            ["profile.php"] => {
-                let id = url
-                    .query_pairs()
-                    .find(|(k, _)| k == "id")
-                    .map(|(_, v)| v.into_owned())
-                    .filter(|v| {
-                        !v.is_empty() && v.len() <= 20 && v.chars().all(|c| c.is_ascii_digit())
-                    });
-                match id {
-                    Some(id) => Ok((
-                        "facebook",
-                        format!("https://www.facebook.com/profile.php?id={id}"),
-                    )),
-                    None => not_profile,
-                }
-            }
-            [u] if name_ok(u, 50, ".") && !FACEBOOK_RESERVED.contains(u) => {
-                Ok(("facebook", format!("https://www.facebook.com/{u}")))
-            }
-            _ => not_profile,
-        };
-    }
-    if on("instagram.com") {
-        return match segs.as_slice() {
-            [u] if name_ok(u, 30, "._") && !INSTAGRAM_RESERVED.contains(u) => {
-                Ok(("instagram", format!("https://www.instagram.com/{u}/")))
-            }
-            _ => not_profile,
-        };
-    }
-    let handle = |s: &str| {
-        s.strip_prefix('@')
-            .filter(|h| name_ok(h, HANDLE_MAX, "._-"))
-            .map(str::to_owned)
-    };
-    if on("tiktok.com") {
-        return match segs.as_slice() {
-            [h] => handle(h)
-                .map(|h| ("tiktok", format!("https://www.tiktok.com/@{h}")))
-                .ok_or(ProfileRefusal::NotProfile),
-            _ => not_profile,
-        };
-    }
-    if on("youtube.com") {
-        return match segs.as_slice() {
-            [h] | [h, "about"] => handle(h)
-                .map(|h| ("youtube", format!("https://www.youtube.com/@{h}")))
-                .ok_or(ProfileRefusal::NotProfile),
-            _ => not_profile,
-        };
-    }
-    Err(ProfileRefusal::NotNetwork)
-}
-
 /// Lease target of a profile capture: the network's tab (D255).
 pub fn profile_target(network: &str, canonical: &str) -> String {
     format!("{network}:profile:{canonical}")
@@ -501,45 +297,6 @@ pub fn profile_target(network: &str, canonical: &str) -> String {
 /// Most employee list captures per org over 24 h (D779). Compiled: an org
 /// can only ask fewer.
 pub const PEOPLE_CAPTURES_PER_DAY: i64 = 10;
-
-/// Canonical address of a company's employee list on LinkedIn (D779), the
-/// only list page a human may send: `linkedin.com/company/<slug>/people/`.
-/// Search results and relation lists stay refused.
-pub fn people_page_of(raw: &str) -> Result<String, ProfileRefusal> {
-    let url = url::Url::parse(raw.trim()).map_err(|_| ProfileRefusal::NotNetwork)?;
-    let host = url.host_str().unwrap_or_default().to_ascii_lowercase();
-    if !matches!(url.scheme(), "http" | "https")
-        || !url.username().is_empty()
-        || !(host == "linkedin.com" || host.ends_with(".linkedin.com"))
-    {
-        return Err(ProfileRefusal::NotNetwork);
-    }
-    let segs: Vec<String> = url
-        .path_segments()
-        .map(|s| {
-            s.filter(|x| !x.is_empty())
-                .map(str::to_ascii_lowercase)
-                .collect()
-        })
-        .unwrap_or_default();
-    match segs
-        .iter()
-        .map(String::as_str)
-        .collect::<Vec<_>>()
-        .as_slice()
-    {
-        ["company", slug, "people"]
-            if !slug.is_empty()
-                && slug.len() <= 100
-                && slug
-                    .chars()
-                    .all(|c| c.is_ascii_alphanumeric() || "-_%".contains(c)) =>
-        {
-            Ok(format!("https://www.linkedin.com/company/{slug}/people/"))
-        }
-        _ => Err(ProfileRefusal::NotProfile),
-    }
-}
 
 /// Lease target of an employee list capture: the LinkedIn tab (D255).
 pub fn people_target(canonical: &str) -> String {
@@ -1414,6 +1171,35 @@ pub struct AssignedMission {
     /// dedicated to it (a hidden tab loads no more of a list).
     #[serde(default)]
     pub foreground: bool,
+    /// `follow_account`: what the pack declares of the platform (D951).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub follow: Option<FollowPlan>,
+}
+
+/// How the agent reads an account of a platform, as its pack declares it
+/// (pipelines.md D951): the engine names no site.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FollowPlan {
+    /// Pages of the account it reads, in order (D283).
+    pub pages: Vec<String>,
+    /// Sites it must be allowed on: the pages, and where files come from.
+    pub sites: Vec<String>,
+    /// Address of a post, `{author}` and `{id}` replaced.
+    pub post: String,
+    /// Address of a short video, when the platform has another one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub short: Option<String>,
+}
+
+impl FollowPlan {
+    /// The address of post `id` by `author`, short or not.
+    pub fn post_url(&self, author: &str, id: &str, short: bool) -> String {
+        let t = match (&self.short, short) {
+            (Some(t), true) => t,
+            _ => &self.post,
+        };
+        t.replace("{author}", author).replace("{id}", id)
+    }
 }
 
 /// Scrolls of a visit once the history is collected (recent posts only).
@@ -1798,7 +1584,6 @@ mod tests {
         assert_eq!(next_depth(HISTORY_STEP, false), 2 * HISTORY_STEP);
         assert_eq!(next_depth(HISTORY_MAX_DEPTH, false), HISTORY_MAX_DEPTH);
         assert_eq!(next_depth(120, true), RECENT_DEPTH);
-        assert_eq!(SocialPlatform::YouTube.list_urls("chan").len(), 2);
         assert_eq!(
             SocialPlatform::parse("youtube"),
             Some(SocialPlatform::YouTube)
@@ -1835,98 +1620,11 @@ mod tests {
         assert_eq!(AgentFingerprint::default().default_name(), "Browser agent");
     }
 
+    // Which addresses are profiles is the packs' (D951): tested in the backend.
     #[test]
-    fn a_profile_is_recognised_and_canonical_per_network() {
-        let ok = |raw: &str| profile_of(raw).unwrap();
-        assert_eq!(
-            ok("https://fr.linkedin.com/in/Jane-Doe-123/?originalSubdomain=fr"),
-            (
-                "linkedin",
-                "https://www.linkedin.com/in/jane-doe-123".into()
-            )
-        );
-        assert_eq!(
-            ok("https://twitter.com/JaneDoe"),
-            ("x", "https://x.com/janedoe".into())
-        );
-        assert_eq!(
-            ok("https://m.facebook.com/profile.php?id=1000123"),
-            (
-                "facebook",
-                "https://www.facebook.com/profile.php?id=1000123".into()
-            )
-        );
-        assert_eq!(
-            ok("https://www.facebook.com/jane.doe"),
-            ("facebook", "https://www.facebook.com/jane.doe".into())
-        );
-        assert_eq!(
-            ok("https://instagram.com/jane_doe/"),
-            ("instagram", "https://www.instagram.com/jane_doe/".into())
-        );
-        assert_eq!(
-            ok("https://www.tiktok.com/@jane.doe"),
-            ("tiktok", "https://www.tiktok.com/@jane.doe".into())
-        );
-        assert_eq!(
-            ok("https://www.youtube.com/@Jane/about"),
-            ("youtube", "https://www.youtube.com/@jane".into())
-        );
+    fn a_capture_leases_its_network_tab() {
         let target = profile_target("linkedin", "https://www.linkedin.com/in/jane");
         assert_eq!(platform_of(&target), "linkedin");
-    }
-
-    #[test]
-    fn people_discovery_pages_are_never_a_profile() {
-        for raw in [
-            "https://www.linkedin.com/search/results/people/?keywords=acme",
-            "https://www.linkedin.com/in/jane/details/connections/",
-            "https://www.linkedin.com/mynetwork/",
-            "https://www.linkedin.com/company/acme/people/",
-            "https://x.com/jane/followers",
-            "https://x.com/search?q=acme",
-            "https://www.facebook.com/friends",
-            "https://www.facebook.com/jane/friends",
-            "https://www.facebook.com/profile.php",
-            "https://www.instagram.com/explore/",
-            "https://www.instagram.com/jane/followers/",
-            "https://www.tiktok.com/search?q=jane",
-            "https://www.youtube.com/watch?v=abc",
-        ] {
-            assert_eq!(profile_of(raw), Err(ProfileRefusal::NotProfile), "{raw}");
-        }
-        for raw in [
-            "https://example.org/jane",
-            "ftp://x.com/jane",
-            "not a url",
-            "https://user:pw@x.com/jane",
-        ] {
-            assert_eq!(profile_of(raw), Err(ProfileRefusal::NotNetwork), "{raw}");
-        }
-    }
-
-    #[test]
-    fn only_a_company_employee_list_is_a_people_page() {
-        assert_eq!(
-            people_page_of("https://fr.linkedin.com/company/Acme-Corp/people/?keywords=x"),
-            Ok("https://www.linkedin.com/company/acme-corp/people/".into())
-        );
-        for raw in [
-            "https://www.linkedin.com/company/acme/",
-            "https://www.linkedin.com/search/results/people/?keywords=acme",
-            "https://www.linkedin.com/in/jane/",
-            "https://www.linkedin.com/company/acme/people/extra",
-        ] {
-            assert_eq!(
-                people_page_of(raw),
-                Err(ProfileRefusal::NotProfile),
-                "{raw}"
-            );
-        }
-        assert_eq!(
-            people_page_of("https://x.com/company/acme/people"),
-            Err(ProfileRefusal::NotNetwork)
-        );
         let target = people_target("https://www.linkedin.com/company/acme/people/");
         assert_eq!(platform_of(&target), "linkedin");
     }

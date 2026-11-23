@@ -1,0 +1,19 @@
+# A person's profile page on X (D333).
+key: x
+domains: [x.com, twitter.com]
+site: x.com
+profiles:
+  - { path: ["{h}"], canonical: "https://x.com/{h}" }
+names:
+  h:
+    chars: "_"
+    max: 15
+    # First path segments that are pages, not usernames.
+    not: [home, explore, search, notifications, messages, i, settings, compose, hashtag,
+      login, signup, tos, privacy, intent, share, jobs, communities, lists, bookmarks,
+      following, followers]
+follow:
+  pages: ["https://x.com/{handle}"]
+  # Videos are files on the platform's media host.
+  sites: ["https://x.com/", "https://video.twimg.com/"]
+  post: "https://x.com/{author}/status/{id}"
