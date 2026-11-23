@@ -1718,9 +1718,9 @@ fn step_violations(
                 bad(format!("{at}.rest"), "invalid");
             }
             if let Some(cur) = &c.cursor {
-                if c.query.trim().is_empty() && c.rest.is_none() {
-                    bad(format!("{at}.cursor"), "invalid");
-                } else if cur.check(c.rest.is_none(), &c.query).is_some() {
+                if (c.query.trim().is_empty() && c.rest.is_none())
+                    || cur.check(c.rest.is_none(), &c.query).is_some()
+                {
                     bad(format!("{at}.cursor"), "invalid");
                 }
             }
