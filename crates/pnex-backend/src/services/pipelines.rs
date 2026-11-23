@@ -462,12 +462,13 @@ pub async fn versions(
     Ok((total, items))
 }
 
-/// Queues a run of the current version.
+/// Queues a run of the current version; `rows` go to its `asked` axis.
 pub async fn start_run(
     db: &DatabaseConnection,
     org_id: i64,
     id: Uuid,
     user: i64,
+    rows: Vec<serde_json::Map<String, serde_json::Value>>,
 ) -> Result<PipelineRun, PipelineError> {
     let pipeline = get(db, org_id, id).await?;
     let missing = missing_markings(db, org_id, user, &pipeline.document).await?;
@@ -476,8 +477,8 @@ pub async fn start_run(
     }
     let row = db
         .query_one_raw(stmt(
-            "INSERT INTO pipeline_jobs (org_id, pipeline_id, version, trigger, started_by) \
-             VALUES ($1, $2, $3, 'manual', $4) \
+            "INSERT INTO pipeline_jobs (org_id, pipeline_id, version, trigger, started_by, asked) \
+             VALUES ($1, $2, $3, 'manual', $4, $5) \
              ON CONFLICT (pipeline_id) WHERE state IN ('queued', 'running') DO NOTHING \
              RETURNING id",
             vec![
@@ -485,6 +486,9 @@ pub async fn start_run(
                 id.into(),
                 pipeline.version.into(),
                 user.into(),
+                (!rows.is_empty())
+                    .then(|| serde_json::Value::from(rows))
+                    .into(),
             ],
         ))
         .await?
@@ -646,6 +650,7 @@ struct Job {
     version: i32,
     attempts: i32,
     started_by: Option<i64>,
+    asked: Vec<serde_json::Map<String, serde_json::Value>>,
 }
 
 /// Runs dead for too long go back to the queue, or fail after their attempts.
@@ -689,7 +694,7 @@ async fn claim(db: &DatabaseConnection) -> Result<Option<Job>, DbErr> {
                ORDER BY (SELECT max(l.started_at) FROM pipeline_jobs l WHERE l.org_id = j.org_id) \
                  NULLS FIRST, j.created_at \
                FOR UPDATE OF j SKIP LOCKED LIMIT 1 \
-             ) RETURNING id, org_id, pipeline_id, version, attempts, started_by",
+             ) RETURNING id, org_id, pipeline_id, version, attempts, started_by, asked",
             vec![],
         ))
         .await;
@@ -708,6 +713,10 @@ async fn claim(db: &DatabaseConnection) -> Result<Option<Job>, DbErr> {
             version: r.try_get("", "version")?,
             attempts: r.try_get("", "attempts")?,
             started_by: r.try_get("", "started_by")?,
+            asked: r
+                .try_get::<Option<serde_json::Value>>("", "asked")?
+                .and_then(|v| serde_json::from_value(v).ok())
+                .unwrap_or_default(),
         })
     })
     .transpose()
@@ -821,6 +830,7 @@ async fn run_job(ctx: &AppContext, job: &Job) -> Result<(), (String, serde_json:
         job.version,
         &doc,
         job.started_by,
+        job.asked.clone(),
         &store::HttpTransport,
     )
     .await

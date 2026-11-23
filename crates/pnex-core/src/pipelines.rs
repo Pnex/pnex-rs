@@ -229,6 +229,18 @@ pub enum PipelineRunState {
     Failed,
 }
 
+/// Most rows one start gives to a pipeline's `asked` axis.
+pub const RUN_ROWS_MAX: usize = 100;
+
+/// Start of a run: the rows its `asked` axis takes (D996), column → value.
+/// Required when the document has such an axis, refused otherwise.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct PipelineRunStart {
+    #[serde(default)]
+    pub rows: Vec<BTreeMap<String, String>>,
+}
+
 /// One run of a pipeline.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]

@@ -392,10 +392,12 @@ async fn versions(
     tag = "pipelines",
     operation_id = "pipelines_runs_start",
     summary = "Run a pipeline",
-    description = "Queues a run of the current version; read its state with `GET /pipelines/{id}/runs/{run_id}`. Requires `pipelines:run`, the rights its writes need (`datasets:read` and `datasets:write` always; `ontology:write`, `time-ranges:write`, `proposals:file` or `media:write` for those targets), and a clearance for every marking of the tables it reads. The run checks them again when it starts.",
+    description = "Queues a run of the current version; read its state with `GET /pipelines/{id}/runs/{run_id}`. A pipeline whose enumerate step has an `asked` axis (a site rule) takes its rows in `rows` (one row per value: the axis column and its asked columns), at most 100; any other pipeline refuses them. Body optional. Requires `pipelines:run`, the rights its writes need (`datasets:read` and `datasets:write` always; `ontology:write`, `time-ranges:write`, `proposals:file` or `media:write` for those targets), and a clearance for every marking of the tables it reads. The run checks them again when it starts.",
     params(("id" = String, Path, format = "uuid", description = "Pipeline id (UUID)")),
+    request_body = Option<pnex_core::pipelines::PipelineRunStart>,
     responses(
         (status = 202, body = pnex_core::pipelines::PipelineRun),
+        (status = 400, description = "`field-invalid`: `rows` required, refused or too many; `rows.<n>.<column>` missing, unknown or too long", body = crate::openapi::ErrorDetail),
         (status = 403, description = "`access-denied`, `marking-required` (`errors.args.markings`)", body = crate::openapi::ErrorDetail),
         (status = 404, description = "`pipeline-not-found`", body = crate::openapi::ErrorDetail),
         (status = 409, description = "`pipeline-run-active`", body = crate::openapi::ErrorDetail)
@@ -406,22 +408,70 @@ async fn start_run(
     State(ctx): State<AppContext>,
     org: OrgContext,
     Path(id): Path<Uuid>,
+    body: Option<Json<pnex_core::pipelines::PipelineRunStart>>,
 ) -> Result<Response> {
     let current = match pipelines::get(&ctx.db, org.org.id, id).await {
         Ok(p) => p,
         Err(e) => return pipeline_error(e),
     };
+    let doc = pipelines::checked(&current.document).ok();
     // A document saved checked: one of an older format needs the table rights only.
-    let rights = pipelines::checked(&current.document)
+    let rights = doc
+        .as_ref()
         .map(|d| d.rights())
-        .unwrap_or_else(|_| vec!["datasets:read", "datasets:write"]);
+        .unwrap_or_else(|| vec!["datasets:read", "datasets:write"]);
     if let Some(p) = rights.into_iter().find(|p| !org.can(p)) {
         return Err(crate::auth::access_denied(p));
     }
-    match pipelines::start_run(&ctx.db, org.org.id, id, org.auth.user.id).await {
+    let rows = body.map(|Json(b)| b.rows).unwrap_or_default();
+    if let Err((field, token)) = run_rows(doc.as_ref().and_then(|d| d.asked_axis()), &rows) {
+        return Ok(super::field_error(&field, &token));
+    }
+    let rows = rows
+        .into_iter()
+        .map(|r| r.into_iter().map(|(k, v)| (k, v.into())).collect())
+        .collect();
+    match pipelines::start_run(&ctx.db, org.org.id, id, org.auth.user.id, rows).await {
         Ok(r) => Ok((StatusCode::ACCEPTED, Json(r)).into_response()),
         Err(e) => pipeline_error(e),
     }
+}
+
+/// Checks the rows a start gives against the document's `asked` axis:
+/// `Err((field, token))` on the first fault.
+fn run_rows(
+    axis: Option<&pnex_core::pipeline::doc::Axis>,
+    rows: &[std::collections::BTreeMap<String, String>],
+) -> std::result::Result<(), (String, String)> {
+    use pnex_core::pipelines::RUN_ROWS_MAX;
+    let Some(axis) = axis else {
+        return match rows.is_empty() {
+            true => Ok(()),
+            false => Err(("rows".into(), "invalid".into())),
+        };
+    };
+    if rows.is_empty() {
+        return Err(("rows".into(), "required".into()));
+    }
+    if rows.len() > RUN_ROWS_MAX {
+        return Err(("rows".into(), format!("max_items:{RUN_ROWS_MAX}")));
+    }
+    let asked = axis.asked.as_deref().unwrap_or_default();
+    for (n, row) in rows.iter().enumerate() {
+        if row.get(&axis.as_).is_none_or(|v| v.trim().is_empty()) {
+            return Err((format!("rows.{n}.{}", axis.as_), "required".into()));
+        }
+        for (k, v) in row {
+            if *k != axis.as_ && !asked.contains(k) {
+                return Err((format!("rows.{n}.{k}"), "invalid".into()));
+            }
+            // Same bound as a navigation's parameters.
+            if v.chars().count() > 500 {
+                return Err((format!("rows.{n}.{k}"), "max_length:500".into()));
+            }
+        }
+    }
+    Ok(())
 }
 
 /// `GET /api/v1/pipelines/{id}/runs`
@@ -711,5 +761,59 @@ async fn lineage(
     match pipelines::lineage(&ctx.db, &dataset).await {
         Ok(l) => format::json(l),
         Err(e) => pipeline_error(e.into()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::run_rows;
+    use std::collections::BTreeMap;
+
+    fn row(cells: &[(&str, &str)]) -> BTreeMap<String, String> {
+        cells
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect()
+    }
+
+    #[test]
+    fn rows_must_fit_the_asked_axis() {
+        let doc: pnex_core::pipeline::Document = serde_json::from_value(serde_json::json!({
+            "key": "site_rule", "name": "p",
+            "steps": [{"enumerate": {"as": "start", "track": true,
+                "cross": [{"as": "code", "asked": ["year"]}]}}],
+        }))
+        .unwrap();
+        let axis = doc.asked_axis();
+        assert!(axis.is_some());
+        let err = |rows: &[BTreeMap<String, String>]| run_rows(axis, rows).err();
+        assert_eq!(
+            run_rows(axis, &[row(&[("code", "A1"), ("year", "2026")])]),
+            Ok(())
+        );
+        assert_eq!(err(&[]), Some(("rows".into(), "required".into())));
+        assert_eq!(
+            err(&[row(&[("year", "2026")])]),
+            Some(("rows.0.code".into(), "required".into()))
+        );
+        assert_eq!(
+            err(&[row(&[("code", "A1"), ("other", "x")])]),
+            Some(("rows.0.other".into(), "invalid".into()))
+        );
+        let long = "x".repeat(501);
+        assert_eq!(
+            err(&[row(&[("code", &long)])]),
+            Some(("rows.0.code".into(), "max_length:500".into()))
+        );
+        assert_eq!(
+            err(&vec![row(&[("code", "A1")]); 101]),
+            Some(("rows".into(), "max_items:100".into()))
+        );
+        // A pipeline with no asked axis takes no rows.
+        assert_eq!(run_rows(None, &[]), Ok(()));
+        assert_eq!(
+            run_rows(None, &[row(&[("code", "A1")])]).err(),
+            Some(("rows".into(), "invalid".into()))
+        );
     }
 }

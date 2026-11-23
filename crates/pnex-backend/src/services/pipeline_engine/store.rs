@@ -1609,6 +1609,7 @@ pub async fn run_own(
     version: i32,
     doc: &Document,
     user: Option<i64>,
+    asked: Vec<serde_json::Map<String, Value>>,
     transport: &impl Transport,
 ) -> Result<RunOutcome, DatasetError> {
     let store = datasets::store_of(&ctx.config)?;
@@ -1617,6 +1618,7 @@ pub async fn run_own(
     let mut inputs = inputs(&ctx.db, org, doc, Utc::now().naive_utc(), shas).await?;
     inputs.functions = call_functions("", doc);
     inputs.extractors = model_extractors("", doc);
+    inputs.asked = asked;
     let mut sink = DatasetSink {
         db: &ctx.db,
         store: &store,

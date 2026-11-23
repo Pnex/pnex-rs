@@ -1299,6 +1299,14 @@ impl Document {
         out
     }
 
+    /// The axis whose values the start of a run gives (D996), if any.
+    pub fn asked_axis(&self) -> Option<&Axis> {
+        self.steps.iter().find_map(|s| match s {
+            Step::Enumerate(e) => e.cross.iter().find(|a| a.asked.is_some()),
+            _ => None,
+        })
+    }
+
     /// Rights a member needs to run it: its run reads and writes tables, and
     /// each other write target needs the right of its own route (R2).
     pub fn rights(&self) -> Vec<&'static str> {

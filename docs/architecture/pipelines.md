@@ -664,7 +664,7 @@ La presse GDELT écrit des `news_item`. `crm` 4.0.0 étend `show` et supprime le
 `object_hosts` ouvre les hôtes des objets de l'org, jamais pour un secret.
 
 ### D995 — Une étape `browse` met le run en pause
-Ligne en `waiting`, reprise par la fin de la navigation, aucun worker bloqué. Choix de Shan (2026-11-23, PE5.5) : une règle de site est un pipeline d'org `key: site_rule`. Il contient un `enumerate` dont l'axe `asked` porte les paramètres, puis un `browse`, sans `write` : les extraits restent dans le journal. La règle garde son id. `/site-recipes` disparaît. Les exécutions passent sous `/navigations`. Les droits `site-recipes:*` laissent la place à `pipelines:*` et à `browse:use`.
+Ligne en `waiting`, reprise par la fin de la navigation, aucun worker bloqué. Choix de Shan (2026-11-23, PE5.5) : une règle de site est un pipeline d'org `key: site_rule`. Il contient un `enumerate` dont l'axe `asked` porte les paramètres, puis un `browse`, sans `write` : les extraits restent dans le journal. La règle garde son id. `/site-recipes` disparaît. Les exécutions passent sous `/navigations`. Les droits `site-recipes:*` laissent la place à `pipelines:*` et à `browse:use`. `POST /pipelines/{id}/runs` donne ses lignes à l'axe `asked` dans `rows` (100 au plus). Un document avec un axe `asked` exige `rows`. Un document sans cet axe les refuse.
 
 ### D996 — Les finalités deviennent des étapes génériques
 Captures, liste d'employés, recherche et relations deviennent des pipelines. Amendée par D998 : score et rattachement vont aux flows.
@@ -752,7 +752,6 @@ tests:
 
 **Lots du moteur non finis :**
 
-- PE5.5 : un pipeline d'org lancé par `POST /pipelines/{id}/runs` ne reçoit pas encore de ligne pour son axe `asked`. Une règle se joue donc depuis la page « Sites web », un nœud `agent_run` ou l'assistant.
 - PE8 : mesure autour d'événements et chaînes candidates dans `/analysis`, note de séance en règle.
 - PE9 : `HOST_DEBT` à vider (2 lignes : réseaux des agents navigateur, adaptateurs de l'extension).
 - D934 : un `call` d'un pipeline d'org ne trouve que les fonctions des packs (`<pack>/<nom>`), pas celles de l'org.

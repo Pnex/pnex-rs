@@ -25975,6 +25975,24 @@
         ],
         "type": "object"
       },
+      "PipelineRunStart": {
+        "description": "Start of a run: the rows its `asked` axis takes (D996), column → value.\nRequired when the document has such an axis, refused otherwise.",
+        "properties": {
+          "rows": {
+            "items": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "propertyNames": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
       "PipelineRunState": {
         "enum": [
           "queued",
@@ -91012,7 +91030,7 @@
         "x-pnex-as-of": "current_only"
       },
       "post": {
-        "description": "Queues a run of the current version; read its state with `GET /pipelines/{id}/runs/{run_id}`. Requires `pipelines:run`, the rights its writes need (`datasets:read` and `datasets:write` always; `ontology:write`, `time-ranges:write`, `proposals:file` or `media:write` for those targets), and a clearance for every marking of the tables it reads. The run checks them again when it starts.",
+        "description": "Queues a run of the current version; read its state with `GET /pipelines/{id}/runs/{run_id}`. A pipeline whose enumerate step has an `asked` axis (a site rule) takes its rows in `rows` (one row per value: the axis column and its asked columns), at most 100; any other pipeline refuses them. Body optional. Requires `pipelines:run`, the rights its writes need (`datasets:read` and `datasets:write` always; `ontology:write`, `time-ranges:write`, `proposals:file` or `media:write` for those targets), and a clearance for every marking of the tables it reads. The run checks them again when it starts.",
         "operationId": "pipelines_runs_start",
         "parameters": [
           {
@@ -91036,6 +91054,15 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PipelineRunStart"
+              }
+            }
+          }
+        },
         "responses": {
           "202": {
             "content": {
@@ -91046,6 +91073,16 @@
               }
             },
             "description": "Accepted"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`field-invalid`: `rows` required, refused or too many; `rows.<n>.<column>` missing, unknown or too long"
           },
           "401": {
             "content": {
