@@ -1065,3 +1065,88 @@ async fn an_import_reads_a_mysql_database_under_tls() {
         .await
         .unwrap();
 }
+
+/// The `connector` step: an org's pipeline reads its database into a table,
+/// then only what is past the cursor its last successful run kept.
+#[tokio::test]
+#[serial]
+async fn an_org_pipeline_reads_a_connector_past_its_cursor() {
+    with_app(|server, env, ctx| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let api = Api {
+            server: &server,
+            token: &env.alice,
+            org,
+        };
+        let db = &ctx.db;
+        sql(db, "DROP TABLE IF EXISTS outside_events").await;
+        sql(db, "CREATE TABLE outside_events (code text, updated int)").await;
+        sql(db, "INSERT INTO outside_events VALUES ('A1', 1), ('B2', 2)").await;
+        let (s, c) = api
+            .call("POST", "/api/v1/connectors", Some(connector_body("erp")))
+            .await;
+        assert_eq!(s, 201, "{c}");
+        let document = "key: events\nsteps:\n  - connector: {as: raw, name: erp, query: \"SELECT code, updated FROM outside_events WHERE updated > {{cursor}}\", cursor: {column: updated, start: '0'}}\n  - read: {as: rows, from: raw, format: csv}\n  - write: {from: rows, table: {name: Events}}\ntests:\n  - given: {\"connector:raw\": \"code,updated\\nA1,1\\n\"}\n    expect: {rows: {rows: 1}}\n";
+        let (s, p) = api
+            .call(
+                "POST",
+                "/api/v1/pipelines",
+                Some(json!({ "name": "events", "document": document })),
+            )
+            .await;
+        assert_eq!(s, 201, "{p}");
+        let id = p["id"].as_str().unwrap().to_string();
+        let run = || async {
+            let (s, r) = api
+                .call("POST", &format!("/api/v1/pipelines/{id}/runs"), None)
+                .await;
+            assert_eq!(s, 202, "{r}");
+            assert!(pnex_backend::services::pipelines::run_next(&ctx)
+                .await
+                .unwrap());
+            let (_, r) = api
+                .call(
+                    "GET",
+                    &format!("/api/v1/pipelines/{id}/runs/{}", r["id"].as_str().unwrap()),
+                    None,
+                )
+                .await;
+            assert_eq!(r["state"], "done", "{r}");
+        };
+        let kept = || async {
+            sql(
+                db,
+                &format!("SELECT value, runs FROM pipeline_cursors WHERE org_id = {org} AND pipeline = '{id}'"),
+            )
+            .await
+            .first()
+            .map(|r| {
+                (
+                    r.try_get::<String>("", "value").unwrap(),
+                    r.try_get::<i32>("", "runs").unwrap(),
+                )
+            })
+        };
+
+        run().await;
+        assert_eq!(kept().await, Some(("2".into(), 0)));
+        sql(db, "INSERT INTO outside_events VALUES ('C3', 3)").await;
+        run().await;
+        assert_eq!(kept().await, Some(("3".into(), 1)));
+        let (_, list) = api.call("GET", "/api/v1/datasets", None).await;
+        assert_eq!(table_rows(&list, "Events"), 3, "{list}");
+
+        // A viewer may not run what reads a connector.
+        sql(
+            db,
+            &format!("UPDATE organization_members SET role = 'viewer' WHERE org_id = {org}"),
+        )
+        .await;
+        let (s, _) = api
+            .call("POST", &format!("/api/v1/pipelines/{id}/runs"), None)
+            .await;
+        assert_eq!(s, 403);
+        sql(db, "DROP TABLE outside_events").await;
+    })
+    .await;
+}

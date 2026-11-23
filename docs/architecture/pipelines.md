@@ -8,7 +8,7 @@ Un pipeline fait entrer des données externes dans PneX. Il lit une source (fich
 
 - **Pipeline** : document YAML du moteur. Il porte `key`, `hosts`, `steps`, `schedule` et `tests` (D934). Un pack le livre dans `packs/<pack>/pipelines/<clé>.yaml`.
 - **Pipeline d'org** : pipeline écrit par une org, servi par `/api/v1/pipelines`, versionné. Ses `tests:` passent avant chaque enregistrement (D934).
-- **Étape** : une opération fermée d'un pipeline du moteur : `enumerate`, `fetch`, `browse`, `extract`, `unpack`, `read`, `sql`, `call`, `model`, `write` (D936).
+- **Étape** : une opération fermée d'un pipeline du moteur : `enumerate`, `fetch`, `connector`, `browse`, `extract`, `unpack`, `read`, `sql`, `call`, `model`, `write` (D936).
 - **Table de travail** : résultat nommé d'une étape (`as`), lu par l'étape suivante (`from`, `for_each`). Elle vit le temps de l'exécution (D935).
 - **Élément** : une ligne d'une énumération suivie (`track: true`). Son état est gardé entre deux exécutions (D937).
 - **Table** : lignes versionnées par transactions, fichiers Parquet sur S3 et catalogue PostgreSQL. Le nom technique est `datasets` (D569, lexique Q-P7).
@@ -615,7 +615,7 @@ Toute ingestion est un pipeline YAML. Bornée par D998 : pas de lien déduit dan
 Une table de travail vit le temps du run, dans la zone de transit, sous le quota de l'org.
 
 ### D936 — Étapes fermées
-`enumerate`, `fetch`, `browse`, `extract`, `unpack`, `read`, `sql`, `call`, `write`. `model` s'y ajoute (D841). Remplace les étapes de D317–D321.
+`enumerate`, `fetch`, `browse`, `extract`, `unpack`, `read`, `sql`, `call`, `write`. `model` s'y ajoute (D841). Choix de Shan (2026-11-22) : `connector` s'y ajoute. Elle lit un connecteur de l'org (requête, REST ou boîte d'un webhook) en un fichier CSV, pour un `read`. Son curseur avance seulement quand l'exécution réussit (`pipeline_cursors`). Remplace les étapes de D317–D321.
 
 ### D937 — État par élément, un seul registre
 `track: true`, `pipeline_items`, états `done`, `empty`, `failed`, `waiting`, `retry_after`.

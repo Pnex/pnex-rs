@@ -74,6 +74,8 @@ pub struct Memory(
     pub HashMap<String, Value>,
     /// The model's answer of each `model` step (`given: model:<as>`).
     HashMap<String, Value>,
+    /// The CSV each `connector` step reads (`given: connector:<as>`).
+    HashMap<String, Vec<u8>>,
 );
 
 impl Memory {
@@ -98,6 +100,8 @@ impl Memory {
             } else if let Some(step) = k.strip_prefix("model:") {
                 let (s, v) = json(step)?;
                 out.3.insert(s, v);
+            } else if let Some(step) = k.strip_prefix("connector:") {
+                out.4.insert(step.to_string(), replay.file(f)?);
             }
         }
         Ok(out)
@@ -141,6 +145,21 @@ fn csv_text(bytes: &[u8]) -> Result<Arc<Batches>, Failure> {
 }
 
 impl Sink for Memory {
+    async fn connector(&mut self, c: &pnex_core::pipeline::doc::Connector) -> Result<Row, Failure> {
+        let csv = self.4.get(&c.as_).cloned().ok_or_else(|| {
+            fail(
+                "fixture_missing",
+                json!({ "given": format!("connector:{}", c.as_) }),
+            )
+        })?;
+        let mut cols = Map::new();
+        cols.insert("name".into(), Value::String(c.name.clone()));
+        Ok(Row {
+            cols,
+            file: Some(Arc::new(Blob::Mem(csv))),
+        })
+    }
+
     // A replay reads no table of the worker: a key only dedupes within the
     // run, and a table is the case's fixture or missing.
     async fn has_table(&mut self, _: &str) -> Result<bool, Failure> {

@@ -67,6 +67,7 @@ pub struct Document {
 pub enum Step {
     Enumerate(Enumerate),
     Fetch(Fetch),
+    Connector(Connector),
     Browse(Browse),
     Extract(Extract),
     Unpack(Unpack),
@@ -409,6 +410,27 @@ impl GrantKind {
 
 fn token_field() -> String {
     "access_token".into()
+}
+
+/// One read of a connector of the org (D352, D793, D795): a database query,
+/// a REST request, or the calls a webhook received. Its working table has
+/// one row whose `file` holds the result as CSV, for a `read`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Connector {
+    #[serde(rename = "as")]
+    pub as_: String,
+    /// The connector's name on the Connectors tab.
+    pub name: String,
+    /// Database connectors: one read-only statement.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub query: String,
+    /// REST connectors: the request.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rest: Option<crate::connectors::rest::RestQuery>,
+    /// Read only what is past the last value a run kept (D794).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cursor: Option<crate::connectors::CursorSpec>,
 }
 
 /// Navigation actions (agents.md D323) played per row (D936).
@@ -897,6 +919,7 @@ impl Step {
         match self {
             Step::Enumerate(_) => "enumerate",
             Step::Fetch(_) => "fetch",
+            Step::Connector(_) => "connector",
             Step::Browse(_) => "browse",
             Step::Extract(_) => "extract",
             Step::Unpack(_) => "unpack",
@@ -913,6 +936,7 @@ impl Step {
         Some(match self {
             Step::Enumerate(s) => &s.as_,
             Step::Fetch(s) => &s.as_,
+            Step::Connector(s) => &s.as_,
             Step::Browse(s) => &s.as_,
             Step::Extract(s) => &s.as_,
             Step::Unpack(s) => &s.as_,
@@ -928,7 +952,7 @@ impl Step {
     pub fn inputs(&self) -> Vec<&str> {
         match self {
             Step::Enumerate(s) => s.for_each.as_deref().into_iter().collect(),
-            Step::Sql(_) => Vec::new(),
+            Step::Sql(_) | Step::Connector(_) => Vec::new(),
             Step::Fetch(s) => s.for_each.as_deref().into_iter().collect(),
             Step::Browse(s) => s.for_each.as_deref().into_iter().collect(),
             Step::Extract(s) => vec![&s.from],
@@ -945,7 +969,12 @@ impl Step {
     pub fn on_server(&self) -> bool {
         matches!(
             self,
-            Step::Enumerate(_) | Step::Fetch(_) | Step::Browse(_) | Step::Model(_) | Step::Write(_)
+            Step::Enumerate(_)
+                | Step::Fetch(_)
+                | Step::Connector(_)
+                | Step::Browse(_)
+                | Step::Model(_)
+                | Step::Write(_)
         )
     }
 }
@@ -1239,6 +1268,9 @@ impl Document {
     /// each other write target needs the right of its own route (R2).
     pub fn rights(&self) -> Vec<&'static str> {
         let mut out = vec!["datasets:read", "datasets:write"];
+        if self.steps.iter().any(|s| matches!(s, Step::Connector(_))) {
+            out.push("connectors:use");
+        }
         // A navigation plays in the starter's browser agent, like a site rule (D782).
         if self.steps.iter().any(|s| matches!(s, Step::Browse(_))) {
             out.push("site-recipes:write");
@@ -1607,6 +1639,30 @@ fn step_violations(
                 bad(format!("{at}.columns"), "invalid");
             }
         }
+        Step::Connector(c) => {
+            if c.name.trim().is_empty() || c.name.chars().count() > crate::connectors::NAME_MAX {
+                bad(format!("{at}.name"), "required");
+            }
+            if c.query.len() > crate::connectors::QUERY_MAX_BYTES {
+                bad(
+                    format!("{at}.query"),
+                    &format!("max_bytes:{}", crate::connectors::QUERY_MAX_BYTES),
+                );
+            }
+            if !c.query.trim().is_empty() && c.rest.is_some() {
+                bad(at.to_string(), "one_of:query,rest");
+            }
+            if c.rest.as_ref().is_some_and(|r| r.check().is_some()) {
+                bad(format!("{at}.rest"), "invalid");
+            }
+            if let Some(cur) = &c.cursor {
+                if c.query.trim().is_empty() && c.rest.is_none() {
+                    bad(format!("{at}.cursor"), "invalid");
+                } else if cur.check(c.rest.is_none(), &c.query).is_some() {
+                    bad(format!("{at}.cursor"), "invalid");
+                }
+            }
+        }
         Step::Call(c) => {
             if c.function.trim().is_empty() || c.function.len() > 255 {
                 bad(format!("{at}.function"), "required");
@@ -1937,5 +1993,30 @@ mod tests {
         ]));
         assert!(b.org_violations().is_empty());
         assert!(b.rights().contains(&"site-recipes:write"));
+    }
+
+    #[test]
+    fn a_connector_step_reads_one_connector() {
+        let ok = doc(json!([
+            {"connector": {"as": "raw", "name": "erp", "query": "SELECT * FROM t WHERE u > {{cursor}}",
+                "cursor": {"column": "u", "start": "0"}}},
+            {"read": {"as": "rows", "from": "raw", "format": "csv"}},
+            {"write": {"from": "rows", "table": {"name": "Erp"}}}
+        ]));
+        assert_eq!(tokens(&ok), Vec::<String>::new());
+        assert!(ok.org_violations().is_empty());
+        assert!(ok.rights().contains(&"connectors:use"));
+        let bad = doc(json!([
+            {"connector": {"as": "raw", "name": " ", "query": "SELECT 1",
+                "cursor": {"column": "u", "start": "0"}}},
+            {"write": {"from": "raw", "table": {"name": "Erp"}}}
+        ]));
+        assert_eq!(
+            tokens(&bad),
+            [
+                "steps.0.connector.name required",
+                "steps.0.connector.cursor invalid"
+            ]
+        );
     }
 }

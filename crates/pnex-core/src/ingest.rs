@@ -172,60 +172,7 @@ pub struct IngestConfig {
     pub cursor: Option<CursorSpec>,
 }
 
-/// Placeholder of the cursor in a SQL query, replaced by a literal the source quotes.
-pub const CURSOR_PLACEHOLDER: &str = "{{cursor}}";
-
-/// An incremental read (pipelines.md D794).
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-pub struct CursorSpec {
-    /// SQL: a column of the result. REST: a JSON pointer inside a record.
-    pub column: String,
-    /// REST: the query parameter that receives the last value.
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub param: String,
-    /// The value of a full read. Required for SQL; for REST, empty sends no parameter.
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub start: String,
-    /// Read everything again after this many incremental reads; absent = never.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub full_every: Option<u32>,
-}
-
-impl CursorSpec {
-    fn check(&self, sql: bool, query: &str) -> Option<&'static str> {
-        if self.column.trim().is_empty() || self.column.len() > 200 {
-            return Some("a cursor needs a column, 200 characters at most");
-        }
-        if self.start.len() > 200 || self.param.len() > 100 {
-            return Some("the cursor start is 200 characters at most, its parameter 100");
-        }
-        if self.full_every == Some(0) {
-            return Some("full_every must be positive");
-        }
-        if sql && (!query.contains(CURSOR_PLACEHOLDER) || self.start.is_empty()) {
-            return Some("a SQL cursor needs {{cursor}} in the query and a start value");
-        }
-        if !sql && (!self.column.starts_with('/') || self.param.trim().is_empty()) {
-            return Some("a REST cursor needs a JSON pointer and a parameter");
-        }
-        None
-    }
-
-    /// Whether this run reads everything: no value yet, or `full_every` reached.
-    pub fn full(&self, stored: Option<&str>, runs_since_full: u32) -> bool {
-        stored.is_none_or(str::is_empty) || self.full_every.is_some_and(|n| runs_since_full >= n)
-    }
-}
-
-/// Whether cursor value `a` comes after `b`: as numbers when both are, as text
-/// otherwise (ISO 8601 dates of one format sort as text).
-pub fn cursor_after(a: &str, b: &str) -> bool {
-    match (a.trim().parse::<f64>(), b.trim().parse::<f64>()) {
-        (Ok(x), Ok(y)) => x > y,
-        _ => a > b,
-    }
-}
+pub use crate::connectors::{cursor_after, CursorSpec, CURSOR_PLACEHOLDER};
 
 fn http_url(s: &str) -> bool {
     let s = s.trim();

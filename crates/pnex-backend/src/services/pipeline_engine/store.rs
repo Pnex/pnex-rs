@@ -421,6 +421,8 @@ pub struct DatasetSink<'a> {
     /// Rows the run asks again of the pipeline (`write: ask`), started once
     /// the run let go of the org's pipeline lock.
     pub asked: Vec<serde_json::Map<String, Value>>,
+    /// Where each `connector` step's cursor moves once the run succeeds.
+    pub cursors: Vec<(String, super::connector::Next)>,
 }
 
 /// Starts the rows a run asked again, apart: the run that asked them holds
@@ -991,6 +993,24 @@ impl Sink for DatasetSink<'_> {
         Ok(n)
     }
 
+    async fn connector(
+        &mut self,
+        c: &pnex_core::pipeline::doc::Connector,
+    ) -> Result<super::Row, Failure> {
+        use super::connector;
+        let kept = connector::kept(self.db, self.org, self.pipeline, &c.as_).await;
+        let (file, next) = connector::read(self.db, self.org, c, kept).await?;
+        if let Some(next) = next {
+            self.cursors.push((c.as_.clone(), next));
+        }
+        let mut cols = serde_json::Map::new();
+        cols.insert("name".into(), Value::String(c.name.clone()));
+        Ok(super::Row {
+            cols,
+            file: Some(std::sync::Arc::new(file)),
+        })
+    }
+
     async fn browse(
         &mut self,
         b: &pnex_core::pipeline::doc::Browse,
@@ -1550,6 +1570,7 @@ async fn run_core(
         own: None,
         user,
         asked: Vec::new(),
+        cursors: Vec::new(),
     };
     let sql = super::sql::WorkerSql { db, store, org };
     let out = run(
@@ -1597,6 +1618,7 @@ pub async fn run_own(
         own: Some((id, version)),
         user,
         asked: Vec::new(),
+        cursors: Vec::new(),
     };
     let sql = super::sql::WorkerSql {
         db: &ctx.db,
@@ -1607,6 +1629,9 @@ pub async fn run_own(
         doc, &inputs, transport, &mut sink, &sql, &items, None, None, None,
     )
     .await;
+    if out.failure.is_none() {
+        super::connector::keep(&ctx.db, org, &key, &sink.cursors).await?;
+    }
     record(&ctx.db, org, &key, &out).await?;
     Ok(out)
 }
@@ -1740,6 +1765,7 @@ async fn resume_locked(
         own,
         user,
         asked: Vec::new(),
+        cursors: Vec::new(),
     };
     let sql = super::sql::WorkerSql {
         db: &ctx.db,

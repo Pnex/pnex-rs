@@ -5,6 +5,7 @@
 //! pass recorded answers and memory.
 
 pub mod blob;
+pub mod connector;
 mod files;
 pub mod flow_ask;
 pub mod read;
@@ -212,6 +213,14 @@ pub trait Sink {
 
     /// Asks these rows again of the pipeline once the run ends; the rows.
     async fn ask(&mut self, rows: Vec<Map<String, Value>>) -> Result<u64, Failure>;
+
+    /// Reads a connector of the org (D352): one row, `name` and its CSV file.
+    async fn connector(&mut self, c: &pnex_core::pipeline::doc::Connector) -> Result<Row, Failure> {
+        Err(fail(
+            "step_unsupported",
+            json!({ "step": "connector", "as": c.as_ }),
+        ))
+    }
 
     /// Plays a navigation for the row `item` (D995): its extracts as
     /// `{name, text}` rows when known now (a replay), `None` once started:
@@ -1309,6 +1318,7 @@ impl<T: Transport, S: Sink, Q: sql::SqlRunner> Exec<'_, T, S, Q> {
                 };
                 Table::Rows(self.fetch(f, input).await?)
             }
+            Step::Connector(c) => Table::Rows(vec![self.sink.connector(c).await?]),
             Step::Extract(e) => {
                 let (e, input) = (e.clone(), Self::rows(tables, &e.from)?.to_vec());
                 Table::Rows(blocking(move || files::extract(&e, &input)).await?)
