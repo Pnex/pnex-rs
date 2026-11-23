@@ -181,7 +181,7 @@ sequenceDiagram
   E-->>R: write ask : lignes suivantes
 ```
 
-Une étape `browse` met la ligne en `waiting` et rend la main (D995). La fin de la navigation reprend le run à l'étape suivante. `browse` suit directement l'`enumerate`, sinon refus `browse_position`. Un redémarrage du serveur ne perd rien : la navigation finie retrouve sa ligne en base. Une navigation trop longue fait échouer la ligne, jamais le run. `keep: false` efface les extraits dès la reprise.
+Une étape `browse` met la ligne en `waiting` et rend la main (D995). La fin de la navigation reprend le run à l'étape suivante. `browse` suit directement l'`enumerate`, sinon refus `browse_position`. Un redémarrage du serveur ne perd rien : la navigation finie retrouve sa ligne en base. Une navigation trop longue fait échouer la ligne, jamais le run. `keep: false` efface les extraits dès la reprise. `browser` nomme l'agent navigateur de l'org qui joue la navigation. `captures` donne la durée de conservation des captures d'écran et des PDF (`none`, `days:N`, `keep`, 30 jours par défaut). Les autres `hosts` du document sont les hôtes d'où la navigation peut prendre un PDF (11 hôtes au plus).
 
 Une étape `write: { ask: {} }` redemande au même pipeline les lignes d'une table (D997). Elles partent une fois le run fini, dans l'agent du même membre. Refus `ask_without_asked` si le document n'énumère pas un axe `asked` suivi. Les lignes demandées explicitement sont toutes prises, sauf si l'énumération déclare `per_run`.
 

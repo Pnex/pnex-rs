@@ -451,6 +451,14 @@ pub struct Browse {
     /// resumed with them (D995).
     #[serde(default = "yes", skip_serializing_if = "Clone::clone")]
     pub keep: bool,
+    /// Browser endpoint of the org to play on (its name); the org default,
+    /// else the platform browser, when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub browser: Option<String>,
+    /// How long the run files (screenshots, PDFs) are kept, D161 wire
+    /// format (`none`, `days:N`, `keep`); 30 days when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub captures: Option<String>,
 }
 
 /// Rows drawn from the files of a table: exactly one of the kinds.
@@ -1527,6 +1535,13 @@ fn step_violations(
                 Some(h) if hosts.contains(&h) || hosts.contains(&format!("www.{h}")) => {}
                 _ => bad(format!("{at}.site"), "host_not_declared"),
             }
+            // The other hosts are those a navigation may take a PDF from.
+            if hosts.len() > crate::site_recipe::ALLOW_HOSTS_MAX + 1 {
+                bad(
+                    "hosts".into(),
+                    &format!("max_items:{}", crate::site_recipe::ALLOW_HOSTS_MAX + 1),
+                );
+            }
             if b.steps.is_empty() || b.steps.len() > crate::site_recipe::STEPS_MAX {
                 bad(format!("{at}.steps"), "invalid");
             }
@@ -1535,6 +1550,18 @@ fn step_violations(
                 .is_some_and(|s| s != crate::site_recipe::SESSION_REQUIRED)
             {
                 bad(format!("{at}.session"), "invalid");
+            }
+            if b.browser
+                .as_deref()
+                .is_some_and(|n| n.trim().is_empty() || n.len() > crate::site_recipe::NAME_MAX)
+            {
+                bad(format!("{at}.browser"), "invalid");
+            }
+            if b.captures
+                .as_deref()
+                .is_some_and(|c| crate::media_ingest::AudioRetention::from_wire(c).is_none())
+            {
+                bad(format!("{at}.captures"), "invalid");
             }
         }
         Step::Extract(e) => {
@@ -1993,6 +2020,32 @@ mod tests {
         ]));
         assert!(b.org_violations().is_empty());
         assert!(b.rights().contains(&"site-recipes:write"));
+    }
+
+    #[test]
+    fn a_browse_step_names_its_browser_and_keeps_its_captures() {
+        let browse = |extra: serde_json::Value| {
+            let mut b = json!({"as": "page", "for_each": "p", "site": "data.example.io",
+                "steps": [{"open": "/"}]});
+            b.as_object_mut()
+                .unwrap()
+                .extend(extra.as_object().unwrap().clone());
+            doc(json!([
+                {"enumerate": {"as": "p", "track": true, "cross": [{"as": "q", "asked": []}]}},
+                {"browse": b},
+                {"write": {"from": "page", "table": {"name": "Pages"}}}
+            ]))
+        };
+        let ok = browse(json!({"browser": "office", "captures": "days:7"}));
+        assert_eq!(tokens(&ok), Vec::<String>::new());
+        let bad = browse(json!({"browser": " ", "captures": "days:x"}));
+        assert_eq!(
+            tokens(&bad),
+            [
+                "steps.1.browse.browser invalid",
+                "steps.1.browse.captures invalid"
+            ]
+        );
     }
 
     #[test]

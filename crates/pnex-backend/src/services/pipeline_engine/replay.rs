@@ -237,6 +237,7 @@ impl Sink for Memory {
     async fn browse(
         &mut self,
         b: &pnex_core::pipeline::doc::Browse,
+        _: &[String],
         _: &Row,
         item: &str,
     ) -> Result<Option<Vec<Row>>, Failure> {

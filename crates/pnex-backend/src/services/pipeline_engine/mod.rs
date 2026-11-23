@@ -225,9 +225,11 @@ pub trait Sink {
     /// Plays a navigation for the row `item` (D995): its extracts as
     /// `{name, text}` rows when known now (a replay), `None` once started:
     /// the row waits and the end of the navigation resumes it.
+    /// `hosts` are the document's: the off-site hosts a PDF may come from.
     async fn browse(
         &mut self,
         b: &pnex_core::pipeline::doc::Browse,
+        hosts: &[String],
         row: &Row,
         item: &str,
     ) -> Result<Option<Vec<Row>>, Failure>;
@@ -1493,7 +1495,7 @@ impl<T: Transport, S: Sink, Q: sql::SqlRunner> Exec<'_, T, S, Q> {
                 let Some(row) = rows.first() else {
                     return Ok(Some(Table::Rows(Vec::new())));
                 };
-                match self.sink.browse(b, row, &item).await? {
+                match self.sink.browse(b, &self.doc.hosts, row, &item).await? {
                     Some(extracts) => Table::Rows(extracts),
                     None => return Err(fail(WAITING, Value::Null)),
                 }

@@ -1014,6 +1014,7 @@ impl Sink for DatasetSink<'_> {
     async fn browse(
         &mut self,
         b: &pnex_core::pipeline::doc::Browse,
+        hosts: &[String],
         row: &super::Row,
         item: &str,
     ) -> Result<Option<Vec<super::Row>>, Failure> {
@@ -1031,10 +1032,17 @@ impl Sink for DatasetSink<'_> {
         let recipe = pnex_core::site_recipe::Recipe {
             name: format!("{} · {}", self.pipeline, b.as_),
             site: b.site.clone(),
-            allow_hosts: Vec::new(),
+            allow_hosts: hosts
+                .iter()
+                .filter(|h| {
+                    pnex_core::site_recipe::site_host(h)
+                        != pnex_core::site_recipe::site_host(&b.site)
+                })
+                .cloned()
+                .collect(),
             params: params.keys().cloned().collect(),
-            browser: None,
-            captures: None,
+            browser: b.browser.clone(),
+            captures: b.captures.clone(),
             session: b.session.clone(),
             steps: b.steps.clone(),
         };
