@@ -673,3 +673,201 @@ async fn an_org_pipeline_browses_and_resumes_under_its_starters_rights() {
     })
     .await;
 }
+
+/// A `call` step without a pack names a Starlark function of the org, at its
+/// current version (D934); another org's function of that name is not seen.
+#[tokio::test]
+#[serial]
+async fn an_org_pipeline_calls_a_function_of_the_org() {
+    with_app(|server, env, ctx| async move {
+        use pnex_backend::services::{pipeline_engine::store::own_functions, pipelines::checked};
+        let org = personal_org(&server, &env.alice).await;
+        let other = personal_org(&server, &env.bob).await;
+        let doc = checked(
+            "key: p\nhosts: [data.example.io]\nsteps:\n  - fetch: {as: page, url: \"https://data.example.io/a.csv\"}\n  - read: {as: rows, from: page, format: csv}\n  - call: {as: kept, from: rows, function: keep_two}\n  - write: {from: kept, table: {name: out}}\n",
+        )
+        .unwrap();
+        assert!(own_functions(&ctx.db, org, &doc).await.unwrap().is_empty());
+
+        let code = "def handle(rows):\n    return rows[:2]\n";
+        let (s, f) = call(
+            &server,
+            "POST",
+            "/api/v1/functions",
+            &env.alice,
+            org,
+            Some(json!({ "name": "keep_two", "language": "starlark", "code": code })),
+        )
+        .await;
+        assert_eq!(s, 201, "{f}");
+        let found = own_functions(&ctx.db, org, &doc).await.unwrap();
+        assert_eq!(found.get("keep_two").map(String::as_str), Some(code));
+        assert!(own_functions(&ctx.db, other, &doc).await.unwrap().is_empty());
+    })
+    .await;
+}
+
+/// Serves `a.csv` for `data.example.io`, so a `tested` pipeline runs.
+async fn serve_numbers() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base = format!("http://{}", listener.local_addr().unwrap());
+    let app = axum::Router::new().route("/a.csv", axum::routing::get(|| async { "n\n1\n2\n" }));
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    pnex_backend::services::pipeline_engine::store::route_for_tests("data.example.io", &base);
+}
+
+/// A pipeline of the org named `name`: its id.
+async fn numbers(server: &axum_test::TestServer, token: &str, org: i64, name: &str) -> String {
+    let (s, p) = call(
+        server,
+        "POST",
+        "/api/v1/pipelines",
+        token,
+        org,
+        Some(json!({ "name": name, "document": tested(2) })),
+    )
+    .await;
+    assert_eq!(s, 201, "{p}");
+    p["id"].as_str().unwrap().to_string()
+}
+
+async fn sql(ctx: &loco_rs::app::AppContext, q: &str, values: Vec<sea_orm::Value>) -> Vec<Value> {
+    use sea_orm::{ConnectionTrait, Statement};
+    ctx.db
+        .query_all_raw(Statement::from_sql_and_values(
+            sea_orm::DatabaseBackend::Postgres,
+            q,
+            values,
+        ))
+        .await
+        .unwrap()
+        .iter()
+        .map(|r| {
+            Value::Array(
+                (0..r.column_names().len())
+                    .map(|i| {
+                        r.try_get_by_index::<Option<String>>(i)
+                            .map(|v| v.map_or(Value::Null, Value::String))
+                            .unwrap_or(Value::Null)
+                    })
+                    .collect(),
+            )
+        })
+        .collect()
+}
+
+/// Queues a run of `id` straight in the table: its id.
+async fn queued(ctx: &loco_rs::app::AppContext, org: i64, id: &str, extra: &str) -> String {
+    let rows = sql(
+        ctx,
+        &format!(
+            "INSERT INTO pipeline_jobs (org_id, pipeline_id, version, trigger{}) \
+             SELECT $1, $2::uuid, 1, 'manual'{} RETURNING id::text",
+            if extra.is_empty() {
+                ""
+            } else {
+                ", state, attempts, heartbeat_at, started_at"
+            },
+            if extra.is_empty() {
+                String::new()
+            } else {
+                format!(", {extra}")
+            },
+        ),
+        vec![org.into(), id.into()],
+    )
+    .await;
+    rows[0][0].as_str().unwrap().to_string()
+}
+
+async fn job_state(ctx: &loco_rs::app::AppContext, job: &str) -> (String, Option<String>) {
+    let rows = sql(
+        ctx,
+        "SELECT state, code FROM pipeline_jobs WHERE id = $1::uuid",
+        vec![job.into()],
+    )
+    .await;
+    (
+        rows[0][0].as_str().unwrap().to_string(),
+        rows[0][1].as_str().map(str::to_string),
+    )
+}
+
+/// The org that waited most goes first, whatever one org has queued; a run
+/// that took two servers down fails, one that took one is tried again.
+#[tokio::test]
+#[serial]
+async fn the_run_queue_is_fair_and_gives_up_on_a_run_that_kills() {
+    with_app(|server, env, ctx| async move {
+        use pnex_backend::services::pipelines::run_next;
+        serve_numbers().await;
+        let busy = personal_org(&server, &env.alice).await;
+        let quiet = personal_org(&server, &env.bob).await;
+        let first = numbers(&server, &env.alice, busy, "first").await;
+        queued(&ctx, busy, &first, "").await;
+        assert!(run_next(&ctx).await.unwrap());
+        let busy_job = queued(&ctx, busy, &first, "").await;
+        let theirs = numbers(&server, &env.bob, quiet, "theirs").await;
+        let quiet_job = queued(&ctx, quiet, &theirs, "").await;
+        assert!(run_next(&ctx).await.unwrap());
+        assert_eq!(job_state(&ctx, &quiet_job).await.0, "done");
+        assert_eq!(job_state(&ctx, &busy_job).await.0, "queued");
+        assert!(run_next(&ctx).await.unwrap());
+
+        let dead = "'running', 2, now() - interval '12 minutes', now()";
+        let twice = queued(&ctx, busy, &first, dead).await;
+        run_next(&ctx).await.unwrap();
+        assert_eq!(
+            job_state(&ctx, &twice).await,
+            (
+                "failed".to_string(),
+                Some("pipeline-worker-lost".to_string())
+            )
+        );
+        let once = queued(
+            &ctx,
+            busy,
+            &first,
+            "'running', 1, now() - interval '12 minutes', now()",
+        )
+        .await;
+        assert!(run_next(&ctx).await.unwrap(), "the run is tried again");
+        assert_eq!(job_state(&ctx, &once).await.0, "done");
+    })
+    .await;
+}
+
+/// A pending erasure holds the org's runs back until it is done.
+#[tokio::test]
+#[serial]
+async fn a_pending_erasure_holds_the_runs_of_the_org() {
+    with_app(|server, env, ctx| async move {
+        use pnex_backend::services::pipelines::run_next;
+        serve_numbers().await;
+        let org = personal_org(&server, &env.alice).await;
+        let id = numbers(&server, &env.alice, org, "numbers").await;
+        queued(&ctx, org, &id, "").await;
+        assert!(run_next(&ctx).await.unwrap());
+        sql(
+            &ctx,
+            "INSERT INTO dataset_erasures (org_id, dataset_id, column_name, value, type_key) \
+             SELECT $1, id, 'n', 'v', 't' FROM datasets WHERE org_id = $1 AND name = 'out'",
+            vec![org.into()],
+        )
+        .await;
+        let job = queued(&ctx, org, &id, "").await;
+        assert!(
+            !run_next(&ctx).await.unwrap(),
+            "a run started over a pending erasure"
+        );
+        sql(
+            &ctx,
+            "UPDATE dataset_erasures SET done_at = now() WHERE org_id = $1",
+            vec![org.into()],
+        )
+        .await;
+        assert!(run_next(&ctx).await.unwrap());
+        assert_eq!(job_state(&ctx, &job).await.0, "done");
+    })
+    .await;
+}

@@ -270,6 +270,37 @@ pub fn call_functions(own: &str, doc: &Document) -> HashMap<String, String> {
     out
 }
 
+/// The functions an org's own pipeline calls: `<pack>/<name>` from a
+/// shipped pack, a bare `<name>` from the org's Starlark functions, at
+/// their current version (D934).
+pub async fn own_functions(
+    db: &DatabaseConnection,
+    org: i64,
+    doc: &Document,
+) -> Result<HashMap<String, String>, sea_orm::DbErr> {
+    let mut out = call_functions("", doc);
+    for s in &doc.steps {
+        let pnex_core::pipeline::Step::Call(c) = s else {
+            continue;
+        };
+        if c.function.contains('/') || out.contains_key(&c.function) {
+            continue;
+        }
+        let row = db
+            .query_one_raw(stmt(
+                "SELECT v.code FROM functions f \
+                 JOIN function_versions v ON v.id = f.current_version_id \
+                 WHERE f.org_id = $1 AND f.name = $2 AND f.language = 'starlark'",
+                vec![org.into(), c.function.clone().into()],
+            ))
+            .await?;
+        if let Some(code) = row.and_then(|r| r.try_get::<String>("", "code").ok()) {
+            out.insert(c.function.clone(), code);
+        }
+    }
+    Ok(out)
+}
+
 /// The settings and objects a document reads, as the org has them.
 pub async fn inputs(
     db: &DatabaseConnection,
@@ -1616,7 +1647,7 @@ pub async fn run_own(
     let key = id.to_string();
     let (items, shas) = known(&ctx.db, org, &key).await?;
     let mut inputs = inputs(&ctx.db, org, doc, Utc::now().naive_utc(), shas).await?;
-    inputs.functions = call_functions("", doc);
+    inputs.functions = own_functions(&ctx.db, org, doc).await?;
     inputs.extractors = model_extractors("", doc);
     inputs.asked = asked;
     let mut sink = DatasetSink {
@@ -1763,7 +1794,10 @@ async fn resume_locked(
     };
     let (items, shas) = known(&ctx.db, org, id).await?;
     let mut inputs = inputs(&ctx.db, org, doc, Utc::now().naive_utc(), shas).await?;
-    inputs.functions = call_functions(pack, doc);
+    inputs.functions = match pack {
+        "" => own_functions(&ctx.db, org, doc).await?,
+        _ => call_functions(pack, doc),
+    };
     inputs.extractors = model_extractors(pack, doc);
     let store = datasets::store_of(&ctx.config)?;
     let mut sink = DatasetSink {

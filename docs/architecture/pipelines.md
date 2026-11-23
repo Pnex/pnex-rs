@@ -592,7 +592,7 @@ Seul le S3 de PneX. Aucun identifiant de compartiment tiers.
 Écriture retour, tables virtuelles, réplication logique, Elasticsearch, SFTP, OAuth2 avec consentement.
 
 ### D934 — Un seul document : le pipeline
-Toute ingestion est un pipeline YAML. Bornée par D998 : pas de lien déduit dans un pipeline sans ligne d'écart. Choix de Shan (2026-11-21) : une seule sorte. `/api/v1/pipelines` sert le pipeline d'org : versionné, `tests:` facultatifs mais joués avant l'enregistrement, réponses écrites dans le document. Il lit tout hôte public derrière la garde R8, la cadence D938 et le quota de l'org. `share`, `requires`, `schedule` et `after` lui sont refusés. Son horaire reste la route D575. Choix de Shan (2026-11-22, Q-PE2) : il peut naviguer (`browse`) aux conditions de D782, avec le droit `browse:use`.
+Toute ingestion est un pipeline YAML. Bornée par D998 : pas de lien déduit dans un pipeline sans ligne d'écart. Choix de Shan (2026-11-21) : une seule sorte. `/api/v1/pipelines` sert le pipeline d'org : versionné, `tests:` facultatifs mais joués avant l'enregistrement, réponses écrites dans le document. Il lit tout hôte public derrière la garde R8, la cadence D938 et le quota de l'org. `share`, `requires`, `schedule` et `after` lui sont refusés. Son horaire reste la route D575. Choix de Shan (2026-11-22, Q-PE2) : il peut naviguer (`browse`) aux conditions de D782, avec le droit `browse:use`. Son `call` nomme une fonction Starlark de l'org (`<nom>`, version courante, `def handle(rows)`) ou d'un pack (`<pack>/<nom>`).
 
 ### D935 — Tout intermédiaire est une table de travail
 Une table de travail vit le temps du run, en mémoire ou dans un fichier temporaire.
@@ -754,7 +754,6 @@ tests:
 
 - PE8 : mesure autour d'événements et chaînes candidates dans `/analysis`, note de séance en règle.
 - PE9 : `HOST_DEBT` à vider (2 lignes : réseaux des agents navigateur, adaptateurs de l'extension).
-- D934 : un `call` d'un pipeline d'org ne trouve que les fonctions des packs (`<pack>/<nom>`), pas celles de l'org.
 - D946 : les pipelines des packs restent hors des exécutions enchaînées. `after` d'un pipeline du moteur n'est pas appliqué.
 - D941 : cible `series` non codée.
 - D944 : la sonde n'a pas de route.

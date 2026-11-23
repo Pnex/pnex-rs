@@ -101,10 +101,11 @@ pub async fn tested(ctx: &AppContext, org_id: i64, doc: &Document) -> Result<(),
         pack: None,
         given: HashMap::new(),
     };
+    let functions = store::own_functions(&ctx.db, org_id, doc).await?;
     let all = async {
         let mut out = Vec::new();
         for (i, case) in doc.tests.iter().enumerate() {
-            let functions = store::call_functions("", doc);
+            let functions = functions.clone();
             let extractors = store::model_extractors("", doc);
             for p in replay::case(doc, i, case, &own, functions, extractors, &sql).await {
                 let path = match p.table {
