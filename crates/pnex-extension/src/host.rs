@@ -50,10 +50,9 @@ extern "C" {
     pub async fn has_origin(url: &str) -> Result<JsValue, JsValue>;
     #[wasm_bindgen(catch)]
     pub async fn scroll(tab: f64) -> Result<JsValue, JsValue>;
+    /// A global of the page (`name`, a plain identifier) as JSON, or "null".
     #[wasm_bindgen(catch)]
-    pub async fn read_initial_data(tab: f64) -> Result<JsValue, JsValue>;
-    #[wasm_bindgen(catch)]
-    pub async fn read_player_response(tab: f64) -> Result<JsValue, JsValue>;
+    pub async fn read_page_global(tab: f64, name: &str) -> Result<JsValue, JsValue>;
     #[wasm_bindgen(catch)]
     pub async fn fetch_text(url: &str) -> Result<JsValue, JsValue>;
     #[wasm_bindgen(catch)]

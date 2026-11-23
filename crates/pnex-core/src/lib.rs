@@ -164,6 +164,7 @@ pub mod voice_recognition;
 /// Browser agents (browser-agents.md D254–D269): pairing, missions,
 /// `/ws/extension` protocol.
 pub mod browser_agent;
+pub mod post_reader;
 pub mod profile_network;
 
 /// Accent- and case-insensitive text, Rust and SQL (crm.md D447).

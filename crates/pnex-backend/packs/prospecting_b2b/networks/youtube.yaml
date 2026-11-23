@@ -12,3 +12,42 @@ follow:
   sites: ["https://www.youtube.com/"]
   post: "https://www.youtube.com/watch?v={id}"
   short: "https://www.youtube.com/shorts/{id}"
+  # Channel lists: the page's first data, then the responses of each scroll.
+  # Renderer names change between versions: every known one is read.
+  responses: ["/youtubei/v1/browse"]
+  page_data: ytInitialData
+  posts:
+    id: { chars: "-_", min: 11, max: 11 }
+    shapes:
+      - key: videoRenderer
+        id: [videoId]
+        text: [title.runs.0.text, title.simpleText]
+        duration: { from: [lengthText.simpleText], as: clock }
+        video_page: true
+      - key: lockupViewModel
+        when: { contentType: LOCKUP_CONTENT_TYPE_VIDEO }
+        id: [contentId]
+        text: [metadata.lockupMetadataViewModel.title.content]
+        video_page: true
+      - key: reelItemRenderer
+        id: [videoId]
+        text: [headline.simpleText]
+        video_page: true
+        short: true
+      - key: shortsLockupViewModel
+        id: [onTap.innertubeCommand.reelWatchEndpoint.videoId]
+        text: [overlayMetadata.primaryText.content]
+        video_page: true
+        short: true
+  # A track written by people when there is one, else the automatic one.
+  captions:
+    page_data: ytInitialPlayerResponse
+    track:
+      url:
+        - "captions.playerCaptionsTracklistRenderer.captionTracks[kind!=asr].baseUrl"
+        - captions.playerCaptionsTracklistRenderer.captionTracks.0.baseUrl
+      lang:
+        - "captions.playerCaptionsTracklistRenderer.captionTracks[kind!=asr].languageCode"
+        - captions.playerCaptionsTracklistRenderer.captionTracks.0.languageCode
+      query: fmt=json3
+  cues: { json: { list: events, start: tStartMs, duration: dDurationMs, text: "segs.*.utf8" } }

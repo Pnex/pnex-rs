@@ -313,30 +313,16 @@ export async function scroll(tabId) {
   });
 }
 
-/** Data a page embeds before any request (YouTube's `ytInitialData`), JSON or "null". */
-export async function read_initial_data(tabId) {
+/** A global the page set before any request (named by the plan), JSON or "null". */
+export async function read_page_global(tabId, name) {
+  if (!/^[A-Za-z_$][\w$]*$/.test(name)) return "null";
   const [result] = await exec({
     target: { tabId },
     world: "MAIN",
-    func: () => {
+    args: [name],
+    func: (n) => {
       try {
-        return JSON.stringify(window.ytInitialData ?? null);
-      } catch {
-        return "null";
-      }
-    },
-  });
-  return result?.result ?? "null";
-}
-
-/** Player data of a watch page (`ytInitialPlayerResponse`), JSON or "null". */
-export async function read_player_response(tabId) {
-  const [result] = await exec({
-    target: { tabId },
-    world: "MAIN",
-    func: () => {
-      try {
-        return JSON.stringify(window.ytInitialPlayerResponse ?? null);
+        return JSON.stringify(window[n] ?? null);
       } catch {
         return "null";
       }

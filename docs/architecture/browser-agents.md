@@ -14,7 +14,7 @@ Un agent navigateur est une extension Chrome ou Firefox appairée à une org Pne
 - **Mission** : un travail déclaré dans l'UI, typé (`MissionSpec`), stocké dans `extension_missions`.
 - **Cible** : ce que vise une mission, normalisée (`x:@handle`, `web:<url>`…). Clé du bail (D257).
 - **Bail** : verrou Valkey `pnex:ext:v1:{org}:lease:{target}`. Seul l'agent qui le tient exécute la mission.
-- **Adaptateur** : le code propre à une plateforme, compilé dans l'extension (§3.7).
+- **Lecteur de plateforme** : ce que le pack déclare pour lire les posts d'une plateforme (réponses, formes, sous-titres), joué par l'extension sans code propre à la plateforme (§3.7).
 - **Registre des vidéos** : la table `social_videos`, les posts que l'org a déjà vus ou capturés (D259).
 - **Agent personnel** : un agent qui exécute seulement les missions de son membre (`paired_by`).
 - **Agent commun** : un agent posé par un admin (`extension:share`). Il exécute aussi les missions des membres sans agent et les tâches du serveur (D550).
@@ -81,7 +81,7 @@ flowchart LR
   UP --> MED
 ```
 
-Le crate `pnex-extension` compile en wasm la logique de l'agent : missions, protocole, adaptateurs, rythme, lecteur de règles (D264). Le JS se limite au manifeste, aux chargeurs wasm, au crochet MAIN (`hook.js`), à l'hôte d'onglets (`host.js`) et à l'enregistreur (`recorder.js`). Le crochet MAIN reste en JS parce que la CSP des sites bloque en général le wasm dans la page. Il relaie les réponses brutes et le wasm les décode.
+Le crate `pnex-extension` compile en wasm la logique de l'agent : missions, protocole, lecteurs de plateforme, rythme, lecteur de règles (D264). Le JS se limite au manifeste, aux chargeurs wasm, au crochet MAIN (`hook.js`), à l'hôte d'onglets (`host.js`) et à l'enregistreur (`recorder.js`). Le crochet MAIN reste en JS parce que la CSP des sites bloque en général le wasm dans la page. Il relaie les réponses brutes et le wasm les décode.
 
 La page d'options est en HTML simple. Ses textes passent par les `_locales` du navigateur (fr, en, parité testée), pas par Dioxus.
 
@@ -220,9 +220,16 @@ L'enregistrement en temps réel utilise `captureStream()` (`mozCaptureStream` so
 
 Une mission `follow_account` peut nommer la personne ou l'organisation du compte (`publisher_id`). Chaque média capturé reçoit alors le lien `published_by` (pack `investigation`, D278) et `metadata.published_by_object`. La provenance commune est dans `media_assets.metadata` : `source = browser_agent`, `mission_id`, `source_url`, `platform`, `platform_id`, `author_handle`, `published_at`, `captured_at`.
 
-### 3.7 Adaptateurs
+### 3.7 Lecteurs de plateforme
 
-Un adaptateur par plateforme, en Rust, dans `crates/pnex-extension/src/adapters/` : `x.rs`, `youtube.rs`, `tiktok.rs`. Il décode les réponses relayées par `hook.js`, avec un repli sur le DOM. Le web générique n'a pas d'adaptateur : `collect_page` lit le texte de la page.
+Le pack déclare le lecteur de chaque plateforme, dans `follow` de `packs/prospecting_b2b/networks/<réseau>.yaml` (D951). Le serveur l'envoie avec la mission (`FollowPlan`). L'extension n'a pas de code propre à une plateforme : la grammaire est dans `pnex_core::post_reader`.
+
+- **Réponses lues** (`responses`) : parties d'adresse. `hook.js` copie les réponses qui en contiennent une. Il reçoit la liste par `relay.js`, qui la lit dans le stockage de l'extension.
+- **Données de la page** (`page_data`) : une variable globale de la page, lue avant le premier défilement.
+- **Posts** (`posts`) : une liste (`list`) ou tout objet du document, et des formes (`shapes`). Une forme dit où lire l'id, le texte, l'auteur, la date, la durée, la vidéo et les sous-titres listés.
+- **Sous-titres de la page** (`captions`) et **forme des sous-titres** (`cues`) : WebVTT, ou JSON décrit par chemins.
+
+Un chemin est une suite de clés séparées par des points. Il accepte un indice, `*`, un filtre `[k=a|b]` ou `[k!=a]`, et `^k` (l'élément au `k` le plus haut). Une adresse de vidéo ou de sous-titres doit être sur un des `sites` du plan.
 
 | Plateforme | Source lue | Pages |
 |---|---|---|
@@ -230,7 +237,7 @@ Un adaptateur par plateforme, en Rust, dans `crates/pnex-extension/src/adapters/
 | YouTube | `ytInitialData`, réponses `youtubei/v1/browse` | `/@<handle>/videos`, `/@<handle>/shorts` |
 | TikTok | réponses `item_list`, WebVTT listé avec le post | `tiktok.com/@<handle>` |
 
-Les formats des plateformes changent sans prévenir. Un décodage en échec n'est jamais silencieux : la mission passe en `blocked` avec un code. La correction passe par une nouvelle version de l'extension (MV3 : pas de code distant). Chaque adaptateur a des tests sur une réponse enregistrée.
+Les formats des plateformes changent sans prévenir. Un décodage en échec n'est jamais silencieux : la mission passe en `blocked` avec un code. La correction est une nouvelle version du pack, sans nouvelle extension. Chaque lecteur a des tests sur une réponse enregistrée (`pipeline_engine/tests.rs`). Les hôtes des scripts de page restent dans le manifeste : un test vérifie que chaque plateforme suivie y figure.
 
 Une plateforme exclusive (`needs_foreground`, TikTok aujourd'hui) met ses vidéos en pause dans un onglet caché (D269). Seul un agent `dedicated:<plateforme>` l'exécute. Cet agent lit toujours au premier plan et met la mission en pause (`ext-tab-hidden`) si l'onglet reste caché. Un PC dédié reste allumé, session ouverte, écran non verrouillé, fenêtre de l'agent au premier plan. Deux plateformes dédiées sur une machine demandent deux profils et deux fenêtres visibles côte à côte.
 

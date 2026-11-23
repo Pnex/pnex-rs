@@ -1189,6 +1189,21 @@ pub struct FollowPlan {
     /// Address of a short video, when the platform has another one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub short: Option<String>,
+    /// Responses of the web app it reads: their address holds one of these.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub responses: Vec<String>,
+    /// Global of a list page that holds its first posts.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub page_data: Option<String>,
+    /// How the posts are found in a response.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub posts: Option<crate::post_reader::PostReader>,
+    /// A caption track read on the post's own page.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub captions: Option<crate::post_reader::PageTrack>,
+    /// Form of the platform's caption files.
+    #[serde(default)]
+    pub cues: crate::post_reader::Cues,
 }
 
 impl FollowPlan {

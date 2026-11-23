@@ -47,6 +47,20 @@ pub struct Follow {
     /// Address of a short video, when the platform has another one.
     #[serde(default)]
     pub short: Option<String>,
+    /// Responses of the web app it reads: their address holds one of these.
+    #[serde(default)]
+    pub responses: Vec<String>,
+    /// Global of a list page that holds its first posts.
+    #[serde(default)]
+    pub page_data: Option<String>,
+    /// How the posts are found in a response.
+    pub posts: crate::post_reader::PostReader,
+    /// A caption track read on the post's own page.
+    #[serde(default)]
+    pub captions: Option<crate::post_reader::PageTrack>,
+    /// Form of the platform's caption files.
+    #[serde(default)]
+    pub cues: crate::post_reader::Cues,
 }
 
 impl Follow {
@@ -61,6 +75,11 @@ impl Follow {
             sites: self.sites.clone(),
             post: self.post.clone(),
             short: self.short.clone(),
+            responses: self.responses.clone(),
+            page_data: self.page_data.clone(),
+            posts: Some(self.posts.clone()),
+            captions: self.captions.clone(),
+            cues: self.cues.clone(),
         }
     }
 }

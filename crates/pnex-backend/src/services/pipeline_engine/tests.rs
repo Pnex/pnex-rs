@@ -622,11 +622,7 @@ fn the_extension_hooks_every_followed_platform() {
                     "{host}: {script}"
                 );
             }
-            assert!(
-                include_str!("../../../../pnex-extension/extension/hook.js")
-                    .contains(&format!("\"{host}\"")),
-                "{host} missing from hook.js"
-            );
+            assert!(!f.responses.is_empty(), "{host}: no response read");
         }
     }
 }
@@ -655,4 +651,154 @@ fn pack_pipelines_run_after_others_without_a_cycle() {
             }
         }
     }
+}
+
+/// The plan of a followed platform, as the server sends it.
+fn follow(key: &str) -> pnex_core::browser_agent::FollowPlan {
+    let n = super::store::networks()
+        .iter()
+        .find(|n| n.key == key)
+        .unwrap();
+    n.follow.as_ref().unwrap().plan("")
+}
+
+/// The pack's YouTube reader (D951): videos and shorts of both layouts,
+/// playlists skipped; captions prefer a track written by people.
+#[test]
+fn youtube_reader_reads_videos_shorts_and_captions() {
+    use pnex_core::post_reader::{cues_of, is_response, posts_of, track_of};
+    let plan = follow("youtube");
+    let body = include_str!("../../../../pnex-extension/tests/fixtures/youtube_channel.json");
+    let posts: Vec<_> = posts_of(&plan, body, "SomeChannel")
+        .into_iter()
+        .map(|(p, _)| p)
+        .collect();
+    let ids: Vec<&str> = posts.iter().map(|p| p.platform_id.as_str()).collect();
+    assert_eq!(
+        ids,
+        ["AbCdEfGhIj1", "KlMnOpQrSt2", "Short_Old-5", "UvWxYz01234"]
+    );
+    assert_eq!(posts[0].text, "Episode 12: the long talk");
+    assert_eq!(posts[0].duration_ms, Some(3_723_000));
+    assert_eq!(posts[0].url, "https://www.youtube.com/watch?v=AbCdEfGhIj1");
+    assert_eq!(posts[0].author, "SomeChannel");
+    assert_eq!(
+        posts[3].video_url.as_deref(),
+        Some("https://www.youtube.com/shorts/UvWxYz01234")
+    );
+    assert!(is_response(
+        &plan,
+        "https://www.youtube.com/youtubei/v1/browse?prettyPrint=false"
+    ));
+    assert!(!is_response(
+        &plan,
+        "https://www.youtube.com/youtubei/v1/player"
+    ));
+
+    let page = plan.captions.as_ref().unwrap();
+    let player = serde_json::json!({"captions":{"playerCaptionsTracklistRenderer":{"captionTracks":[
+        {"baseUrl":"https://www.youtube.com/api/timedtext?v=x&lang=fr&kind=asr","languageCode":"fr","kind":"asr"},
+        {"baseUrl":"https://www.youtube.com/api/timedtext?v=x&lang=en","languageCode":"en"}]}}});
+    let (lang, url) = track_of(&page.track, &player, &plan.sites).unwrap();
+    assert_eq!(lang, "en");
+    assert_eq!(
+        url,
+        "https://www.youtube.com/api/timedtext?v=x&lang=en&fmt=json3"
+    );
+    assert!(track_of(
+        &page.track,
+        &serde_json::json!({"captions":{}}),
+        &plan.sites
+    )
+    .is_none());
+    let evil = serde_json::json!({"captions":{"playerCaptionsTracklistRenderer":{"captionTracks":[{"baseUrl":"https://evil.example/x","languageCode":"en"}]}}});
+    assert!(
+        track_of(&page.track, &evil, &plan.sites).is_none(),
+        "only the platform's own caption addresses"
+    );
+
+    let json3 = r#"{"events":[
+        {"tStartMs":0,"dDurationMs":1500,"segs":[{"utf8":"hello"},{"utf8":"  world"}]},
+        {"tStartMs":1500,"dDurationMs":10,"segs":[{"utf8":"\n"}]},
+        {"tStartMs":2000}]}"#;
+    let cues = cues_of(&plan.cues, json3);
+    assert_eq!(cues.len(), 1);
+    assert_eq!(cues[0].text, "hello world");
+    assert_eq!((cues[0].start_ms, cues[0].end_ms), (0, 1500));
+}
+
+/// The pack's X reader: the account's posts with their best video, a
+/// repost of another account skipped, garbage tolerated.
+#[test]
+fn x_reader_reads_the_account_posts_with_their_best_video() {
+    use pnex_core::post_reader::{is_response, posts_of};
+    let plan = follow("x");
+    let body = include_str!("../../../../pnex-extension/tests/fixtures/x_user_tweets.json");
+    let posts: Vec<_> = posts_of(&plan, body, "example_account")
+        .into_iter()
+        .map(|(p, _)| p)
+        .collect();
+    let ids: Vec<&str> = posts.iter().map(|p| p.platform_id.as_str()).collect();
+    assert_eq!(
+        ids,
+        [
+            "1850000000000000001",
+            "1850000000000000002",
+            "1850000000000000003"
+        ]
+    );
+    let clip = &posts[0];
+    assert_eq!(
+        clip.video_url.as_deref(),
+        Some("https://video.twimg.com/ext_tw_video/1/pu/vid/1280x720/high.mp4")
+    );
+    assert_eq!(clip.duration_ms, Some(31_500));
+    assert_eq!(
+        clip.published_at.as_deref(),
+        Some("2026-10-17T18:04:05+00:00")
+    );
+    assert_eq!(
+        clip.url,
+        "https://x.com/Example_Account/status/1850000000000000001"
+    );
+    assert!(posts[1].video_url.is_none(), "text only");
+    assert!(
+        posts[2].video_url.is_none(),
+        "the repost wrapper has no media"
+    );
+    assert!(is_response(
+        &plan,
+        "https://x.com/i/api/graphql/abc/UserTweets?variables=1"
+    ));
+    assert!(!is_response(
+        &plan,
+        "https://x.com/i/api/graphql/abc/HomeTimeline"
+    ));
+    assert!(posts_of(&plan, "not json", "a").is_empty());
+}
+
+/// The pack's TikTok reader: play address and listed captions, another
+/// author and a photo post handled.
+#[test]
+fn tiktok_reader_reads_play_addresses_and_captions() {
+    use pnex_core::post_reader::{is_response, posts_of};
+    let plan = follow("tiktok");
+    let body = include_str!("../../../../pnex-extension/tests/fixtures/tiktok_item_list.json");
+    let posts = posts_of(&plan, body, "Some.Account");
+    assert_eq!(posts.len(), 2, "the other author is skipped");
+    let (clip, captions) = &posts[0];
+    assert_eq!(clip.platform_id, "7420000000000000001");
+    assert_eq!(
+        clip.url,
+        "https://www.tiktok.com/@some.account/video/7420000000000000001"
+    );
+    assert_eq!(clip.duration_ms, Some(42_000));
+    assert_eq!(clip.published_at.as_deref(), Some("2025-10-18T10:04:05Z"));
+    assert!(clip.video_url.as_deref().unwrap().contains("a.mp4"));
+    assert_eq!(captions.as_ref().map(|(l, _)| l.as_str()), Some("fr-FR"));
+    assert!(posts[1].0.video_url.is_none(), "photo post");
+    assert!(is_response(
+        &plan,
+        "https://www.tiktok.com/api/post/item_list/?aid=1988"
+    ));
 }

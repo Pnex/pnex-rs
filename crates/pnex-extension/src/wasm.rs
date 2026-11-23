@@ -759,6 +759,12 @@ async fn run_mission(
     }
     // The pass starts: a state left from an earlier pass (blocked) is stale.
     session.send(&state(MissionState::Running, ""));
+    // The page hook copies the responses the plan reads; set before the page loads.
+    if let (MissionSpec::FollowAccount(_), Some(f)) = (&m.spec, &m.follow) {
+        let host = url.split('/').nth(2).unwrap_or_default();
+        let wanted = serde_json::to_string(&f.responses).unwrap_or_default();
+        let _ = host::store_set(&format!("pnexResponses:{host}"), &wanted).await;
+    }
     let tab = plan.borrow().tabs.get(platform).copied().unwrap_or(-1.0);
     // Responses of the previous visit are stale.
     take_responses(tab);
@@ -1106,36 +1112,24 @@ fn take_responses(tab: f64) -> Vec<(String, String)> {
     RESPONSES.with(|r| r.borrow_mut().remove(&(tab as i64)).unwrap_or_default())
 }
 
-/// Posts of the platform's JSON documents, keyed by id.
+/// Posts of the plan's JSON documents, keyed by id; an empty address is
+/// the page's own data.
 fn read_posts(
-    platform: ba::SocialPlatform,
     follow: &ba::FollowPlan,
     handle: &str,
     docs: &[(String, String)],
     posts: &mut BTreeMap<String, ba::SeenPost>,
     tracks: &mut BTreeMap<String, (String, String)>,
 ) {
-    use crate::adapters::{tiktok, x, youtube};
+    use pnex_core::post_reader;
     for (url, body) in docs {
-        let found = match platform {
-            ba::SocialPlatform::TikTok if tiktok::is_list_url(url) => {
-                tiktok::posts_of(body, handle, follow)
-                    .into_iter()
-                    .map(|(post, track)| {
-                        if let Some(track) = track {
-                            tracks.insert(post.platform_id.clone(), track);
-                        }
-                        post
-                    })
-                    .collect()
+        if !url.is_empty() && !post_reader::is_response(follow, url) {
+            continue;
+        }
+        for (post, track) in post_reader::posts_of(follow, body, handle) {
+            if let Some(track) = track {
+                tracks.insert(post.platform_id.clone(), track);
             }
-            ba::SocialPlatform::X if x::is_timeline_url(url) => x::posts_of(body, handle, follow),
-            ba::SocialPlatform::YouTube if url.is_empty() || youtube::is_list_url(url) => {
-                youtube::posts_of(body, handle, follow)
-            }
-            _ => continue,
-        };
-        for post in found {
             posts.entry(post.platform_id.clone()).or_insert(post);
         }
     }
@@ -1172,12 +1166,15 @@ async fn follow_account(
             plan.borrow_mut().tabs.insert(platform.to_string(), tab);
         }
         host::debug_log(&format!("PNeX agent: {} reading {list}", m.target));
-        // What the page loaded before any scroll (YouTube keeps it in the page).
-        if let Ok(initial) = host::read_initial_data(tab).await {
+        // What the page loaded before any scroll, when the plan says where.
+        let initial = match &follow.page_data {
+            Some(name) => host::read_page_global(tab, name).await.ok(),
+            None => None,
+        };
+        if let Some(initial) = initial {
             let initial = text(&initial);
             if initial != "null" && !initial.is_empty() {
                 read_posts(
-                    params.platform,
                     &follow,
                     &params.handle,
                     &[(String::new(), initial)],
@@ -1187,7 +1184,6 @@ async fn follow_account(
             }
         }
         read_posts(
-            params.platform,
             &follow,
             &params.handle,
             &take_responses(tab),
@@ -1231,14 +1227,7 @@ async fn follow_account(
                 }
             } else {
                 idle = 0;
-                read_posts(
-                    params.platform,
-                    &follow,
-                    &params.handle,
-                    &docs,
-                    &mut posts,
-                    &mut tracks,
-                );
+                read_posts(&follow, &params.handle, &docs, &mut posts, &mut tracks);
             }
         }
         host::debug_log(&format!(
@@ -1297,8 +1286,9 @@ async fn follow_account(
     format!("{count} posts")
 }
 
-/// Reads a post's platform captions on its page and uploads them signed
-/// (D281). YouTube only: X posts rarely carry captions.
+/// Reads a post's platform captions and uploads them signed (D281): the
+/// track listed with the post, else the one its page holds, as the plan
+/// declares them.
 async fn fetch_captions(
     session: &Session,
     plan: &Rc<RefCell<Plan>>,
@@ -1306,21 +1296,13 @@ async fn fetch_captions(
     mission_id: &str,
     post: &str,
 ) -> String {
-    use crate::adapters::{tiktok, youtube};
-    let (lang, cues) = match platform {
-        // TikTok listed the track with the post: no page to open.
-        "tiktok" => {
-            let Some((lang, url)) = plan.borrow().tracks.get(post).cloned() else {
-                return "no-captions".into();
-            };
-            match host::fetch_text(&url).await {
-                Ok(body) => (lang, tiktok::vtt_cues(&text(&body))),
-                Err(e) => return err_text(&e),
-            }
-        }
-        "youtube" => {
+    use pnex_core::post_reader;
+    let follow = plan.borrow().follow_of(mission_id);
+    let listed = plan.borrow().tracks.get(post).cloned();
+    let track = match (listed, &follow.captions) {
+        (Some(t), _) => t,
+        (None, Some(page)) => {
             let tab = plan.borrow().tabs.get(platform).copied().unwrap_or(-1.0);
-            let follow = plan.borrow().follow_of(mission_id);
             let watch = follow.post_url("", post, false);
             let tab = match host::agent_tab(tab, &watch).await {
                 Ok(id) => id.as_f64().unwrap_or(-1.0),
@@ -1328,21 +1310,21 @@ async fn fetch_captions(
             };
             plan.borrow_mut().tabs.insert(platform.to_string(), tab);
             take_responses(tab);
-            let player = host::read_player_response(tab)
+            let data = host::read_page_global(tab, &page.page_data)
                 .await
                 .map(|v| text(&v))
                 .unwrap_or_default();
-            let site = follow.sites.first().map(String::as_str).unwrap_or("-");
-            let Some((lang, url)) = youtube::caption_track(&player, site) else {
-                return "no-captions".into();
-            };
-            match host::fetch_text(&url).await {
-                Ok(body) => (lang, youtube::cues_of(&text(&body))),
-                Err(e) => return err_text(&e),
+            let json = serde_json::from_str(&data).unwrap_or_default();
+            match post_reader::track_of(&page.track, &json, &follow.sites) {
+                Some(t) => t,
+                None => return "no-captions".into(),
             }
         }
-        // X posts rarely carry captions.
-        _ => return "no-captions".into(),
+        (None, None) => return "no-captions".into(),
+    };
+    let (lang, cues) = match host::fetch_text(&track.1).await {
+        Ok(body) => (track.0, post_reader::cues_of(&follow.cues, &text(&body))),
+        Err(e) => return err_text(&e),
     };
     if cues.is_empty() {
         return "no-captions".into();

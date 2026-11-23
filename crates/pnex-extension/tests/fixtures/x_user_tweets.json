@@ -22,7 +22,7 @@
                             "rest_id": "1850000000000000001",
                             "core": { "user_results": { "result": { "__typename": "User", "core": { "screen_name": "Example_Account", "name": "Example" }, "legacy": {} } } },
                             "legacy": {
-                              "created_at": "Fri Oct 17 18:04:05 +0000 2026",
+                              "created_at": "Sat Oct 17 18:04:05 +0000 2026",
                               "full_text": "A short clip https://t.co/abc",
                               "extended_entities": {
                                 "media": [
@@ -55,7 +55,7 @@
                             "tweet": {
                               "rest_id": "1850000000000000002",
                               "core": { "user_results": { "result": { "legacy": { "screen_name": "Example_Account" } } } },
-                              "legacy": { "created_at": "Thu Oct 16 07:00:00 +0000 2026", "full_text": "Text only" }
+                              "legacy": { "created_at": "Fri Oct 16 07:00:00 +0000 2026", "full_text": "Text only" }
                             }
                           }
                         }
@@ -72,7 +72,7 @@
                             "rest_id": "1850000000000000003",
                             "core": { "user_results": { "result": { "core": { "screen_name": "Example_Account" } } } },
                             "legacy": {
-                              "created_at": "Wed Oct 15 10:00:00 +0000 2026",
+                              "created_at": "Thu Oct 15 10:00:00 +0000 2026",
                               "full_text": "RT @other: their clip",
                               "retweeted_status_result": {
                                 "result": {
@@ -80,7 +80,7 @@
                                   "rest_id": "1850000000000000099",
                                   "core": { "user_results": { "result": { "core": { "screen_name": "other" } } } },
                                   "legacy": {
-                                    "created_at": "Tue Oct 14 10:00:00 +0000 2026",
+                                    "created_at": "Wed Oct 14 10:00:00 +0000 2026",
                                     "full_text": "their clip",
                                     "extended_entities": { "media": [ { "type": "video", "video_info": { "variants": [ { "bitrate": 832000, "content_type": "video/mp4", "url": "https://video.twimg.com/x/other.mp4" } ] } } ] }
                                   }

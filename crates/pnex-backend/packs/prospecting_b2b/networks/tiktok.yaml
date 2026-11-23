@@ -11,3 +11,18 @@ follow:
   # Play addresses and captions live on subdomains of tiktok.com.
   sites: ["https://www.tiktok.com/", "https://*.tiktok.com/"]
   post: "https://www.tiktok.com/@{author}/video/{id}"
+  responses: ["/api/post/item_list"]
+  posts:
+    list: itemList
+    id: { digits: true, max: 25 }
+    shapes:
+      - id: [id]
+        text: [desc]
+        author: [author.uniqueId]
+        published: { from: [createTime], as: unix }
+        duration: { from: [video.duration], as: seconds }
+        video: [video.playAddr, video.downloadAddr]
+        captions:
+          url: ["video.subtitleInfos[Format=webvtt].Url"]
+          lang: { from: ["video.subtitleInfos[Format=webvtt].LanguageCodeName"], as: lang }
+  cues: webvtt
