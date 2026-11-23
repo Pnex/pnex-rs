@@ -344,6 +344,8 @@ Détail et correctifs dans `docs/journal/audit-2026-11-06.md` (référence entre
 | SEC-87 | MEDIUM | **Effacement RGPD et historique des états** (D900, D913) | RGPD | corrigé 2026-11-10 (MK34) : l'effacement vide aussi `object_versions` et `link_versions` |
 | SEC-88 | LOW | **Marchés de prédiction : API publiques et proxy d'org** | R8, R9, R1, R4 | borné 2026-11-10 : hôtes fixés, proxy lu au coffre et passé à `egress::check_url`, jamais d'appel direct de repli |
 | SEC-89 | LOW | **Hôtes des sources d'une org dans un pipeline** (`pipelines.md` D975) | R8, R9, R1 | borné 2026-11-14 : garde egress, secrets seulement vers les `hosts` du document, un appel par seconde et par hôte ; reste : nombre de sources non plafonné |
+| SEC-91 | MEDIUM | **Échec d'une étape `sql` du worker** (`pipelines.md` D934) | R4 | corrigé 2026-11-23 (bb3bc4b7) : l'erreur d'exécution citait la cellule fautive. Seule une erreur de plan, de SQL ou de schéma est citée. |
+| SEC-92 | MEDIUM | **Navigation lancée par l'assistant sans confirmation** (`try_site_recipe`, PE5.5) | D123, D782 | corrigé 2026-11-23 (9ce5d1b1) : un outil `browse:use` est retenu comme une écriture. |
 
 ## 8. Profils de sécurité
 
