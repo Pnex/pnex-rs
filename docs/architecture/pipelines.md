@@ -622,7 +622,7 @@ Une table de travail vit le temps du run, en mémoire ou dans un fichier tempora
 Le serveur va chercher, le worker calcule (§3.2).
 
 ### D944 — Une sonde sur toute étape
-Lecture jusqu'à une étape, sur un élément, sans écriture : `POST /pipelines/probe`. Les écritures sont retirées, rien n'est gardé. Une navigation (`browse`) avant l'étape est refusée.
+Lecture jusqu'à une étape, sur un élément, sans écriture : `POST /pipelines/probe`. Les écritures sont retirées, rien n'est gardé. Une navigation (`browse`) avant l'étape est refusée. Le studio la lance sur le brouillon, enregistré ou non : le contrôle rend les étapes où elle peut s'arrêter (`probes`).
 
 ### D945 — Tests en YAML
 `tests:` avec `given` et `expect`, rejoués sans réseau. Un pipeline livré sans test échoue.
@@ -754,7 +754,6 @@ tests:
 **Lots du moteur non finis :**
 
 - PE8 : mesure autour d'événements et chaînes candidates dans `/analysis`, note de séance en règle.
-- D944 : la sonde n'a pas encore de bouton dans le studio.
 
 **Écarts connus du moteur :**
 

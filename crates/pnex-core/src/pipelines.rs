@@ -273,6 +273,10 @@ pub struct PipelineCheck {
     pub writes: Vec<String>,
     /// Kind of each step, in order (`fetch`, `sql`, `write`…).
     pub steps: Vec<String>,
+    /// Outputs a probe can stop at (D944): the `as` of each step before
+    /// the first `browse`, in order.
+    #[serde(default)]
+    pub probes: Vec<String>,
     /// Test cases played, all held.
     pub tests: usize,
     /// Permissions a member needs to run it.

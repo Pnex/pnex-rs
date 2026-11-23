@@ -11,7 +11,7 @@ use pnex_core::datasets::{
 };
 use pnex_core::pipelines::{
     Build, BuildInput, BuildPlan, BuildTargetKind, DatasetLineage, Pipeline, PipelineCheck,
-    PipelineRun, PipelineVersion,
+    PipelineProbeResult, PipelineRun, PipelineVersion,
 };
 use pnex_core::Paginated;
 use reqwest::Method;
@@ -59,6 +59,12 @@ pub async fn validate(document: &str) -> Result<PipelineCheck, ApiError> {
 }
 
 /// 409 when saved in between.
+/// Reads `document` up to the step that outputs `step`, on one row, without writes (D944).
+pub async fn probe(document: &str, step: &str) -> Result<PipelineProbeResult, ApiError> {
+    let body = json!({ "document": document, "step": step });
+    client::request(Method::POST, "/api/v1/pipelines/probe", Some(body)).await
+}
+
 pub async fn update(id: &str, document: &str, expected_version: i32) -> Result<Pipeline, ApiError> {
     let body = json!({ "document": document, "expected_version": expected_version });
     client::request(Method::PUT, &pipeline_path(id), Some(body)).await

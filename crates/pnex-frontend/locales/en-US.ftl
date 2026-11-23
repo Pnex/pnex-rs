@@ -7142,6 +7142,13 @@ pipe-run-done = Done
 pipe-run-failed = Failed
 pipe-schedule-help = One schedule is enough, on the last table of a chain: what it depends on goes first.
 pipe-next-run = Next run: { $at }
+pipe-probe = Probe
+pipe-probe-step = Probe step
+pipe-probe-help = The probe reads the draft up to this step, on one item, and writes nothing.
+pipe-probe-title = Probe up to { $step }
+pipe-probe-bytes = { $n } bytes
+pipe-probe-close = Close
+pipe-probe-no-rows = The probe read no rows.
 
 ## Hosted agents (agents.md D757, D761)
 nav-agents = Agents

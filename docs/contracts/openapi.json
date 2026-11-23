@@ -25842,6 +25842,13 @@
       "PipelineCheck": {
         "description": "What a pipeline document reads and writes, once checked and tested.",
         "properties": {
+          "probes": {
+            "description": "Outputs a probe can stop at (D944): the `as` of each step before\nthe first `browse`, in order.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "reads": {
             "description": "Tables of the org its `sql` steps read.",
             "items": {

@@ -8,8 +8,8 @@ use dioxus::prelude::*;
 use dioxus_i18n::t;
 use pnex_core::datasets::Dataset;
 use pnex_core::pipelines::{
-    Build, BuildState, BuildStep, BuildTargetKind, PipelineCheck, PipelineRunState,
-    PipelineViolation,
+    Build, BuildState, BuildStep, BuildTargetKind, PipelineCheck, PipelineProbeResult,
+    PipelineRunState, PipelineViolation,
 };
 
 use super::graph::{document_graph, GraphNode, TableGraph};
@@ -88,6 +88,9 @@ pub fn PipelineStudio(id: String) -> Element {
     let mut build = use_signal(|| None::<Build>);
     let mut gen = use_signal(|| 0u64);
     let mut restore_error = use_signal(|| None::<String>);
+    let mut probe_step = use_signal(String::new);
+    let mut probe = use_signal(|| None::<(String, PipelineProbeResult)>);
+    let mut probing = use_signal(|| false);
     let navigator = use_navigator();
     let can_write = can("pipelines:write");
     let can_run = can("pipelines:run");
@@ -227,6 +230,23 @@ pub fn PipelineStudio(id: String) -> Element {
                 Ok(_) => start_build(),
                 Err(e) => message.set(Some(localize(&e))),
             }
+        });
+    };
+
+    // Reads the draft as typed, saved or not: a probe writes nothing.
+    let probe_clicked = move |step: String| {
+        message.set(None);
+        probing.set(true);
+        let text = yaml();
+        spawn(async move {
+            match api::pipelines::probe(&text, &step).await {
+                Ok(r) => probe.set(Some((step, r))),
+                Err(e) => {
+                    probe.set(None);
+                    message.set(Some(localize(&e)));
+                }
+            }
+            probing.set(false);
         });
     };
 
@@ -380,6 +400,24 @@ pub fn PipelineStudio(id: String) -> Element {
                         } else if picked.is_some() {
                             p { class: "text-sm text-slate", {t!("pipe-not-computed-help")} }
                         }
+                        if let Some((step, r)) = probe() {
+                            div {
+                                class: "space-y-3 rounded-lg border border-line bg-surface p-3",
+                                "data-testid": "pipe-probe-result",
+                                div { class: "flex items-center gap-2",
+                                    p { class: "min-w-0 break-all text-sm font-medium text-ink",
+                                        {t!("pipe-probe-title", step : step)}
+                                    }
+                                    button {
+                                        class: "{BTN_SECONDARY_SM} ml-auto",
+                                        onclick: move |_| probe.set(None),
+                                        {t!("pipe-probe-close")}
+                                    }
+                                }
+                                ProbeSteps { steps: r.steps.clone() }
+                                ProbeSample { rows: r.sample.clone() }
+                            }
+                        }
                     }
                     if column() {
                         aside { class: "flex max-h-[55%] w-full shrink-0 flex-col border-t border-line bg-surface md:max-h-none md:w-[26rem] md:border-l md:border-t-0",
@@ -422,6 +460,15 @@ pub fn PipelineStudio(id: String) -> Element {
                                     if let Some(c) = check() {
                                         p { class: FIELD_HELP, "data-testid": "pipe-check",
                                             {t!("pipe-check-summary", steps : c.steps.len(), tests : c.tests)}
+                                        }
+                                        if can_run && !c.probes.is_empty() {
+                                            ProbeForm {
+                                                probes: c.probes.clone(),
+                                                step: probe_step(),
+                                                busy: probing() || has_errors,
+                                                on_step: move |s: String| probe_step.set(s),
+                                                on_probe: probe_clicked,
+                                            }
                                         }
                                     }
                                     textarea {
@@ -624,6 +671,126 @@ fn ScheduleForm(
             }
             if let Some(e) = error() {
                 p { class: "text-sm text-alarm", "{e}" }
+            }
+        }
+    }
+}
+
+#[component]
+fn ProbeForm(
+    probes: Vec<String>,
+    step: String,
+    busy: bool,
+    on_step: EventHandler<String>,
+    on_probe: EventHandler<String>,
+) -> Element {
+    // The last output is the default: probing the whole read is the common case.
+    let current = match probes.contains(&step) {
+        true => step,
+        false => probes.last().cloned().unwrap_or_default(),
+    };
+    let chosen = current.clone();
+    rsx! {
+        div { class: "space-y-1",
+            label { class: FIELD_LABEL, r#for: "pipe-probe-step", {t!("pipe-probe-step")} }
+            div { class: "flex gap-2",
+                select {
+                    id: "pipe-probe-step",
+                    class: "{INPUT} min-w-0 flex-1",
+                    value: "{current}",
+                    onchange: move |e| on_step.call(e.value()),
+                    for p in probes {
+                        option {
+                            key: "{p}",
+                            value: "{p}",
+                            selected: p == current,
+                            "{p}"
+                        }
+                    }
+                }
+                button {
+                    class: BTN_SECONDARY_SM,
+                    disabled: busy,
+                    "data-testid": "pipe-probe",
+                    onclick: move |_| on_probe.call(chosen.clone()),
+                    {t!("pipe-probe")}
+                }
+            }
+            p { class: FIELD_HELP, {t!("pipe-probe-help")} }
+        }
+    }
+}
+
+#[component]
+fn ProbeSteps(steps: Vec<pnex_core::pipelines::PipelineProbeStep>) -> Element {
+    rsx! {
+        ol { class: "space-y-1", "data-testid": "pipe-probe-steps",
+            for (i, s) in steps.iter().enumerate() {
+                li {
+                    key: "{i}",
+                    class: "flex min-w-0 flex-wrap items-center gap-2 text-sm",
+                    span { class: "text-slate", "{i + 1}." }
+                    span { class: "font-medium text-ink", "{s.step}" }
+                    span { class: "text-slate", {t!("pipe-rows", n : s.rows)} }
+                    if s.bytes > 0 {
+                        span { class: "text-slate", {t!("pipe-probe-bytes", n : s.bytes)} }
+                    }
+                    if let Some(url) = s.url.clone() {
+                        span {
+                            class: "min-w-0 max-w-full truncate font-mono text-xs text-slate",
+                            title: "{url}",
+                            "{url}"
+                        }
+                    }
+                    if let Some(code) = s.code.clone() {
+                        span { class: "text-xs text-alarm", "{code_label(&code, s.args.as_ref())}" }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// The sample of a probe, as text: rows may not share their columns.
+#[component]
+fn ProbeSample(rows: Vec<std::collections::BTreeMap<String, String>>) -> Element {
+    if rows.is_empty() {
+        return rsx! {
+            p { class: "text-sm text-slate", {t!("pipe-probe-no-rows")} }
+        };
+    }
+    let columns: std::collections::BTreeSet<String> =
+        rows.iter().flat_map(|r| r.keys().cloned()).collect();
+    rsx! {
+        div {
+            class: "max-h-72 overflow-auto",
+            "data-testid": "pipe-probe-sample",
+            table { class: "min-w-full text-xs",
+                thead {
+                    tr {
+                        for c in columns.iter() {
+                            th {
+                                key: "{c}",
+                                class: "border-b border-line px-2 py-1.5 text-left font-medium text-ink",
+                                "{c}"
+                            }
+                        }
+                    }
+                }
+                tbody {
+                    for (i, row) in rows.iter().enumerate() {
+                        tr { key: "{i}",
+                            for c in columns.iter() {
+                                td {
+                                    key: "{c}",
+                                    class: "max-w-xs truncate border-b border-line px-2 py-1 text-ink",
+                                    title: row.get(c).cloned().unwrap_or_default(),
+                                    {row.get(c).cloned().unwrap_or_default()}
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }

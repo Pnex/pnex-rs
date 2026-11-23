@@ -684,6 +684,9 @@ async fn a_probe_reads_up_to_a_step_and_writes_nothing() {
         let org = personal_org(&server, &env.alice).await;
         let doc = "key: p\nhosts: [data.example.io]\nsteps:\n  - fetch: {as: page, url: \"https://data.example.io/a.csv\"}\n  - read: {as: rows, from: page, format: csv}\n  - write: {from: rows, table: {name: probed}}\n";
         let probe = |step: &str| json!({ "document": doc, "step": step });
+        let (s, r) = call(&server, "POST", "/api/v1/pipelines/validate", &env.alice, org, Some(json!({ "document": doc }))).await;
+        assert_eq!(s, 200, "{r}");
+        assert_eq!(r["probes"], json!(["page", "rows"]));
         let (s, r) = call(&server, "POST", "/api/v1/pipelines/probe", &env.alice, org, Some(probe("rows"))).await;
         assert_eq!(s, 200, "{r}");
         let steps: Vec<&str> = r["steps"].as_array().unwrap().iter().map(|x| x["step"].as_str().unwrap()).collect();

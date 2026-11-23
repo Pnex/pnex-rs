@@ -265,6 +265,7 @@ mod tests {
             reads: vec!["raw".into(), "ref".into()],
             writes: vec!["clean".into(), "ref".into()],
             steps: Vec::new(),
+            probes: Vec::new(),
             tests: 0,
             rights: Vec::new(),
             rule: None,

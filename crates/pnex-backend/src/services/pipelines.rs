@@ -207,6 +207,12 @@ pub async fn check(
         reads: doc.table_reads().into_iter().map(str::to_string).collect(),
         writes: doc.table_writes().into_iter().map(str::to_string).collect(),
         steps: doc.steps.iter().map(|s| s.name().to_string()).collect(),
+        probes: doc
+            .steps
+            .iter()
+            .take_while(|s| !matches!(s, pnex_core::pipeline::doc::Step::Browse(_)))
+            .filter_map(|s| s.output().map(str::to_string))
+            .collect(),
         tests: doc.tests.len(),
         rights: doc.rights().into_iter().map(str::to_string).collect(),
         rule: pnex_core::site_recipe::rule_of(&doc),

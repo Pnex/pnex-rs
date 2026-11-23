@@ -7138,6 +7138,13 @@ pipe-run-done = Terminée
 pipe-run-failed = En échec
 pipe-schedule-help = Une seule planification suffit, sur la dernière table d'une chaîne : ce dont elle dépend passe avant.
 pipe-next-run = Prochaine exécution : { $at }
+pipe-probe = Sonder
+pipe-probe-step = Étape de la sonde
+pipe-probe-help = La sonde lit le brouillon jusqu'à cette étape, sur un élément, sans rien écrire.
+pipe-probe-title = Sonde jusqu'à { $step }
+pipe-probe-bytes = { $n } octets
+pipe-probe-close = Fermer
+pipe-probe-no-rows = La sonde n'a lu aucune ligne.
 
 ## Hosted agents (agents.md D757, D761)
 nav-agents = Agents
