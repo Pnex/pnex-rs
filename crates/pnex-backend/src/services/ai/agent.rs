@@ -340,7 +340,8 @@ const HELD_NOTE: &str = "NOT RUN: this turn read untrusted outside content, so t
 /// A write tool: its registry permission writes. Proposals are not: they
 /// run nothing, the human acts from their button.
 pub fn is_write_tool(name: &str) -> bool {
-    matches!(pnex_api_contract::iam::tool(name), Some(Some(p)) if p.ends_with(":write"))
+    // A navigation acts on a site from a browser: held like a write.
+    matches!(pnex_api_contract::iam::tool(name), Some(Some(p)) if p.ends_with(":write") || p == "browse:use")
         && !name.starts_with("propose_")
 }
 

@@ -164,8 +164,42 @@ impl MigrationTrait for Migration {
         Ok(())
     }
 
-    async fn down(&self, _m: &SchemaManager) -> Result<(), DbErr> {
-        // Gone for good: a rule is now an org pipeline.
+    async fn down(&self, m: &SchemaManager) -> Result<(), DbErr> {
+        // The rules stay pipelines; the empty tables come back so that older
+        // migrations can be undone.
+        if m.has_table("site_recipes").await? {
+            return Ok(());
+        }
+        m.get_connection()
+            .execute_unprepared(
+                "CREATE TABLE site_recipes (
+                   id uuid PRIMARY KEY,
+                   org_id bigint NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+                   site varchar(255) NOT NULL,
+                   name varchar(120) NOT NULL,
+                   yaml text NOT NULL,
+                   version integer NOT NULL DEFAULT 1,
+                   created_by bigint,
+                   updated_by bigint,
+                   created_at timestamptz NOT NULL DEFAULT now(),
+                   updated_at timestamptz NOT NULL DEFAULT now(),
+                   UNIQUE (org_id, site, name)
+                 );
+                 CREATE INDEX idx_site_recipes_site ON site_recipes (org_id, site);
+                 CREATE TABLE site_recipe_versions (
+                   recipe_id uuid NOT NULL REFERENCES site_recipes(id) ON DELETE CASCADE,
+                   version integer NOT NULL,
+                   yaml text NOT NULL,
+                   created_by bigint REFERENCES users(id) ON DELETE SET NULL,
+                   created_at timestamptz NOT NULL DEFAULT now(),
+                   PRIMARY KEY (recipe_id, version)
+                 );
+                 UPDATE agent_runs SET recipe_id = NULL WHERE recipe_id IS NOT NULL;
+                 ALTER TABLE agent_runs DROP CONSTRAINT IF EXISTS agent_runs_recipe_id_fkey;
+                 ALTER TABLE agent_runs ADD CONSTRAINT agent_runs_recipe_id_fkey
+                   FOREIGN KEY (recipe_id) REFERENCES site_recipes(id) ON DELETE SET NULL;",
+            )
+            .await?;
         Ok(())
     }
 }

@@ -34,7 +34,7 @@ impl MigrationTrait for Migration {
 
     async fn down(&self, m: &SchemaManager) -> Result<(), DbErr> {
         m.get_connection()
-            .execute_unprepared("DROP TABLE market_history_partitions;")
+            .execute_unprepared("DROP TABLE IF EXISTS market_history_partitions;")
             .await?;
         Ok(())
     }

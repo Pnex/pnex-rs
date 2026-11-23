@@ -20,6 +20,10 @@ impl MigrationTrait for Migration {
     }
 
     async fn down(&self, m: &SchemaManager) -> Result<(), DbErr> {
+        // Dropped for good by 000164, whose down does not bring it back.
+        if !m.has_table("market_history_partitions").await? {
+            return Ok(());
+        }
         m.get_connection()
             .execute_unprepared(
                 "DELETE FROM market_history_partitions WHERE period = 'year';
