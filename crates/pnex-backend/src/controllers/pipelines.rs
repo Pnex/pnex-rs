@@ -408,7 +408,9 @@ async fn start_run(
     State(ctx): State<AppContext>,
     org: OrgContext,
     Path(id): Path<Uuid>,
-    body: Option<Json<pnex_core::pipelines::PipelineRunStart>>,
+    // Read by hand: `Option<Json<_>>` refuses an empty body sent with a JSON
+    // content type, and a run usually has no body.
+    raw: axum::body::Bytes,
 ) -> Result<Response> {
     let current = match pipelines::get(&ctx.db, org.org.id, id).await {
         Ok(p) => p,
@@ -423,7 +425,13 @@ async fn start_run(
     if let Some(p) = rights.into_iter().find(|p| !org.can(p)) {
         return Err(crate::auth::access_denied(p));
     }
-    let rows = body.map(|Json(b)| b.rows).unwrap_or_default();
+    let rows = match raw.is_empty() {
+        true => Vec::new(),
+        false => match serde_json::from_slice::<pnex_core::pipelines::PipelineRunStart>(&raw) {
+            Ok(b) => b.rows,
+            Err(_) => return Ok(super::field_error("rows", "invalid")),
+        },
+    };
     if let Err((field, token)) = run_rows(doc.as_ref().and_then(|d| d.asked_axis()), &rows) {
         return Ok(super::field_error(&field, &token));
     }

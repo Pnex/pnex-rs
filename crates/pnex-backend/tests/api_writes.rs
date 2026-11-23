@@ -373,7 +373,7 @@ async fn a_site_rule_is_an_org_pipeline() {
 
         // A run takes the rule's parameters as the row of its asked axis.
         let runs = format!("/api/v1/pipelines/{id}/runs");
-        let (st, no_rows) = call(&server, "POST", &runs, &env.alice, org, Some(json!({}))).await;
+        let (st, no_rows) = call(&server, "POST", &runs, &env.alice, org, None).await;
         assert_eq!(st, 400, "{no_rows}");
         assert!(no_rows.to_string().contains("\"rows\":\"required\""), "{no_rows}");
         let body = json!({"rows": [{"code": "A1"}]});
