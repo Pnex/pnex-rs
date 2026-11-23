@@ -57,12 +57,6 @@ pub async fn known(db: &DatabaseConnection) -> Result<Known, DbErr> {
             &row.try_get::<String>("", "fw_version")?,
         ));
     }
-    // Ingestion staging areas (D318): purged by `ingest::purge`, not here.
-    for row in rows("SELECT DISTINCT org_id FROM ingest_steps").await? {
-        known.prefixes.push(crate::services::ingest::staging_prefix(
-            row.try_get::<i64>("", "org_id")?,
-        ));
-    }
     // Dataset files (D569): purged by `datasets::purge`, not here.
     for row in rows("SELECT DISTINCT org_id FROM datasets").await? {
         known.prefixes.push(format!(

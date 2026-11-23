@@ -133,7 +133,7 @@ Le client est celui du parcours D307 : identifié, sortie gardée (R8), pas de r
 
 ### D359 — Retrait du nœud `ingest`
 
-Le kind `ingest`, sa route interne et son panneau sont retirés. Les étapes vivent dans les `steps:` d'un import (D344). Au déploiement, `pnex_core::flow::retired_nodes` refuse avec `flow-node-retired` (`args` : `node`, `kind`, `instead`). En lecture, `pnex_core::flow::read_graph` écarte un nœud retiré dans `unreadable_nodes`, jamais de 500. Une montée de pack supprime les flows qu'il ne livre plus, s'ils n'ont jamais été modifiés ni déployés (`drop_unshipped_flows`). D317 et D322 sont retirées.
+Le kind `ingest`, sa route interne et son panneau sont retirés. Les étapes vivent dans le moteur de pipelines (`pipelines.md` D936). Au déploiement, `pnex_core::flow::retired_nodes` refuse avec `flow-node-retired` (`args` : `node`, `kind`, `instead`). En lecture, `pnex_core::flow::read_graph` écarte un nœud retiré dans `unreadable_nodes`, jamais de 500. Une montée de pack supprime les flows qu'il ne livre plus, s'ils n'ont jamais été modifiés ni déployés (`drop_unshipped_flows`). D317 et D322 sont retirées.
 
 ### D360 — Fournisseur de recherche web
 

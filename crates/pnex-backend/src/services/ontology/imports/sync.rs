@@ -14,7 +14,7 @@ use pnex_core::datasets::IDENTITY_TITLE;
 use pnex_core::err_codes;
 use pnex_core::markets::PlannedObservation;
 use pnex_core::ontology::import::{
-    Convert, FieldSpec, ImportDiff, ImportMode, ImportSource, Mapping, Schema, SourceFormat,
+    Convert, FieldSpec, ImportDiff, ImportMode, ImportSource, Mapping, Schema,
 };
 use sea_orm::{ConnectionTrait, DatabaseConnection};
 use serde_json::Value;
@@ -36,13 +36,6 @@ const PLANNED_MAX: usize = 5_000_000;
 
 pub(super) fn dataset_id(imp: &ImportRow) -> Option<Uuid> {
     imp.source_url.as_deref().and_then(|u| u.parse().ok())
-}
-
-/// An import whose steps leave a CSV goes through a table: no limit on rows held
-/// in memory, a version per run, and a table pipelines can read. Other formats
-/// have nested records a flat table cannot hold.
-pub(super) fn steps_fill_a_table(m: &Mapping) -> bool {
-    !m.steps.is_empty() && m.format == Some(SourceFormat::Csv)
 }
 
 /// A table is readable by any viewer of the org, a sensitive value only by an admin
@@ -115,10 +108,6 @@ pub(super) async fn check<C: ConnectionTrait>(
     }
     if maps_sensitive(&schema(db, org_id).await?, m) {
         return Err(invalid("mapping", err_codes::FIELD_INVALID));
-    }
-    // A filter or a lookup is a transform of the pipeline before this sync.
-    if !m.steps.is_empty() {
-        return Err(invalid("mapping.steps", err_codes::FIELD_INVALID));
     }
     Ok(())
 }
@@ -217,6 +206,7 @@ async fn plan(
     files: &[ViewFile],
     m: &Mapping,
     s: &Schema<'_>,
+    history: bool,
 ) -> Result<(Planned, Vec<PlannedObservation>)> {
     let unreadable = |e: ::parquet::errors::ParquetError| {
         tracing::warn!("dataset sync read: {e}");
@@ -226,13 +216,9 @@ async fn plan(
         }
     };
     let mut planned = Planned::default();
-    // Rows read with a cursor, or from a webhook's inbox, are a history: the
-    // later row of a key is its newer state. Any connector read counts, since a
-    // webhook import carries no cursor of its own.
-    planned.replace = m
-        .steps
-        .iter()
-        .any(|s| s.cursor.is_some() || s.step == pnex_core::ingest::IngestStep::ConnectorQuery);
+    // A Table a pipeline appends to (a connector read past its cursor, a
+    // webhook's inbox) is a history: the later row of a key is its newer state.
+    planned.replace = history;
     let mut observed = Vec::new();
     // Line 1 of a CSV holds the headers: line numbers read as in the source.
     let mut row_no = 1;
@@ -447,7 +433,8 @@ async fn attempt(
         links: &links,
     };
     let snapshot = imp.mode() == ImportMode::Snapshot;
-    let (mut planned, observations) = plan(store, &files, m, &shape).await?;
+    let history = imp.source() == ImportSource::Dataset;
+    let (mut planned, observations) = plan(store, &files, m, &shape, history).await?;
     let base_files = match &reference {
         Some(r) => datasets::files_of_transactions(db, imp.org_id, id, r)
             .await
@@ -457,7 +444,7 @@ async fn attempt(
     let compared_to_reference = base_files.is_some();
     let closing = match base_files {
         Some(base) => {
-            let (base, _) = plan(store, &base, m, &shape).await?;
+            let (base, _) = plan(store, &base, m, &shape, history).await?;
             let gone = planned.delta(m, &base, &skipped);
             match snapshot {
                 true => Closing::Gone(gone),
@@ -485,7 +472,7 @@ async fn attempt(
         .await;
     }
     let holding = super::held(db, imp.org_id, imp.id).await?;
-    let max_pct = pnex_core::ingest::MAX_CLOSURES_PCT;
+    let max_pct = pnex_core::ontology::import::MAX_CLOSURES_PCT;
     if holding > 0 && d.closed.len() * 100 > holding * max_pct as usize {
         let args = serde_json::json!({
             "closed": d.closed.len().to_string(),

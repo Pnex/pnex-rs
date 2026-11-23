@@ -1576,15 +1576,6 @@ async fn import_runs_its_own_steps() {
         let last = r["steps"].as_array().unwrap().last().unwrap();
         assert_eq!((last["step"].as_str(), last["port"].as_u64()), (Some("read"), Some(1)), "{r}");
 
-        // The raw download stays its retention; expired here so the next
-        // test reusing this org id finds an empty staging.
-        env.db.execute_raw(Statement::from_string(sea_orm::DatabaseBackend::Postgres,
-            format!("UPDATE ingest_steps SET created_at = now() - interval '8 days', keep_until = NULL WHERE org_id = {org}"))).await.unwrap();
-        let store = pnex_backend::services::artifact_store::S3Config::from_config(
-            &loco_rs::config::Config::new(&loco_rs::environment::Environment::Test).unwrap()).store().unwrap();
-        pnex_backend::services::ingest::purge(&env.db, &store).await.unwrap();
-        let left = store.list_prefix(&format!("org_{org}/staging/")).await.unwrap();
-        assert!(left.is_empty(), "{left:?}");
         unsafe { std::env::remove_var("PNEX_DATAGOUV_API_URL") };
     })
     .await;
@@ -2156,16 +2147,6 @@ async fn open_data_ingestion_chain() {
         let r5 = run(partners).await;
         assert_eq!((r5["run"]["state"].as_str(), r5["run"]["state_code"].as_str()), (Some("failed"), Some("import-schema-changed")), "{r5}");
 
-        // The purge empties what is expired.
-        env.db.execute_raw(Statement::from_string(sea_orm::DatabaseBackend::Postgres,
-            format!("UPDATE ingest_steps SET created_at = now() - interval '8 days', keep_until = NULL WHERE org_id = {org}"))).await.unwrap();
-        let store = pnex_backend::services::artifact_store::S3Config::from_config(
-            &loco_rs::config::Config::new(&loco_rs::environment::Environment::Test).unwrap()).store().unwrap();
-        pnex_backend::services::ingest::purge(&env.db, &store).await.unwrap();
-        assert_eq!(count(q(format!("SELECT count(*)::bigint AS n FROM ingest_steps WHERE org_id = {org} \
-            AND purged_at IS NULL AND bytes > 0")).await.unwrap()), 0);
-        let left = store.list_prefix(&format!("org_{org}/staging/")).await.unwrap();
-        assert!(left.is_empty(), "{left:?}");
         unsafe { std::env::remove_var("PNEX_DATAGOUV_API_URL") };
     })
     .await;

@@ -142,7 +142,7 @@ const RULES: &[Rule] = &[
         scope: Scope::Fr,
         term: "jeu de données",
         use_instead: "table",
-        allowed_keys: &["err-ingest-no-resource", "lab-", "err-lab-"],
+        allowed_keys: &["lab-", "err-lab-"],
     },
     Rule {
         scope: Scope::Fr,

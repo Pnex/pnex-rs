@@ -42,3 +42,25 @@ pub fn glob_match(pattern: &str, name: &str) -> bool {
     }
     p[i..].iter().all(|c| *c == '*')
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn glob_matches_base_names() {
+        assert!(glob_match(
+            "export-fiches-csv-*.zip",
+            "export-fiches-csv-2026-10-20.zip"
+        ));
+        assert!(glob_match(
+            "*Partenaires*.csv",
+            "export/export_fiches_CSV_Partenaires_2026.csv"
+        ));
+        assert!(glob_match("*.CSV", "a.csv"));
+        assert!(glob_match("a?c", "abc"));
+        assert!(!glob_match("*Standard*.csv", "Partenaires.csv"));
+        assert!(!glob_match("a", "ab"));
+        assert!(glob_match("*", ""));
+    }
+}

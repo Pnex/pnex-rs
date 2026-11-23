@@ -320,11 +320,6 @@ const ENGINE_HOSTS: &[(&str, &str)] = &[
 /// is gone must be removed from here.
 const HOST_DEBT: &[(&str, &[&str], &str)] = &[
     (
-        "pnex-backend/src/services/ingest/resolve.rs",
-        &["www.data.gouv.fr"],
-        "catalogue mode of source_resolve (PE4)",
-    ),
-    (
         "pnex-core/src/browser_agent.rs",
         &[
             "www.linkedin.com",

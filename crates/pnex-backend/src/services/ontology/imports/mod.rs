@@ -197,11 +197,8 @@ async fn check_input<C: ConnectionTrait>(
         input.source_url.as_ref().and_then(|u| u.as_deref()),
     ) {
         (ImportSource::File, _) => {
-            // Only steps give a file import something to fetch on schedule.
-            if input.recurrence.as_ref().is_some_and(Option::is_some)
-                && m.steps.is_empty()
-                && m.pipeline.is_none()
-            {
+            // Only a pipeline gives a file import something to fetch on schedule.
+            if input.recurrence.as_ref().is_some_and(Option::is_some) && m.pipeline.is_none() {
                 return Err(invalid("recurrence", FIELD_INVALID));
             }
         }
@@ -1187,9 +1184,8 @@ async fn previous_rows<C: ConnectionTrait>(db: &C, import_id: Uuid) -> Result<us
 }
 
 /// Starts a run in the background and returns it `running` (manual
-/// launch or schedule): an import with its own steps runs them, then
-/// applies the file they staged (pipelines.md D344); a URL or API
-/// import fetches its source. Checked and applied with the author's role
+/// launch or schedule): an import reads its Table, or runs its pack's
+/// pipeline first; a URL or API import fetches its source. Checked and applied with the author's role
 /// (D303). A file import has nothing to fetch: it is previewed with a file.
 pub async fn start(
     db: &DatabaseConnection,
@@ -1201,7 +1197,7 @@ pub async fn start(
 ) -> Result<ImportRunView> {
     let imp = find_row(db, org_id, id).await?;
     let m = imp.mapping()?;
-    if m.steps.is_empty() && m.pipeline.is_none() && imp.source() == ImportSource::File {
+    if m.pipeline.is_none() && imp.source() == ImportSource::File {
         return Err(coded(err_codes::INGEST_ENTRY_MISSING));
     }
     if stop::stopping() {
@@ -1220,62 +1216,16 @@ pub async fn start(
             if let Some(id) = &m.pipeline {
                 return pipeline_then_sync(&db, store, &imp, id, &m, &run).await;
             }
-            let sensitive = match schema(&db, imp.org_id).await {
-                Ok(s) => sync::maps_sensitive(&s, &m),
-                // Read again and reported by the run itself.
-                Err(_) => true,
-            };
-            if sync::steps_fill_a_table(&m) && !sensitive {
-                let Some(s) = store else {
-                    let code = err_codes::INGEST_STAGING_UNAVAILABLE;
-                    return fail_run(&db, run.id, code, Value::Null).await;
-                };
-                let table = match sync::table_of(&db, imp.org_id, imp.id, &m).await {
-                    Ok(t) => t,
-                    Err(e) => return fail_run(&db, run.id, error_code(&e), Value::Null).await,
-                };
-                let delimiter = m.delimiter.and_then(|c| u8::try_from(c).ok());
-                let filled = crate::services::ingest::pipeline::run_into_table(
-                    &db, &s, imp.org_id, imp.id, run.id, &m.steps, table, delimiter,
-                )
-                .await;
-                return match filled {
-                    Ok(()) => {
-                        run_sync(&db, Some(s), &imp, Some(table), &m, &run, true).await;
-                        Ok(())
-                    }
-                    Err((code, args)) => fail_run(&db, run.id, &code, args).await,
-                };
-            }
-            if m.steps.is_empty() {
-                let outcome = scheduled(&db, &imp, &m, run.number).await;
-                let (state, code, args, diff) = match outcome {
-                    Ok(d) => ("applied", None, Value::Null, Some(d)),
-                    Err((state, code, args, d)) => {
-                        notify_refused(&db, &imp, code, args.clone()).await;
-                        (state, Some(code), args, d.map(|d| *d))
-                    }
-                };
-                finish_run(&db, run.id, state, code, &args, diff.as_ref(), false).await?;
-                return Ok(());
-            }
-            let Some(store) = store else {
-                let code = err_codes::INGEST_STAGING_UNAVAILABLE;
-                return fail_run(&db, run.id, code, Value::Null).await;
-            };
-            let steps = crate::services::ingest::pipeline::run(
-                &db, &store, imp.org_id, imp.id, run.id, &m.steps,
-            )
-            .await;
-            match steps {
-                Ok(file) => {
-                    let pct = pnex_core::ingest::MAX_CLOSURES_PCT;
-                    run_staged(&db, imp.org_id, imp.id, run.id, Some(file), true, pct)
-                        .await
-                        .map(|_| ())
+            let outcome = scheduled(&db, &imp, &m, run.number).await;
+            let (state, code, args, diff) = match outcome {
+                Ok(d) => ("applied", None, Value::Null, Some(d)),
+                Err((state, code, args, d)) => {
+                    notify_refused(&db, &imp, code, args.clone()).await;
+                    (state, Some(code), args, d.map(|d| *d))
                 }
-                Err((code, args)) => fail_run(&db, run.id, &code, args).await,
-            }
+            };
+            finish_run(&db, run.id, state, code, &args, diff.as_ref(), false).await?;
+            Ok(())
         };
         // The run beats while it works: a pod gone leaves it stale, not running.
         let beat = async {
@@ -1759,16 +1709,16 @@ fn graph_node(imp: &ImportRow, table_of: impl Fn(&str) -> Option<String>) -> Gra
         kind: BuildTargetKind::Import,
         id: imp.id.to_string(),
         name: imp.name.clone(),
-        runnable: m.as_ref().is_some_and(|m| {
-            !(m.steps.is_empty() && m.pipeline.is_none() && source == ImportSource::File)
-        }),
+        runnable: m
+            .as_ref()
+            .is_some_and(|m| !(m.pipeline.is_none() && source == ImportSource::File)),
         reads: match (source, imp.source_url.as_deref()) {
             (ImportSource::Dataset, Some(id)) => table_of(id).into_iter().collect(),
             _ => Vec::new(),
         },
         writes: m
             .as_ref()
-            .filter(|m| sync::steps_fill_a_table(m) || m.pipeline.is_some())
+            .filter(|m| m.pipeline.is_some())
             .map(|m| vec![m.key.clone()])
             .unwrap_or_default(),
         after: m.as_ref().map(|m| m.after.clone()).unwrap_or_default(),
@@ -1834,7 +1784,7 @@ async fn check_no_cycle(
             (ImportSource::Dataset, Some(t)) => tables.get(t).cloned().into_iter().collect(),
             _ => Vec::new(),
         },
-        writes: if sync::steps_fill_a_table(m) || m.pipeline.is_some() {
+        writes: if m.pipeline.is_some() {
             vec![m.key.clone()]
         } else {
             Vec::new()

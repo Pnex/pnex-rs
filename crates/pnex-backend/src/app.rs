@@ -327,8 +327,6 @@ impl Hooks for App {
             Ok(n) => tracing::info!(runs = n, "interrupted site recipe runs marked failed"),
             Err(e) => tracing::warn!(error = %e, "site recipe runs not recovered"),
         }
-        // Ingestion staging purge: TTL, raw retention, orphans (D318).
-        crate::services::ingest::spawn_purge(ctx);
         // Dataset purge: dead transactions, retention (D569).
         crate::services::datasets::spawn_purge(ctx);
         // A file conversion holds row groups and parts in memory: a bulk load

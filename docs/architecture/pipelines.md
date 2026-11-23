@@ -18,7 +18,6 @@ Un pipeline fait entrer des données externes dans PneX. Il lit une source (fich
 - **Webhook** : connecteur qui reçoit les appels signés d'un autre système (D795).
 - **Requête nommée** : un `SELECT` à paramètres typés, livré par un pack et joué par `/analysis` (D948).
 - **Sonde** : lecture d'un pipeline jusqu'à une étape, sur un élément, sans écriture (D944).
-- **Zone de transit** : préfixe S3 `org_{id}/staging/…` des fichiers bruts d'un import à étapes (D318).
 
 ```mermaid
 ---
@@ -36,7 +35,7 @@ flowchart LR
   org[Org] --> po[Pipeline d'org]
   po -->|write| tab
   tab -->|sql tables| po
-  con[Connecteur] -->|connector_query| imp
+  con[Connecteur] -->|connector| po
   eb[Exécution enchaînée] --> imp
   eb --> po
   nq -->|lit| tab
@@ -125,7 +124,7 @@ Chaque étape lit une table de travail et en écrit une. Une colonne `file` port
 
 Le moteur garde un journal par étape : lignes, octets, première adresse, code d'erreur. L'historique d'un import affiche ce journal (`ingest_steps`).
 
-Un import peut désigner un pipeline (`mapping.pipeline: <pack>/<clé>`). Le run remplit alors la table de l'import par le moteur (écriture `replace: true`), puis la synchro D577 écrit l'ontologie. Tous les imports des packs passent par ce chemin. Les étapes d'import de D317–D321 restent seulement pour les imports qu'une org écrit (§3.13).
+Un import peut désigner un pipeline (`mapping.pipeline: <pack>/<clé>`). Le run remplit alors la table de l'import par le moteur (écriture `replace: true`), puis la synchro D577 écrit l'ontologie. Tous les imports des packs passent par ce chemin. Un import qu'une org écrit lit une Table que son pipeline d'org remplit (`source: dataset`).
 
 **Lecteurs de format (D939)** : `csv`, `json`, `xml`, `html`, `ical`, `lines`, `binary`, `xlsx`. Une colonne déclare son type, son format de date, son fuseau et son échelle. Le fuseau est un nom IANA, heure d'été comprise. Les conversions de fuseau se font dans le pipeline seulement : à la lecture (`timezone`) ou en SQL (`local_to_utc`, `utc_to_local`, `pnex-pipeline-worker/src/tz.rs`). Une heure vécue deux fois est lue comme la première. Ajouter un format change le moteur. Ajouter une source ne le change jamais.
 
@@ -326,33 +325,35 @@ config:
   layout: elk
 ---
 flowchart LR
-  pg[postgres] --> q[Étape connector_query]
+  pg[postgres] --> q[Étape connector]
   my[mysql sous TLS] --> q
   rest[rest] --> q
   wh[webhook] --> box[(connector_inbox)]
   box --> q
-  q -->|CSV en zone de transit| tab[(Table)]
-  tab --> sync[Synchro]
+  q -->|fichier CSV| rd[read]
+  rd --> w[write]
+  w --> tab[(Table)]
+  tab --> sync[Synchro d'un import]
 ```
 
-Un connecteur a un nom, une sorte, une cible et ses identifiants au coffre (D791). Les sortes sont `postgres`, `mysql`, `rest` et `webhook`. Tous lisent seulement. L'import porte la requête. Le résultat suit le chemin de tout fichier : table, synchro, planification, événements.
+Un connecteur a un nom, une sorte, une cible et ses identifiants au coffre (D791). Les sortes sont `postgres`, `mysql`, `rest` et `webhook`. Tous lisent seulement. L'étape `connector` d'un pipeline d'org porte la requête. Son exécution demande `connectors:use`. Le résultat suit le chemin de tout fichier : table, synchro, planification, événements.
 
 - **SQL** : session en lecture seule, une seule instruction préparée d'abord, délai et plafond d'octets (500 Mo par défaut, 2 Go au plus). MySQL exige TLS (D792).
 - **REST** : authentification `none`, `bearer`, `header`, `basic` ou `oauth2_client_credentials`. Pagination `page`, `offset`, `cursor` ou `link`. `GET` seulement. Un hôte qui change en cours de pagination est refusé (D793).
-- **Incrémental** : `cursor` nomme une colonne ou un champ. La dernière valeur avance seulement après le commit de la table. `full_every` relance une lecture complète, qui voit les suppressions (D794).
+- **Incrémental** : `cursor` nomme une colonne ou un champ. La dernière valeur avance seulement quand l'exécution réussit (`pipeline_cursors`). Un import qui lit une Table prend la dernière ligne d'une clé comme son état le plus récent. `full_every` relance une lecture complète, qui voit les suppressions (D794).
 
 ```mermaid
 sequenceDiagram
   participant X as Système externe
   participant H as POST /api/v1/hooks/{id}
   participant B as connector_inbox
-  participant I as Import du connecteur
+  participant I as Étape connector
   X->>H: corps JSON signé HMAC-SHA256
   H->>H: signature en temps constant
   H->>B: appel gardé
   H-->>X: 202
   I->>B: appels au-delà du dernier id lu
-  I->>I: table (append), puis synchro
+  I->>I: table (append), puis synchro de l'import
 ```
 
 Un appel inconnu, sans secret, mal signé ou périmé reçoit le même `401 hook-signature-invalid` (D795). Un corps fait 1 Mio au plus. Une boîte garde 100 000 appels non lus sur 7 jours, sinon `503 hook-inbox-full`. Le limiteur commun compte 600 appels par minute et par adresse cliente.
@@ -397,25 +398,7 @@ sequenceDiagram
 
 Un proxy limite une requête à 100 Mo et coupe une réponse lente. Un fichier entre donc en parties : 1 000 parties et 5 Gio au plus, dans n'importe quel ordre. L'interface et `pnex dataset load` envoient des parties de 32 Mio. Les parties sont retirées à la fin, réussie ou non. Inachevées, elles partent après 24 h. Une conversion perdue avec son pod repart après 10 min sans battement, trois fois au plus (`dataset-upload-lost`). Les médias utilisent le même mécanisme (`media.md`).
 
-### 3.13 Imports à étapes et arrêt propre
-
-```mermaid
----
-config:
-  layout: elk
----
-flowchart LR
-  r[source_resolve] --> d[file_download]
-  d -->|inchangé| stop((fin))
-  d --> x[archive_extract]
-  x --> i[table_inspect]
-  i --> f[rows_filter]
-  f --> t[(Table de l'import)]
-  q[connector_query] --> t
-  t --> s[Synchro]
-```
-
-Un import qu'une org écrit peut encore porter `steps:` (D344). Le serveur les exécute (`services/ingest/pipeline.rs`) et journalise chaque étape dans `ingest_steps`. `source_resolve` lit une URL fixe ou un jeu data.gouv.fr. `file_download` écrit en zone de transit, sha256 au vol, et saute un fichier inchangé (`skip_if_unchanged`). `archive_extract` ouvre zip, tar et gz, sans rar. `table_inspect` profile les colonnes. `rows_filter` filtre avant le plafond, `in_objects` + `only` pour une longue liste.
+### 3.13 Arrêt propre des imports
 
 ```mermaid
 stateDiagram-v2
@@ -495,13 +478,13 @@ Un pipeline peut déclarer `object_hosts` : des adresses tenues par les objets d
 ## 5. Décisions
 
 ### D317 — Un nœud `ingest`, une étape par nœud
-Nœud de flow retiré par D359 (`web-presence.md`). Les étapes vivent dans les `steps:` d'un import (D344), puis dans le moteur (D936).
+Nœud de flow retiré par D359 (`web-presence.md`). Les étapes vivent dans le moteur (D936).
 
 ### D318 — Zone de transit S3, journal `ingest_steps`
-Zone de transit `org_{id}/staging/…`, sha256 au vol, quota 2 Go par org, brut gardé `keep_raw_days` (30 jours), purge horaire. Gardé.
+Le journal `ingest_steps` reste : il garde les étapes d'un pipeline joué pour un import. La zone de transit est retirée avec D344 (2026-11-22).
 
 ### D319 — `archive_extract`
-Zip, tar, tar.gz, gz, sans rar. 10 000 entrées, 200 Mo décompressés, chemin hors du dossier refusé (`ingest-unsafe-path`). Repris par `unpack` (D936).
+Zip, tar, tar.gz, gz, sans rar. 10 000 entrées, 200 Mo décompressés, chemin hors du dossier refusé. Repris par `unpack` (D936).
 
 ### D320 — `table_inspect`
 Format, encodage, séparateur, remplissage et exemples par colonne. `expected_columns` absente = `import-schema-changed`. Repris par la sonde (D944).
@@ -513,7 +496,7 @@ Format, encodage, séparateur, remplissage et exemples par colonne. `expected_co
 Absorbé : c'est la fin de tout import. `max_closures_pct` (20 %) protège tout import snapshot (`ingest-suspicious-closures`).
 
 ### D344 — Le pipeline est un import étendu
-`steps:` dans le YAML d'un import. Remplacée par D571 puis par D934. Reste pour les imports qu'une org écrit.
+`steps:` dans le YAML d'un import. Remplacée par D571 puis par D934. Choix de Shan (2026-11-22) : retirée. Un import lit une Table que remplit un pipeline d'org. La lecture d'un connecteur devient l'étape `connector` (D936). La migration 000168 retire les `steps:` des imports existants et arrête leur planification.
 
 ### D345 — Exécution par un worker de jobs, file Postgres
 File `import_jobs` jamais codée. Remplacée par `pipeline_jobs` (D573) et les exécutions enchaînées (D575).
@@ -612,7 +595,7 @@ Seul le S3 de PneX. Aucun identifiant de compartiment tiers.
 Toute ingestion est un pipeline YAML. Bornée par D998 : pas de lien déduit dans un pipeline sans ligne d'écart. Choix de Shan (2026-11-21) : une seule sorte. `/api/v1/pipelines` sert le pipeline d'org : versionné, `tests:` facultatifs mais joués avant l'enregistrement, réponses écrites dans le document. Il lit tout hôte public derrière la garde R8, la cadence D938 et le quota de l'org. `share`, `requires`, `schedule` et `after` lui sont refusés. Son horaire reste la route D575. Choix de Shan (2026-11-22, Q-PE2) : il peut naviguer (`browse`) aux conditions de D782, avec le droit `site-recipes:write`.
 
 ### D935 — Tout intermédiaire est une table de travail
-Une table de travail vit le temps du run, dans la zone de transit, sous le quota de l'org.
+Une table de travail vit le temps du run, en mémoire ou dans un fichier temporaire.
 
 ### D936 — Étapes fermées
 `enumerate`, `fetch`, `browse`, `extract`, `unpack`, `read`, `sql`, `call`, `write`. `model` s'y ajoute (D841). Choix de Shan (2026-11-22) : `connector` s'y ajoute. Elle lit un connecteur de l'org (requête, REST ou boîte d'un webhook) en un fichier CSV, pour un `read`. Son curseur avance seulement quand l'exécution réussit (`pipeline_cursors`). Remplace les étapes de D317–D321.
@@ -771,7 +754,7 @@ tests:
 
 - PE5.5 (choix de Shan, 2026-11-20) : la page « Sites web » reste. Elle garde l'édition visuelle, les captures d'écran du run et la description des actions sur la page. Seul le stockage change : une règle devient un pipeline avec `browse`. `/site-recipes` disparaît alors, pas l'UI.
 - PE8 : mesure autour d'événements et chaînes candidates dans `/analysis`, note de séance en règle.
-- PE9 : `HOST_DEBT` à vider (3 lignes : catalogue data.gouv.fr, réseaux des agents navigateur, adaptateurs de l'extension).
+- PE9 : `HOST_DEBT` à vider (2 lignes : réseaux des agents navigateur, adaptateurs de l'extension).
 - D934 : un `call` d'un pipeline d'org ne trouve que les fonctions des packs (`<pack>/<nom>`), pas celles de l'org.
 - D946 : les pipelines des packs restent hors des exécutions enchaînées. `after` d'un pipeline du moteur n'est pas appliqué.
 - D941 : cible `series` non codée.

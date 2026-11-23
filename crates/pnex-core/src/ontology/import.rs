@@ -23,8 +23,8 @@ pub const ROWS_MAX: usize = 250_000;
 pub const ENTRIES_MAX: usize = 20;
 /// Imports one mapping can wait for.
 pub const AFTER_MAX: usize = 32;
-/// Pipeline steps of one import.
-pub const STEPS_MAX: usize = 10;
+/// Share of what an import holds that one run reading a Table may close.
+pub const MAX_CLOSURES_PCT: u32 = 20;
 /// Elements expanded by one `each` in one row (an RS sheet lists up to
 /// ~4,300 partners).
 pub const EACH_MAX: usize = 5_000;
@@ -508,16 +508,9 @@ pub struct Mapping {
     pub observations: Option<crate::markets::ObservationTarget>,
     /// The pipeline that fills the import's table (`<pack>/<key>`,
     /// pipelines.md D941): its `write` names the table `key`, then
-    /// the table is synced into objects (D577). Replaces `steps` and the feeds
-    /// and the feeds.
+    /// the table is synced into objects (D577).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pipeline: Option<String>,
-    /// Pipeline steps run by the server before the mapping (pipelines.md
-    /// D344): resolve, download, extract, inspect, filter; the records are
-    /// read from the file they leave staged.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    #[cfg_attr(feature = "openapi", schema(value_type = Vec<Object>))]
-    pub steps: Vec<crate::ingest::IngestConfig>,
     /// Keys of the imports whose objects this one needs: a schedule runs them first
     /// (pipelines.md D575).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -634,14 +627,6 @@ pub fn check(m: &Mapping, s: &Schema) -> Result<(), FieldError> {
     }
     if !m.json_column.is_empty() && !valid_key(&m.json_column) {
         return Err(ferr("json_column", FIELD_INVALID));
-    }
-    if m.steps.len() > STEPS_MAX {
-        return Err(ferr("steps", format!("{FIELD_MAX_LENGTH}:{STEPS_MAX}")));
-    }
-    for (i, step) in m.steps.iter().enumerate() {
-        if step.check_deployable().is_some() {
-            return Err(ferr(format!("steps.{i}"), FIELD_INVALID));
-        }
     }
     for (i, o) in m.objects.iter().enumerate() {
         let at = |f: &str| format!("objects.{i}.{f}");

@@ -496,7 +496,7 @@ Un client du SaaS est une org PneX (D300). Le SaaS garde une clé de compte de s
 | D422 | Imports suivent `certifications` | `per_object.setting` |
 | D423 | Requêtes suivent le réglage | filtre `in` sur `$setting.<pack>.<réglage>` |
 | D424 | Imports d'un pack suivent ses mises à jour | `pack_written`, `kept`, `differs`, reprise `take` |
-| D425 | Filtre de lignes par réglage | `rows_filter.setting` |
+| D425 | Filtre de lignes par réglage | `rows_filter.setting`, retiré avec D344 : un `sql` lit le réglage |
 | D426 | Nœud `check_record` | un passage consigné dans `check_runs` |
 | D427 | Repli au changement | `check_states`, empreinte, événement ouvert puis fermé |
 | D428 | Origine `flow` | `EVENT_ORIGINS` gagne `flow` |

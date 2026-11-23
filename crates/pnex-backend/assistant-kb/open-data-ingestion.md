@@ -1,41 +1,31 @@
 ---
 id: open-data-ingestion
-title: Open-data ingestion — the steps of an import
+title: Open-data ingestion — a pipeline, then an import
 kind: howto
 pages: /ontology
 nodes: dataset_trigger
-err_codes: connector-not-found, connector-unreachable, connector-host-refused, connector-query-invalid, connector-forbidden, build-cycle, build-dependency-missing, build-too-long, build-author-forbidden, build-timeout, pipeline-check-failed, dataset-not-found, ingest-staging-quota, ingest-staging-unavailable, ingest-no-resource, ingest-entry-missing, ingest-archive-unsupported, ingest-unsafe-path, ingest-suspicious-closures, import-run-interrupted, import-schema-changed, import-source-unreachable, import-source-too-large, import-source-unreadable, flow-node-retired, flow-node-unreadable
+err_codes: connector-not-found, connector-unreachable, connector-host-refused, connector-query-invalid, build-cycle, build-dependency-missing, build-too-long, build-author-forbidden, build-timeout, pipeline-check-failed, dataset-not-found, ingest-staging-unavailable, ingest-entry-missing, ingest-suspicious-closures, import-run-interrupted, import-schema-changed, import-source-unreachable, import-source-too-large, import-source-unreadable, flow-node-retired, flow-node-unreadable
 tags: table trigger, déclencheur de table, dataset_trigger, chained run, planification, schedule, dépendances, dependencies, after, ingestion, open data, données ouvertes, data.gouv, france compétences, télécharger, download, zip, archive, extraire, csv, filtre, filter, colonnes, columns, staging, zone de transit, import, rncp, rs, certificateurs, partenaires, habilitation, compétences, competencies, blocs, référentiel, programme, module, xml, étapes, steps
 ---
-An import (Ontology › Imports) can fetch an open-data file by itself every night: its YAML lists its **steps** under `steps:`, the server runs them, then applies the mapping to the file they leave. **History** unfolds each run's steps: what each one read and produced (the archive's table of contents, the columns with their fill rate and examples, the rows kept by a filter) and the step where a run stopped.
+To fetch an open-data file every night, write a **pipeline** (Pipelines): a `fetch` step downloads it, `unpack` opens an archive (zip, tar, tar.gz or gz) and keeps the files you list (`*Partenaires*.csv`), `read` turns a file into rows and checks its expected columns, `sql` filters them, and `write` keeps them in a **table**. Schedule the pipeline on its **Schedule** tab. An import (Ontology › Imports) whose source is that table then turns its rows into objects. An import no longer carries steps of its own.
 
-## The steps, in order
-1. **Open source** (`source_resolve`): a fixed URL, or a *data.gouv.fr dataset* (its identifier) and a pattern on the resource title such as `export-fiches-csv-*.zip`: the most recent matching resource wins, so a file whose name changes every day is found.
-2. **Download** (`file_download`): the file goes to the server's staging area, never to a disk. It stays for its retention time (30 days by default) as proof of what was imported.
-3. **Archive extraction** (`archive_extract`): zip, tar, tar.gz or gz (no rar). List the files to keep (`*Partenaires*.csv`); the step lists every file of the archive, kept or not.
-4. **Table inspection** (`table_inspect`): format, encoding, separator, exact number of rows, each column with its fill rate, distinct values and examples. List the **expected columns**: if the source renames or drops one, the run stops (*import-schema-changed*) and nothing is imported.
-5. **Row filter** (`rows_filter`): keeps the rows whose column equals a value, is in a list (or in the codes of a pack setting, `setting:`), or is among the values of a property of your objects (for example the codes of your certifications). `only:` narrows those objects (for example status *active*). Conversions such as *digits* or *trim* clean the column before comparing. It runs before the import limit of 250,000 records.
-
-The import then applies its mapping. A run that would close more than 20 % of what the import holds is refused (*ingest-suspicious-closures*). The run's extracted and filtered files are deleted when it ends.
+The import applies its mapping. A run that would close more than 20 % of what the import holds is refused (*ingest-suspicious-closures*).
 
 ## France Compétences (pack *Partner network watch*)
-The pack ships its France Compétences imports with their steps: certifiers, sheets, partners, skill blocks and the RS register (XML). Only the last one is scheduled, every night: each import names the ones it waits for (`after:` in its mapping), so the others run first, in order. If one fails, what waits for it is not run and keeps its data, and the organization gets a notification. An import that already had its own schedule keeps it after a pack upgrade: remove that schedule to leave only the last one. Put **your certifier's SIRET** in the pack setting **Certifiers followed** (Ontology › Packs): the certifiers import keeps only those, then the others keep the rows of your certifications. You get your certifications, their sheets (title, level, dates, status), your partners and their accreditation scope (preparation, evaluation or both). A partner gone from the open data loses its accreditation; nothing is deleted.
+The pack ships its France Compétences imports with their pipelines: certifiers, sheets, partners, skill blocks and the RS register (XML). Only the last one is scheduled, every night: each import names the ones it waits for (`after:` in its mapping), so the others run first, in order. If one fails, what waits for it is not run and keeps its data, and the organization gets a notification. An import that already had its own schedule keeps it after a pack upgrade: remove that schedule to leave only the last one. Put **your certifier's SIRET** in the pack setting **Certifiers followed** (Ontology › Packs): the certifiers import keeps only those, then the others keep the rows of your certifications. You get your certifications, their sheets (title, level, dates, status), your partners and their accreditation scope (preparation, evaluation or both). A partner gone from the open data loses its accreditation; nothing is deleted.
 
 The RS register gives each **competency** of your RS certifications (one per paragraph of the official framework, keyed like `RS0101-C3`), their objectives, prerequisites, jury and number of graduates, and the France Compétences **state** of each accreditation. Only your certifications are enriched; a revised framework closes the competencies it no longer lists.
 
 ## When it goes wrong
-- *ingest-no-resource*: no resource of the dataset matches the pattern — check the pattern of the *Open source* step against the dataset page.
-- *ingest-entry-missing*: no extracted file matches the pattern of a step — compare it with the table of contents of the extraction step in History.
-- *import-schema-changed*: the source renamed a column — the inspection step lists the columns it found; update the expected columns and the import's column mapping.
+- *ingest-entry-missing*: the import has no source to read — give it a table (or a file with **Preview**).
+- *import-schema-changed*: the source renamed a column — the run's steps list the columns found; update the expected columns and the import's column mapping.
 - *import-run-interrupted*: the server running the import stopped (restart, update); nothing of that run was written. Use **Run now** or wait for the next night.
-- *ingest-suspicious-closures*: the source suddenly lost much of what the import holds — check the file in the inspection step; if the drop is real, run the import from a file with **Preview**, then apply.
-- *ingest-staging-quota*: the organization's staging area is full (2 GB) — files older than 7 days are purged anyway.
-- *ingest-archive-unsupported* or *ingest-unsafe-path*: the file is not an archive that can be read, or it holds a path leaving its folder — it is refused as a whole.
-- *flow-node-retired* when deploying a flow: it still holds an old *Data ingestion* node, which no longer exists. Delete that node (or the flow) and give the import its steps instead.
+- *ingest-suspicious-closures*: the source suddenly lost much of what the import holds — check the table; if the drop is real, run the import from a file with **Preview**, then apply.
+- *flow-node-retired* when deploying a flow: it still holds an old *Data ingestion* node, which no longer exists. Delete that node (or the flow) and write a pipeline instead.
 - *flow-node-retired* or *flow-node-unreadable* when opening a flow: the editor left that node out of the canvas. Save the flow to drop it for good, or delete the flow from the Flows list.
 
 ## Reading another database
-An import can read an outside PostgreSQL database: an admin saves a **connector** through the API (address, user, password in the vault), then the import starts with a `connector_query` step naming that connector and one read-only query. The result goes into a table like a file does, so it gets the same versions, schedule and checks. A private address needs the platform administrator's approval for that host. There is no screen yet.
+A pipeline reads an outside database with a `connector` step: an admin saves a **connector** (address, user, password in the vault) on the Connectors tab of Pipelines, then the step names it with one read-only query. Its result is a CSV file for a `read`, then a table with the same versions, schedule and checks as any other. A private address needs the platform administrator's approval for that host.
 
 ## Reacting to new data in a flow
 A **Table trigger** node starts a flow when a table gets a new version, or when a sync from that table is applied. Name the table in the node: it must exist when you deploy. The message says which version and how many rows, or which objects changed, never the rows themselves. Events can arrive up to a few tens of seconds after the data, and those that come while the flow is stopped are not replayed.

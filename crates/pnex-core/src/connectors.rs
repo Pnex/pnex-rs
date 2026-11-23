@@ -434,6 +434,45 @@ pub fn cursor_after(a: &str, b: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_cursor_reads_past_the_last_value() {
+        let sql = CursorSpec {
+            column: "updated_at".into(),
+            start: "1970-01-01".into(),
+            ..Default::default()
+        };
+        assert!(sql
+            .check(true, "SELECT 1 WHERE updated_at > {{cursor}}")
+            .is_none());
+        assert!(sql.check(true, "SELECT 1").is_some());
+        let no_start = CursorSpec {
+            start: String::new(),
+            ..sql.clone()
+        };
+        assert!(no_start.check(true, "x {{cursor}}").is_some());
+        let rest = CursorSpec {
+            column: "/updated".into(),
+            param: "since".into(),
+            ..Default::default()
+        };
+        assert!(rest.check(false, "").is_none());
+        assert!(CursorSpec {
+            param: String::new(),
+            ..rest.clone()
+        }
+        .check(false, "")
+        .is_some());
+        assert!(sql.full(None, 0) && sql.full(Some(""), 0) && !sql.full(Some("5"), 9));
+        let every = CursorSpec {
+            full_every: Some(3),
+            ..sql
+        };
+        assert!(!every.full(Some("5"), 2) && every.full(Some("5"), 3));
+        assert!(cursor_after("10", "9") && !cursor_after("9", "10"));
+        assert!(cursor_after("2026-11-08T00:00:00Z", "2026-11-07T23:59:59Z"));
+        assert!(!cursor_after("5", "5"));
+    }
+
     use super::*;
     use crate::egress::EgressPolicy::{Lan, Open, Public};
 

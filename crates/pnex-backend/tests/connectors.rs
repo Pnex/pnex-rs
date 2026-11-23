@@ -1,5 +1,6 @@
-//! Connectors (pipelines.md D352): an import reads an outside database into a
-//! table, read-only, with the password in the vault and rights checked on each run.
+//! Connectors (pipelines.md D352): an org's pipeline reads an outside database
+//! into a table with a `connector` step, read-only, with the password in the
+//! vault and rights checked on each run.
 //!
 //! Needs PostgreSQL (TEST_DATABASE_URL, which also plays the outside database) and the
 //! compose `rustfs` service.
@@ -80,30 +81,43 @@ impl Api<'_> {
         )
     }
 
-    async fn run(&self, import: &str) -> Value {
-        let (s, r) = self
+    /// Saves an org pipeline; its id.
+    async fn save(&self, name: &str, document: &str) -> String {
+        let (s, p) = self
             .call(
                 "POST",
-                &format!("/api/v1/ontology/imports/{import}/runs"),
-                None,
+                "/api/v1/pipelines",
+                Some(json!({ "name": name, "document": document })),
             )
             .await;
+        assert_eq!(s, 201, "{p}");
+        p["id"].as_str().unwrap().to_string()
+    }
+
+    /// Saves the next version of an org pipeline.
+    async fn update(&self, id: &str, document: &str) {
+        let path = format!("/api/v1/pipelines/{id}");
+        let (_, p) = self.call("GET", &path, None).await;
+        let (s, e) = self
+            .call(
+                "PUT",
+                &path,
+                Some(json!({ "document": document, "expected_version": p["version"] })),
+            )
+            .await;
+        assert_eq!(s, 200, "{e}");
+    }
+
+    /// Runs an org pipeline from the server's queue; the run.
+    async fn run(&self, ctx: &loco_rs::app::AppContext, id: &str) -> Value {
+        let runs = format!("/api/v1/pipelines/{id}/runs");
+        let (s, r) = self.call("POST", &runs, None).await;
         assert_eq!(s, 202, "{r}");
-        let run = r["id"].as_str().unwrap().to_string();
-        for _ in 0..300 {
-            let (_, v) = self
-                .call(
-                    "GET",
-                    &format!("/api/v1/ontology/imports/{import}/runs/{run}"),
-                    None,
-                )
-                .await;
-            if v["run"]["state"] != "running" {
-                return v;
-            }
-            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-        }
-        panic!("run {run} never settled");
+        assert!(pnex_backend::services::pipelines::run_next(ctx)
+            .await
+            .unwrap());
+        let run = format!("{runs}/{}", r["id"].as_str().unwrap());
+        self.call("GET", &run, None).await.1
     }
 }
 
@@ -143,22 +157,27 @@ fn connector_body(name: &str) -> Value {
             "username": username, "tls": false, "password": { "value": password } })
 }
 
-fn mapping(query: &str) -> String {
-    format!(
-        "key: suppliers_table\nname: Suppliers\nformat: csv\nsteps:\n  - step: connector_query\n    connector: erp\n    query: {query:?}\nobjects:\n  - as: org\n    type: certification\n    key: code\n    title: {{ from: name }}\n    properties:\n      code: {{ from: code }}\n"
-    )
+/// A pipeline that reads the connector `c` into the table `table`.
+fn doc(c: Value, table: &str, replace: bool) -> String {
+    json!({ "key": "p", "steps": [
+        { "connector": c },
+        { "read": { "as": "rows", "from": "raw", "format": "csv" } },
+        { "write": { "from": "rows", "table": { "name": table, "replace": replace } } }
+    ] })
+    .to_string()
 }
 
-async fn install_pack(api: &Api<'_>) {
-    let (s, e) = api
-        .call("POST", "/api/v1/ontology/packs/quali_watch/install", None)
-        .await;
-    assert_eq!(s, 200, "{e}");
+fn sql_doc(query: &str) -> String {
+    doc(
+        json!({ "as": "raw", "name": "erp", "query": query }),
+        "suppliers_table",
+        true,
+    )
 }
 
 #[tokio::test]
 #[serial]
-async fn an_import_reads_an_outside_database_into_a_table() {
+async fn a_pipeline_reads_an_outside_database_into_a_table() {
     with_app(|server, env, ctx| async move {
         let org = personal_org(&server, &env.alice).await;
         let api = Api {
@@ -178,8 +197,6 @@ async fn an_import_reads_an_outside_database_into_a_table() {
             "INSERT INTO outside_suppliers VALUES ('A1', 'Acme, Inc', 'say \"hi\"'), ('B2', 'Beta', NULL)",
         )
         .await;
-        install_pack(&api).await;
-
         // Created, password held in the vault and shown nowhere.
         let (s, c) = api
             .call("POST", "/api/v1/connectors", Some(connector_body("erp")))
@@ -193,26 +210,16 @@ async fn an_import_reads_an_outside_database_into_a_table() {
             .await;
         assert_eq!((s, t["ok"].as_bool()), (200, Some(true)), "{t}");
 
-        let import = |q: &str| {
-            json!({ "name": "suppliers", "mapping": mapping(q), "source": "file",
-                    "mode": "incremental" })
-        };
-        let (s, i) = api
-            .call(
-                "POST",
-                "/api/v1/ontology/imports",
-                Some(import("SELECT code, name, note FROM outside_suppliers ORDER BY code")),
+        let p = api
+            .save(
+                "suppliers",
+                &sql_doc("SELECT code, name, note FROM outside_suppliers ORDER BY code"),
             )
             .await;
-        assert_eq!(s, 201, "{i}");
-        let imp = i["id"].as_str().unwrap().to_string();
-        let r = api.run(&imp).await;
-        assert_eq!(r["run"]["state"], "applied", "{r}");
-        assert_eq!(r["run"]["counts"]["created"], 2, "{r}");
-        // No host or user in the journal.
-        let steps = r["steps"].to_string();
-        assert!(steps.contains("connector_query"), "{steps}");
-        assert!(!steps.contains(&outside().0), "{steps}");
+        let r = api.run(&ctx, &p).await;
+        assert_eq!(r["state"], "done", "{r}");
+        // No host or user in the run.
+        assert!(!r.to_string().contains(&outside().0), "{r}");
 
         // The table holds the rows, quoting intact, and a pipeline could read it.
         let (_, list) = api.call("GET", "/api/v1/datasets", None).await;
@@ -236,11 +243,6 @@ async fn an_import_reads_an_outside_database_into_a_table() {
         assert_eq!(sample["rows"][0][2], "say \"hi\"", "{sample}");
 
         // Read-only, one statement, and nothing can get out of the parenthesis.
-        let update = |q: &str| {
-            let mut body = import(q);
-            body["expected_version"] = json!(1);
-            body
-        };
         for hostile in [
             "DELETE FROM outside_suppliers RETURNING *",
             "UPDATE outside_suppliers SET name = 'x' RETURNING *",
@@ -251,18 +253,10 @@ async fn an_import_reads_an_outside_database_into_a_table() {
             "COPY outside_suppliers TO PROGRAM 'true'",
             "SELECT pg_read_file('/etc/passwd') /*",
         ] {
-            let (_, read) = api
-                .call("GET", &format!("/api/v1/ontology/imports/{imp}"), None)
-                .await;
-            let mut body = update(hostile);
-            body["expected_version"] = read["version"].clone();
-            let (s, e) = api
-                .call("PUT", &format!("/api/v1/ontology/imports/{imp}"), Some(body))
-                .await;
-            assert_eq!(s, 200, "{e}");
-            let r = api.run(&imp).await;
-            assert_eq!(r["run"]["state"], "failed", "{hostile}: {r}");
-            assert_eq!(r["run"]["state_code"], "connector-query-invalid", "{hostile}: {r}");
+            api.update(&p, &sql_doc(hostile)).await;
+            let r = api.run(&ctx, &p).await;
+            assert_eq!(r["state"], "failed", "{hostile}: {r}");
+            assert_eq!(r["code"], "connector-query-invalid", "{hostile}: {r}");
         }
         let left: i64 = sql(db, "SELECT count(*) AS n FROM outside_suppliers").await[0]
             .try_get("", "n")
@@ -393,17 +387,11 @@ async fn connectors_are_for_admins_of_the_org() {
                 "{method} {p}"
             );
         }
-        install_pack(&alice).await;
-        let body = |q: &str| {
-            json!({ "name": "suppliers", "mapping": mapping(q), "source": "file",
-                    "mode": "incremental" })
-        };
+        // A member saves a pipeline but may not run what reads a connector.
+        let reads = sql_doc("SELECT 'a' AS code, 'b' AS name");
+        let p = bob.save("suppliers", &reads).await;
         let (s, e) = bob
-            .call(
-                "POST",
-                "/api/v1/ontology/imports",
-                Some(body("SELECT 1 AS code, 2 AS name")),
-            )
+            .call("POST", &format!("/api/v1/pipelines/{p}/runs"), None)
             .await;
         assert_eq!(
             (s, e["error"].as_str()),
@@ -411,33 +399,41 @@ async fn connectors_are_for_admins_of_the_org() {
             "{e}"
         );
 
-        // An admin writes it, then loses the right: the next run reads nothing.
-        let (s, m) = alice
-            .call(
-                "POST",
-                "/api/v1/ontology/imports",
-                Some(body("SELECT 'a' AS code, 'b' AS name")),
-            )
+        // An admin starts it, then loses the right before it runs: it reads nothing.
+        let r = alice.run(&ctx, &p).await;
+        assert_eq!(r["state"], "done", "{r}");
+        let (s, r) = alice
+            .call("POST", &format!("/api/v1/pipelines/{p}/runs"), None)
             .await;
-        assert_eq!(s, 201, "{m}");
-        let imp = m["id"].as_str().unwrap().to_string();
-        let r = alice.run(&imp).await;
-        assert_eq!(r["run"]["state"], "applied", "{r}");
-        let bob_id: i64 = sql(
-            &ctx.db,
-            "SELECT id FROM users WHERE email = 'bob@example.com'",
-        )
-        .await[0]
-            .try_get("", "id")
-            .unwrap();
+        assert_eq!(s, 202, "{r}");
         sql(
             &ctx.db,
-            &format!("UPDATE object_imports SET created_by = {bob_id} WHERE id = '{imp}'"),
+            &format!(
+                "UPDATE organization_members SET role = 'member' WHERE org_id = {org} \
+                 AND user_id = (SELECT id FROM users WHERE email = 'alice@example.com')"
+            ),
         )
         .await;
-        let r = alice.run(&imp).await;
-        assert_eq!(r["run"]["state"], "failed", "{r}");
-        assert_eq!(r["run"]["state_code"], "connector-forbidden", "{r}");
+        assert!(pnex_backend::services::pipelines::run_next(&ctx)
+            .await
+            .unwrap());
+        let (_, r) = alice
+            .call(
+                "GET",
+                &format!("/api/v1/pipelines/{p}/runs/{}", r["id"].as_str().unwrap()),
+                None,
+            )
+            .await;
+        assert_eq!(r["state"], "failed", "{r}");
+        assert_eq!(r["code"], "access-denied", "{r}");
+        sql(
+            &ctx.db,
+            &format!(
+                "UPDATE organization_members SET role = 'owner' WHERE org_id = {org} \
+                 AND user_id = (SELECT id FROM users WHERE email = 'alice@example.com')"
+            ),
+        )
+        .await;
 
         // The private hosts belong to the platform admin only.
         let hosts = format!("/api/v1/system/orgs/{org}/connector-hosts");
@@ -523,23 +519,25 @@ async fn spawn_api() -> u16 {
     port
 }
 
-fn rest_mapping(path: &str, paging: &str) -> String {
-    format!(
-        "key: api_table\nname: Api\nformat: csv\nsteps:\n  - step: connector_query\n    connector: api\n    rest:\n      path: {path}\n      records: /data\n{paging}objects:\n  - as: org\n    type: certification\n    key: code\n    title: {{ from: name }}\n    properties:\n      code: {{ from: code }}\n"
-    )
+/// A pipeline that reads the REST connector `api` into `api_table`.
+fn rest_doc(rest: Value, cursor: Option<Value>) -> String {
+    let mut c = json!({ "as": "raw", "name": "api", "rest": rest });
+    if let Some(cur) = cursor {
+        c["cursor"] = cur;
+    }
+    doc(c, "api_table", false)
 }
 
 #[tokio::test]
 #[serial]
-async fn an_import_reads_a_paged_rest_api_into_a_table() {
-    with_app(|server, env, _ctx| async move {
+async fn a_pipeline_reads_a_paged_rest_api_into_a_table() {
+    with_app(|server, env, ctx| async move {
         let org = personal_org(&server, &env.alice).await;
         let api = Api {
             server: &server,
             token: &env.alice,
             org,
         };
-        install_pack(&api).await;
         let port = spawn_api().await;
         let body = |secret: &str| {
             json!({ "name": "api", "kind": "rest", "host": "127.0.0.1", "port": port,
@@ -561,51 +559,44 @@ async fn an_import_reads_a_paged_rest_api_into_a_table() {
             .await;
         assert_eq!(t["ok"], true, "{t}");
 
-        let paging = "      paging: page\n      page_param: page\n";
-        let import = |path: &str, paging: &str| {
-            json!({ "name": "api", "mapping": rest_mapping(path, paging), "source": "file",
-                    "mode": "incremental" })
+        let rest = |path: &str, paging: Value| {
+            let mut r = json!({ "path": path, "records": "/data" });
+            for (k, v) in paging.as_object().unwrap() {
+                r[k] = v.clone();
+            }
+            rest_doc(r, None)
         };
-        let (s, i) = api
-            .call(
-                "POST",
-                "/api/v1/ontology/imports",
-                Some(import("/items", paging)),
+        let p = api
+            .save(
+                "api",
+                &rest("/items", json!({ "paging": "page", "page_param": "page" })),
             )
             .await;
-        assert_eq!(s, 201, "{i}");
-        let imp = i["id"].as_str().unwrap().to_string();
-        let r = api.run(&imp).await;
-        assert_eq!(r["run"]["state"], "applied", "{r}");
-        assert_eq!(r["run"]["counts"]["created"], 3, "two pages read: {r}");
-        assert!(!r["steps"].to_string().contains("127.0.0.1"), "{r}");
+        let r = api.run(&ctx, &p).await;
+        assert_eq!(r["state"], "done", "{r}");
+        assert!(!r.to_string().contains("127.0.0.1"), "{r}");
+        let (_, list) = api.call("GET", "/api/v1/datasets", None).await;
+        assert_eq!(table_rows(&list, "api_table"), 3, "two pages read: {list}");
 
         // Each failure is a code: another host, not JSON, no records, a page limit.
-        let mut version = 1;
         for (path, paging, code) in [
             (
                 "/away",
-                "      paging: link\n",
+                json!({ "paging": "link" }),
                 "connector-rest-host-changed",
             ),
-            ("/html", "", "connector-rest-not-json"),
-            ("/", "", "connector-rest-status"),
+            ("/html", json!({}), "connector-rest-not-json"),
+            ("/", json!({}), "connector-rest-status"),
             (
                 "/items",
-                "      paging: page\n      page_param: page\n      max_pages: 1\n",
+                json!({ "paging": "page", "page_param": "page", "max_pages": 1 }),
                 "connector-rest-page-limit",
             ),
         ] {
-            let mut b = import(path, paging);
-            b["expected_version"] = json!(version);
-            let (s, e) = api
-                .call("PUT", &format!("/api/v1/ontology/imports/{imp}"), Some(b))
-                .await;
-            assert_eq!(s, 200, "{e}");
-            version = e["version"].as_i64().unwrap();
-            let r = api.run(&imp).await;
-            assert_eq!(r["run"]["state"], "failed", "{path}: {r}");
-            assert_eq!(r["run"]["state_code"], code, "{path}: {r}");
+            api.update(&p, &rest(path, paging)).await;
+            let r = api.run(&ctx, &p).await;
+            assert_eq!(r["state"], "failed", "{path}: {r}");
+            assert_eq!(r["code"], code, "{path}: {r}");
         }
 
         // A wrong token: refused, and the test says so without the server's text.
@@ -642,7 +633,7 @@ fn table_rows(list: &Value, name: &str) -> i64 {
 
 #[tokio::test]
 #[serial]
-async fn a_cursor_reads_only_what_is_new() {
+async fn a_rest_cursor_sends_the_last_value() {
     with_app(|server, env, ctx| async move {
         let org = personal_org(&server, &env.alice).await;
         let api = Api {
@@ -650,104 +641,6 @@ async fn a_cursor_reads_only_what_is_new() {
             token: &env.alice,
             org,
         };
-        let db = &ctx.db;
-        sql(db, "DROP TABLE IF EXISTS outside_events").await;
-        sql(
-            db,
-            "CREATE TABLE outside_events (code text, name text, updated int)",
-        )
-        .await;
-        sql(
-            db,
-            "INSERT INTO outside_events VALUES ('A1', 'Acme', 1), ('B2', 'Beta', 2)",
-        )
-        .await;
-        install_pack(&api).await;
-        let (s, c) = api
-            .call("POST", "/api/v1/connectors", Some(connector_body("erp")))
-            .await;
-        assert_eq!(s, 201, "{c}");
-        let query = "SELECT code, name, updated FROM outside_events WHERE updated > {{cursor}}";
-        let mapping = mapping(query).replace(
-            "    query:",
-            "    cursor:\n      column: updated\n      start: '0'\n    query:",
-        );
-        let (s, i) = api
-            .call(
-                "POST",
-                "/api/v1/ontology/imports",
-                Some(
-                    json!({ "name": "events", "mapping": mapping, "source": "file",
-                             "mode": "incremental" }),
-                ),
-            )
-            .await;
-        assert_eq!(s, 201, "{i}");
-        let imp = i["id"].as_str().unwrap().to_string();
-        let cursor = || async {
-            let rows = sql(
-                db,
-                &format!("SELECT cursor, cursor_runs FROM object_imports WHERE id = '{imp}'"),
-            )
-            .await;
-            (
-                rows[0].try_get::<Option<String>>("", "cursor").unwrap(),
-                rows[0].try_get::<i32>("", "cursor_runs").unwrap(),
-            )
-        };
-
-        // First run: everything, from the start value.
-        let r = api.run(&imp).await;
-        assert_eq!(r["run"]["counts"]["created"], 2, "{r}");
-        assert_eq!(cursor().await, (Some("2".into()), 0));
-
-        // Second run: only the new row and the changed one, appended to the table.
-        sql(db, "INSERT INTO outside_events VALUES ('C3', 'Gamma', 3)").await;
-        sql(
-            db,
-            "UPDATE outside_events SET name = 'Beta two', updated = 4 WHERE code = 'B2'",
-        )
-        .await;
-        let r = api.run(&imp).await;
-        assert_eq!(r["run"]["state"], "applied", "{r}");
-        assert_eq!(r["run"]["counts"]["created"], 1, "{r}");
-        assert_eq!(r["run"]["counts"]["updated"], 1, "{r}");
-        assert_eq!(cursor().await, (Some("4".into()), 1));
-        let (_, list) = api.call("GET", "/api/v1/datasets", None).await;
-        assert_eq!(table_rows(&list, "suppliers_table"), 4, "{list}");
-
-        // Third run: nothing new, no empty version, the cursor stays.
-        let r = api.run(&imp).await;
-        assert_eq!(r["run"]["state"], "applied", "{r}");
-        assert_eq!(cursor().await, (Some("4".into()), 1));
-        let (_, list) = api.call("GET", "/api/v1/datasets", None).await;
-        assert_eq!(table_rows(&list, "suppliers_table"), 4, "{list}");
-
-        // A cursor value from the source is quoted by the source, never pasted.
-        sql(
-            db,
-            &format!("UPDATE object_imports SET cursor = '0 OR true; --' WHERE id = '{imp}'"),
-        )
-        .await;
-        let r = api.run(&imp).await;
-        assert_eq!(r["run"]["state"], "failed", "{r}");
-        assert_eq!(r["run"]["state_code"], "connector-query-invalid", "{r}");
-        sql(db, "DROP TABLE outside_events").await;
-    })
-    .await;
-}
-
-#[tokio::test]
-#[serial]
-async fn a_rest_cursor_sends_the_last_value() {
-    with_app(|server, env, _ctx| async move {
-        let org = personal_org(&server, &env.alice).await;
-        let api = Api {
-            server: &server,
-            token: &env.alice,
-            org,
-        };
-        install_pack(&api).await;
         let port = spawn_api().await;
         let (s, c) = api
             .call(
@@ -760,27 +653,20 @@ async fn a_rest_cursor_sends_the_last_value() {
             )
             .await;
         assert_eq!(s, 201, "{c}");
-        let mapping = rest_mapping("/feed", "").replace(
-            "    rest:",
-            "    cursor:\n      column: /v\n      param: since\n    rest:",
-        );
-        let (s, i) = api
-            .call(
-                "POST",
-                "/api/v1/ontology/imports",
-                Some(
-                    json!({ "name": "feed", "mapping": mapping, "source": "file",
-                             "mode": "incremental" }),
+        let p = api
+            .save(
+                "feed",
+                &rest_doc(
+                    json!({ "path": "/feed", "records": "/data" }),
+                    Some(json!({ "column": "/v", "param": "since" })),
                 ),
             )
             .await;
-        assert_eq!(s, 201, "{i}");
-        let imp = i["id"].as_str().unwrap().to_string();
-        let r = api.run(&imp).await;
-        assert_eq!(r["run"]["counts"]["created"], 3, "{r}");
+        let r = api.run(&ctx, &p).await;
+        assert_eq!(r["state"], "done", "{r}");
         // Without `since=3` the API would send the three records again.
-        let r = api.run(&imp).await;
-        assert_eq!(r["run"]["state"], "applied", "{r}");
+        let r = api.run(&ctx, &p).await;
+        assert_eq!(r["state"], "done", "{r}");
         let (_, list) = api.call("GET", "/api/v1/datasets", None).await;
         assert_eq!(table_rows(&list, "api_table"), 3, "{list}");
     })
@@ -823,7 +709,7 @@ async fn call_hook(
 
 #[tokio::test]
 #[serial]
-async fn a_webhook_keeps_signed_calls_for_an_import() {
+async fn a_webhook_keeps_signed_calls_for_a_pipeline() {
     with_app(|server, env, ctx| async move {
         let org = personal_org(&server, &env.alice).await;
         let api = Api {
@@ -831,7 +717,6 @@ async fn a_webhook_keeps_signed_calls_for_an_import() {
             token: &env.alice,
             org,
         };
-        install_pack(&api).await;
         let (s, c) = api
             .call(
                 "POST",
@@ -850,7 +735,11 @@ async fn a_webhook_keeps_signed_calls_for_an_import() {
         // No secret yet: nothing is kept.
         let one = r#"{"code":"A1","name":"Acme"}"#;
         let (s, e) = call_hook(&server, &id, Some(signature("x", one.as_bytes())), one).await;
-        assert_eq!((s, e["error"].as_str()), (401, Some("hook-signature-invalid")), "{e}");
+        assert_eq!(
+            (s, e["error"].as_str()),
+            (401, Some("hook-signature-invalid")),
+            "{e}"
+        );
 
         let (s, sec) = api
             .call("POST", &format!("/api/v1/connectors/{id}/secret"), None)
@@ -858,7 +747,9 @@ async fn a_webhook_keeps_signed_calls_for_an_import() {
         assert_eq!(s, 200, "{sec}");
         let secret = sec["secret"].as_str().unwrap().to_string();
         assert_eq!(secret.len(), 64);
-        let (_, c) = api.call("GET", &format!("/api/v1/connectors/{id}"), None).await;
+        let (_, c) = api
+            .call("GET", &format!("/api/v1/connectors/{id}"), None)
+            .await;
         assert!(!c.to_string().contains(&secret), "never read back: {c}");
         let (_, t) = api
             .call("POST", &format!("/api/v1/connectors/{id}/test"), None)
@@ -875,15 +766,28 @@ async fn a_webhook_keeps_signed_calls_for_an_import() {
             ("not-a-uuid", Some(signature(&secret, one.as_bytes()))),
         ] {
             let (s, e) = call_hook(&server, target, sig, one).await;
-            assert_eq!((s, e["error"].as_str()), (401, Some("hook-signature-invalid")), "{e}");
+            assert_eq!(
+                (s, e["error"].as_str()),
+                (401, Some("hook-signature-invalid")),
+                "{e}"
+            );
         }
         let (s, e) = call_hook(&server, &id, Some(signature(&secret, b"nope")), "nope").await;
-        assert_eq!((s, e["error"].as_str()), (400, Some("hook-body-invalid")), "{e}");
+        assert_eq!(
+            (s, e["error"].as_str()),
+            (400, Some("hook-body-invalid")),
+            "{e}"
+        );
 
         let two = r#"[{"code":"B2","name":"Beta"},{"code":"C3","name":"Gamma"}]"#;
         for body in [one, two] {
-            let (s, e) = call_hook(&server, &id, Some(signature(&secret, body.as_bytes())), body)
-                .await;
+            let (s, e) = call_hook(
+                &server,
+                &id,
+                Some(signature(&secret, body.as_bytes())),
+                body,
+            )
+            .await;
             assert_eq!(s, 202, "{e}");
         }
         let kept = sql(
@@ -895,28 +799,29 @@ async fn a_webhook_keeps_signed_calls_for_an_import() {
             .unwrap();
         assert_eq!(kept, 2, "kept in the connector's org");
 
-        let mapping = "key: hook_table\nname: Hook\nformat: csv\nsteps:\n  - step: connector_query\n    connector: hook\nobjects:\n  - as: org\n    type: certification\n    key: code\n    title: { from: name }\n    properties:\n      code: { from: code }\n";
-        let (s, i) = api
-            .call(
-                "POST",
-                "/api/v1/ontology/imports",
-                Some(json!({ "name": "hook", "mapping": mapping, "source": "file",
-                             "mode": "incremental" })),
+        let p = api
+            .save(
+                "hook",
+                &doc(json!({ "as": "raw", "name": "hook" }), "hook_table", false),
             )
             .await;
-        assert_eq!(s, 201, "{i}");
-        let imp = i["id"].as_str().unwrap().to_string();
-        let r = api.run(&imp).await;
-        assert_eq!(r["run"]["counts"]["created"], 3, "{r}");
+        let r = api.run(&ctx, &p).await;
+        assert_eq!(r["state"], "done", "{r}");
+        let (_, list) = api.call("GET", "/api/v1/datasets", None).await;
+        assert_eq!(table_rows(&list, "hook_table"), 3, "{list}");
 
-        // A later call is the newer state of its object; only it is read.
+        // A later call is read alone, added to the table.
         let again = r#"{"code":"A1","name":"Acme two"}"#;
-        let (s, _) = call_hook(&server, &id, Some(signature(&secret, again.as_bytes())), again)
-            .await;
+        let (s, _) = call_hook(
+            &server,
+            &id,
+            Some(signature(&secret, again.as_bytes())),
+            again,
+        )
+        .await;
         assert_eq!(s, 202);
-        let r = api.run(&imp).await;
-        assert_eq!(r["run"]["state"], "applied", "{r}");
-        assert_eq!(r["run"]["counts"]["updated"], 1, "{r}");
+        let r = api.run(&ctx, &p).await;
+        assert_eq!(r["state"], "done", "{r}");
         let (_, list) = api.call("GET", "/api/v1/datasets", None).await;
         assert_eq!(table_rows(&list, "hook_table"), 4, "{list}");
 
@@ -937,7 +842,7 @@ async fn a_webhook_keeps_signed_calls_for_an_import() {
 #[tokio::test]
 #[serial]
 #[ignore = "needs a MySQL server: TEST_MYSQL_URL"]
-async fn an_import_reads_a_mysql_database_under_tls() {
+async fn a_pipeline_reads_a_mysql_database_under_tls() {
     use sqlx::Connection;
     let url = std::env::var("TEST_MYSQL_URL").expect("TEST_MYSQL_URL");
     let mut root = sqlx::MySqlConnection::connect(&url).await.unwrap();
@@ -951,14 +856,13 @@ async fn an_import_reads_a_mysql_database_under_tls() {
     }
     let u = reqwest::Url::parse(&url).unwrap();
     let port = u.port().unwrap();
-    with_app(|server, env, _ctx| async move {
+    with_app(|server, env, ctx| async move {
         let org = personal_org(&server, &env.alice).await;
         let api = Api {
             server: &server,
             token: &env.alice,
             org,
         };
-        install_pack(&api).await;
         let body = json!({ "name": "erp", "kind": "mysql", "host": "127.0.0.1", "port": port,
                            "database": "outside", "username": "reader", "tls": true,
                            "password": { "value": "reader" } });
@@ -974,22 +878,14 @@ async fn an_import_reads_a_mysql_database_under_tls() {
             .await;
         assert_eq!(t["ok"], true, "{t}");
 
-        let import = |q: &str| {
-            json!({ "name": "suppliers", "mapping": mapping(q), "source": "file",
-                    "mode": "incremental" })
-        };
-        let (s, i) = api
-            .call(
-                "POST",
-                "/api/v1/ontology/imports",
-                Some(import("SELECT code, COALESCE(name, code) AS name, price FROM suppliers ORDER BY code")),
+        let p = api
+            .save(
+                "suppliers",
+                &sql_doc("SELECT code, COALESCE(name, code) AS name, price FROM suppliers ORDER BY code"),
             )
             .await;
-        assert_eq!(s, 201, "{i}");
-        let imp = i["id"].as_str().unwrap().to_string();
-        let r = api.run(&imp).await;
-        assert_eq!(r["run"]["state"], "applied", "{r}");
-        assert_eq!(r["run"]["counts"]["created"], 2, "{r}");
+        let r = api.run(&ctx, &p).await;
+        assert_eq!(r["state"], "done", "{r}");
         let (_, list) = api.call("GET", "/api/v1/datasets", None).await;
         let table = list["results"]
             .as_array()
@@ -1015,44 +911,39 @@ async fn an_import_reads_a_mysql_database_under_tls() {
             "SET SESSION TRANSACTION READ WRITE",
             "DROP TABLE suppliers",
         ] {
-            let (_, read) = api
-                .call("GET", &format!("/api/v1/ontology/imports/{imp}"), None)
-                .await;
-            let mut b = import(hostile);
-            b["expected_version"] = read["version"].clone();
-            let (s, e) = api
-                .call("PUT", &format!("/api/v1/ontology/imports/{imp}"), Some(b))
-                .await;
-            assert_eq!(s, 200, "{e}");
-            let r = api.run(&imp).await;
-            assert_eq!(r["run"]["state"], "failed", "{hostile}: {r}");
-            assert_eq!(r["run"]["state_code"], "connector-query-invalid", "{hostile}: {r}");
+            api.update(&p, &sql_doc(hostile)).await;
+            let r = api.run(&ctx, &p).await;
+            assert_eq!(r["state"], "failed", "{hostile}: {r}");
+            assert_eq!(r["code"], "connector-query-invalid", "{hostile}: {r}");
         }
 
         // A cursor reads past the highest value, quoted by MySQL itself.
         let q = "SELECT code, COALESCE(name, code) AS name, updated FROM suppliers WHERE updated > {{cursor}}";
-        let cursor = mapping(q).replace(
-            "    query:",
-            "    cursor:\n      column: updated\n      start: '0'\n    query:",
+        let cursor = doc(
+            json!({ "as": "raw", "name": "erp", "query": q,
+                    "cursor": { "column": "updated", "start": "0" } }),
+            "suppliers_table",
+            false,
         );
-        let (_, read) = api
-            .call("GET", &format!("/api/v1/ontology/imports/{imp}"), None)
-            .await;
-        let b = json!({ "name": "suppliers", "mapping": cursor, "source": "file",
-                        "mode": "incremental", "expected_version": read["version"] });
-        let (s, e) = api
-            .call("PUT", &format!("/api/v1/ontology/imports/{imp}"), Some(b))
-            .await;
-        assert_eq!(s, 200, "{e}");
-        // The changed mapping stops the sync at a preview; the read itself is what
-        // this checks, in the step's journal.
-        let manifest = |r: &Value| r["steps"][0]["manifest"].clone();
-        let r = api.run(&imp).await;
-        let m = manifest(&r);
-        assert_eq!((m["full_read"].as_bool(), m["cursor"].as_str()), (Some(true), Some("2")), "{r}");
-        let r = api.run(&imp).await;
-        let m = manifest(&r);
-        assert_eq!((m["full_read"].as_bool(), m["read_rows"].as_i64()), (Some(false), Some(0)), "{r}");
+        api.update(&p, &cursor).await;
+        let kept = || async {
+            sql(
+                &ctx.db,
+                &format!("SELECT value, runs FROM pipeline_cursors WHERE pipeline = '{p}'"),
+            )
+            .await
+            .first()
+            .map(|r| {
+                (
+                    r.try_get::<String>("", "value").unwrap(),
+                    r.try_get::<i32>("", "runs").unwrap(),
+                )
+            })
+        };
+        assert_eq!(api.run(&ctx, &p).await["state"], "done");
+        assert_eq!(kept().await, Some(("2".into(), 0)));
+        assert_eq!(api.run(&ctx, &p).await["state"], "done");
+        assert_eq!(kept().await, Some(("2".into(), 1)));
     })
     .await;
     let left: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM suppliers")

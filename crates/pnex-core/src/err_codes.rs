@@ -767,8 +767,6 @@ pub const CONNECTOR_UNREACHABLE: &str = "connector-unreachable";
 pub const CONNECTOR_HOST_REFUSED: &str = "connector-host-refused";
 /// The database refused the query (args `sqlstate`).
 pub const CONNECTOR_QUERY_INVALID: &str = "connector-query-invalid";
-/// The author of the import may no longer use connectors.
-pub const CONNECTOR_FORBIDDEN: &str = "connector-forbidden";
 /// The API refused the connector's credentials (401, 403, or the token endpoint).
 pub const CONNECTOR_REST_DENIED: &str = "connector-rest-denied";
 /// The API answered with an unexpected status.
@@ -975,19 +973,11 @@ pub const DATASET_UPLOAD_TOO_MANY: &str = "dataset-upload-too-many";
 pub const DATASET_UPLOAD_EXPIRED: &str = "dataset-upload-expired";
 /// Its conversion was lost with its server, again and again.
 pub const DATASET_UPLOAD_LOST: &str = "dataset-upload-lost";
-/// The org's staging area is full (2 GB, D318): nothing was downloaded.
-pub const INGEST_STAGING_QUOTA: &str = "ingest-staging-quota";
 /// The object storage holding the staging area is not reachable (D318).
 pub const INGEST_STAGING_UNAVAILABLE: &str = "ingest-staging-unavailable";
-/// No data.gouv.fr resource matches the pattern (D317); `args.pattern`.
-pub const INGEST_NO_RESOURCE: &str = "ingest-no-resource";
 /// No file to read: no extracted entry matches, or no earlier step staged
 /// one (D319); `args.entry`.
 pub const INGEST_ENTRY_MISSING: &str = "ingest-entry-missing";
-/// An archive format that is not read (zip, tar, tar.gz and gz are; D319).
-pub const INGEST_ARCHIVE_UNSUPPORTED: &str = "ingest-archive-unsupported";
-/// An archive entry whose path leaves its folder (`..`, absolute): refused.
-pub const INGEST_UNSAFE_PATH: &str = "ingest-unsafe-path";
 /// An import run would close more than the allowed share of what the import
 /// holds (D322); `args.closed`, `args.held`, `args.max_pct`.
 pub const INGEST_SUSPICIOUS_CLOSURES: &str = "ingest-suspicious-closures";
@@ -1408,7 +1398,6 @@ pub const ALL: &[&str] = &[
     CONNECTOR_UNREACHABLE,
     CONNECTOR_HOST_REFUSED,
     CONNECTOR_QUERY_INVALID,
-    CONNECTOR_FORBIDDEN,
     CONNECTOR_REST_DENIED,
     CONNECTOR_REST_STATUS,
     CONNECTOR_REST_NOT_JSON,
@@ -1521,12 +1510,8 @@ pub const ALL: &[&str] = &[
     DATASET_SOURCE_INTERRUPTED,
     DATASET_VERSION_PURGED,
     DATASET_STORAGE_UNAVAILABLE,
-    INGEST_STAGING_QUOTA,
     INGEST_STAGING_UNAVAILABLE,
-    INGEST_NO_RESOURCE,
     INGEST_ENTRY_MISSING,
-    INGEST_ARCHIVE_UNSUPPORTED,
-    INGEST_UNSAFE_PATH,
     INGEST_SUSPICIOUS_CLOSURES,
     SITE_RECIPE_INVALID,
     SITE_RECIPE_NOT_FOUND,

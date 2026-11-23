@@ -529,7 +529,7 @@ impl<'de> Deserialize<'de> for FlowNodeKind {
 /// Node kinds retired, with what replaces them (web-presence.md D359): a
 /// graph holding one no longer reads, its deploy is refused with
 /// `flow-node-retired`.
-pub const RETIRED_KINDS: &[(&str, &str)] = &[("ingest", "import_steps")];
+pub const RETIRED_KINDS: &[(&str, &str)] = &[("ingest", "pipeline")];
 
 /// The nodes of a stored graph whose kind is retired, as deploy violations.
 pub fn retired_nodes(graph: &serde_json::Value) -> Vec<FlowViolation> {

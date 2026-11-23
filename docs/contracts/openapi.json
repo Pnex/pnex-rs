@@ -13157,7 +13157,7 @@
             "type": "string"
           },
           "step": {
-            "description": "`source_resolve`, `file_download`, `archive_extract`, `table_inspect`\nor `rows_filter` (`ontology_import` and `staging_cleanup` in the\njournal of retired flow nodes, D359).",
+            "description": "The step of a pipeline run for the import (`fetch`, `read`…), or a\nstep of the retired import steps (D344) in an older journal.",
             "type": "string"
           }
         },
