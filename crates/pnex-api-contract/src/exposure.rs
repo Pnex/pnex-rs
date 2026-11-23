@@ -85,6 +85,7 @@ pub const EXPOSED: &[&str] = &[
     "data_builds_plan",
     "pipelines_get",
     "pipelines_list",
+    "pipelines_probe",
     "pipelines_validate",
     "pipelines_runs_get",
     "pipelines_runs_list",

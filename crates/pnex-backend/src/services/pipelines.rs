@@ -126,6 +126,74 @@ pub async fn tested(ctx: &AppContext, org_id: i64, doc: &Document) -> Result<(),
     }
 }
 
+/// The document of a probe of the step that outputs `step` (D944): cut
+/// after it, its writes left out, one row read. A navigation is refused: it
+/// is a mission of the member's browser agent, not a read.
+pub fn probed(yaml: &str, step: &str) -> Result<Document, PipelineError> {
+    use pnex_core::pipeline::doc::Step;
+    let mut doc = checked(yaml)?;
+    let invalid = |token: &str| PipelineError::Invalid {
+        field: "step".into(),
+        token: token.into(),
+    };
+    let k = doc
+        .steps
+        .iter()
+        .position(|s| s.output() == Some(step))
+        .ok_or_else(|| invalid("unknown"))?;
+    doc.steps.truncate(k + 1);
+    if doc.steps.iter().any(|s| matches!(s, Step::Browse(_))) {
+        return Err(invalid("browse"));
+    }
+    doc.steps.retain(|s| !matches!(s, Step::Write(_)));
+    // A tracked first step takes at most the rows a run is given: one.
+    if let Some(Step::Enumerate(e)) = doc.steps.first_mut() {
+        e.track = true;
+    }
+    Ok(doc)
+}
+
+/// Plays a probe's document (from [`probed`]) under the caller's markings:
+/// its steps and the first rows of its last one. Nothing is kept.
+pub async fn probe(
+    ctx: &AppContext,
+    org_id: i64,
+    user: i64,
+    document: &str,
+    doc: &Document,
+    asked: Vec<serde_json::Map<String, Value>>,
+) -> Result<pnex_core::pipelines::PipelineProbeResult, PipelineError> {
+    use crate::services::pipeline_engine::{sample, store};
+    use pnex_core::pipelines::{
+        PipelineProbeResult, PipelineProbeStep, PROBE_FILE_BYTES, PROBE_ROWS_MAX,
+    };
+    let missing = missing_markings(&ctx.db, org_id, user, document).await?;
+    if !missing.is_empty() {
+        return Err(PipelineError::MarkingRequired(missing));
+    }
+    let storage = |code: &str| PipelineError::Db(DbErr::Custom(code.to_string()));
+    let (journal, last) =
+        store::probe_own(ctx, org_id, doc, Some(user), asked, &store::HttpTransport)
+            .await
+            .map_err(|e| storage(e.code()))?;
+    let sample = match last {
+        Some(t) => sample(&t, PROBE_ROWS_MAX, PROBE_FILE_BYTES).map_err(|f| storage(f.code))?,
+        None => Vec::new(),
+    };
+    let steps = journal
+        .into_iter()
+        .map(|r| PipelineProbeStep {
+            step: r.step.to_string(),
+            rows: r.rows,
+            bytes: r.bytes,
+            url: r.url,
+            code: r.failure.as_ref().map(|f| f.code.to_string()),
+            args: r.failure.map(|f| f.args).filter(|a| !a.is_null()),
+        })
+        .collect();
+    Ok(PipelineProbeResult { steps, sample })
+}
+
 /// What a document reads and writes once checked and tested: the answer
 /// of the check route.
 pub async fn check(

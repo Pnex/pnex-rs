@@ -513,6 +513,7 @@ pub const OPERATIONS: &[(&str, Access)] = &[
     ("pipelines_delete", Access::Org("pipelines:delete")),
     ("pipelines_get", Access::Org("pipelines:read")),
     ("pipelines_list", Access::Org("pipelines:read")),
+    ("pipelines_probe", Access::Org("pipelines:run")),
     ("pipelines_runs_get", Access::Org("pipelines:read")),
     ("pipelines_runs_list", Access::Org("pipelines:read")),
     ("pipelines_runs_start", Access::Org("pipelines:run")),

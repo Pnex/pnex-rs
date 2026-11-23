@@ -282,6 +282,47 @@ pub struct PipelineCheck {
     pub rule: Option<crate::site_recipe::Recipe>,
 }
 
+/// Most rows of a probe's sample, and bytes shown of a fetched file.
+pub const PROBE_ROWS_MAX: usize = 20;
+pub const PROBE_FILE_BYTES: usize = 4096;
+
+/// A probe (D944): a document read up to the step that outputs `step`, on
+/// one row, without writes.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct PipelineProbe {
+    pub document: String,
+    /// The `as` of the last step read.
+    pub step: String,
+    /// Rows of the `asked` axis, as for a run; one is read.
+    #[serde(default)]
+    pub rows: Vec<BTreeMap<String, String>>,
+}
+
+/// What one step of a probe did.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct PipelineProbeStep {
+    /// Kind of the step (`fetch`, `sql`…).
+    pub step: String,
+    pub rows: u64,
+    pub bytes: u64,
+    /// First address it fetched.
+    pub url: Option<String>,
+    /// Machine code of its failure.
+    pub code: Option<String>,
+    pub args: Option<serde_json::Value>,
+}
+
+/// The answer of a probe: its steps, and the first rows of the last one as
+/// text (`file`: the start of a fetched file).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct PipelineProbeResult {
+    pub steps: Vec<PipelineProbeStep>,
+    pub sample: Vec<BTreeMap<String, String>>,
+}
+
 /// A dataset linked to another by a pipeline run.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]

@@ -24,6 +24,7 @@ pub fn routes() -> Routes {
         .prefix("/api/v1")
         .add("/pipelines", get(list).post(create))
         .add("/pipelines/validate", post(validate))
+        .add("/pipelines/probe", post(probe))
         .add("/pipelines/{id}", get(one).put(update).delete(remove))
         .add("/pipelines/{id}/versions", get(versions))
         .add("/pipelines/{id}/runs", post(start_run).get(runs))
@@ -43,6 +44,7 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
         one,
         create,
         validate,
+        probe,
         update,
         remove,
         versions,
@@ -248,6 +250,57 @@ async fn validate(
 ) -> Result<Response> {
     match pipelines::check(&ctx, org.org.id, &input.document).await {
         Ok(doc) => format::json(doc),
+        Err(e) => pipeline_error(e),
+    }
+}
+
+/// `POST /api/v1/pipelines/probe`
+#[utoipa::path(
+    post,
+    path = "/api/v1/pipelines/probe",
+    tag = "pipelines",
+    operation_id = "pipelines_probe",
+    summary = "Probe a pipeline document",
+    description = "Reads a YAML document up to the step whose `as` is `step`, on one row, without saving it and without writes: its write steps are left out and nothing of the probe is kept. Answers what each step did and the first 20 rows of the last one as text. A document with an `asked` axis takes its rows in `rows`, as a run does. A navigation (`browse`) before the step is refused. Requires `pipelines:run`, the table rights of a run (`datasets:read`, `datasets:write`, `connectors:use` for a connector step) and a clearance for every marking of the tables it reads.",
+    request_body = pnex_core::pipelines::PipelineProbe,
+    responses(
+        (status = 200, body = pnex_core::pipelines::PipelineProbeResult),
+        (status = 400, description = "`pipeline-document-invalid` (`errors.violations`: `path`, `token`); `field-invalid`: `step` unknown or after a navigation (`browse`), `rows` as for a run", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`access-denied`, `marking-required` (`errors.args.markings`)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn probe(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Json(input): Json<pnex_core::pipelines::PipelineProbe>,
+) -> Result<Response> {
+    let doc = match pipelines::probed(&input.document, &input.step) {
+        Ok(d) => d,
+        Err(e) => return pipeline_error(e),
+    };
+    if let Some(p) = doc.rights().into_iter().find(|p| !org.can(p)) {
+        return Err(crate::auth::access_denied(p));
+    }
+    if let Err((field, token)) = run_rows(doc.asked_axis(), &input.rows) {
+        return Ok(super::field_error(&field, &token));
+    }
+    let rows = input
+        .rows
+        .into_iter()
+        .map(|r| r.into_iter().map(|(k, v)| (k, v.into())).collect())
+        .collect();
+    match pipelines::probe(
+        &ctx,
+        org.org.id,
+        org.auth.user.id,
+        &input.document,
+        &doc,
+        rows,
+    )
+    .await
+    {
+        Ok(r) => format::json(r),
         Err(e) => pipeline_error(e),
     }
 }

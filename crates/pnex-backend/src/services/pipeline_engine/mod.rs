@@ -304,6 +304,55 @@ fn empty_text(cols: &[String]) -> Result<Arc<blob::Batches>, Failure> {
 }
 
 /// The rows of a table as JSON records, timestamps in RFC 3339 UTC.
+/// The first `max` rows of a working table as text (a probe, D944): a row's
+/// file is shown by its first `file_bytes` bytes.
+pub fn sample(
+    t: &Table,
+    max: usize,
+    file_bytes: usize,
+) -> Result<Vec<std::collections::BTreeMap<String, String>>, Failure> {
+    let text = |m: Map<String, Value>| {
+        m.into_iter()
+            .map(|(k, v)| match v {
+                Value::String(s) => (k, s),
+                v => (k, v.to_string()),
+            })
+            .collect::<std::collections::BTreeMap<_, _>>()
+    };
+    let mut out = Vec::new();
+    match t {
+        Table::Rows(rows) => {
+            for r in rows.iter().take(max) {
+                let mut m = text(r.cols.clone());
+                if let Some(f) = &r.file {
+                    let mut head = vec![0; file_bytes];
+                    let n = std::io::Read::read(&mut f.open()?, &mut head)
+                        .map_err(|_| fail("storage", json!({ "what": "file" })))?;
+                    m.insert("file".into(), String::from_utf8_lossy(&head[..n]).into());
+                }
+                out.push(m);
+            }
+        }
+        Table::Batches(files) => {
+            'files: for f in files {
+                for b in f.read()? {
+                    let rows = crate::services::datasets::parquet::records(&b?)
+                        .map_err(|_| fail("storage", json!({ "what": "batches" })))?;
+                    for row in rows {
+                        if out.len() == max {
+                            break 'files;
+                        }
+                        if let Value::Object(m) = row {
+                            out.push(text(m));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    Ok(out)
+}
+
 fn records_of(files: &[Arc<blob::Batches>]) -> Result<Vec<Map<String, Value>>, Failure> {
     let mut out = Vec::new();
     for f in files {

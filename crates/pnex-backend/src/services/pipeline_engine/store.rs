@@ -1721,6 +1721,73 @@ pub async fn run_own(
     Ok(out)
 }
 
+/// Reads an org's document on one row, without writes nor run history
+/// (D944): the caller gives a document cut after the probed step, writes
+/// and navigations left out. Its step journal and the last working table.
+pub async fn probe_own(
+    ctx: &AppContext,
+    org: i64,
+    doc: &Document,
+    user: Option<i64>,
+    asked: Vec<serde_json::Map<String, Value>>,
+    transport: &impl Transport,
+) -> Result<(Vec<super::StepRecord>, Option<super::Table>), DatasetError> {
+    let store = datasets::store_of(&ctx.config)?;
+    let mut inputs = inputs(&ctx.db, org, doc, Utc::now().naive_utc(), HashMap::new()).await?;
+    inputs.functions = own_functions(&ctx.db, org, doc).await?;
+    inputs.extractors = model_extractors("", doc);
+    inputs.asked = asked;
+    let mut sink = DatasetSink {
+        db: &ctx.db,
+        store: &store,
+        org,
+        ctx: Some(ctx),
+        pipeline: "probe",
+        own: None,
+        user,
+        asked: Vec::new(),
+        cursors: Vec::new(),
+    };
+    let sql = super::sql::WorkerSql {
+        db: &ctx.db,
+        store: &store,
+        org,
+    };
+    let (mut keep, mut journal) = (HashMap::new(), Vec::new());
+    let out = run(
+        doc,
+        &inputs,
+        transport,
+        &mut sink,
+        &sql,
+        &HashMap::new(),
+        Some(1),
+        Some(&mut keep),
+        Some(&mut journal),
+    )
+    .await;
+    // A failure outside the steps (the enumeration) has no journal line.
+    if let Some(f) = out
+        .failure
+        .filter(|_| journal.iter().all(|r| r.failure.is_none()))
+    {
+        journal.push(super::StepRecord {
+            step: "enumerate",
+            rows: 0,
+            bytes: 0,
+            url: None,
+            failure: Some(f),
+        });
+    }
+    let last = doc
+        .steps
+        .last()
+        .and_then(|s| s.output())
+        .and_then(|o| keep.remove(o))
+        .and_then(|mut v| v.pop());
+    Ok((journal, last))
+}
+
 /// Runs a pipeline of a pack for the rows a route asks (its `asked` axis,
 /// D996), now, under the org's pipeline lock; what it did is kept like any
 /// run's. A row whose navigation still runs is left as it is.

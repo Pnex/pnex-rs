@@ -622,7 +622,7 @@ Une table de travail vit le temps du run, en mémoire ou dans un fichier tempora
 Le serveur va chercher, le worker calcule (§3.2).
 
 ### D944 — Une sonde sur toute étape
-Lecture jusqu'à une étape, sans écriture. Le journal des étapes est codé, la sonde n'a pas de route.
+Lecture jusqu'à une étape, sur un élément, sans écriture : `POST /pipelines/probe`. Les écritures sont retirées, rien n'est gardé. Une navigation (`browse`) avant l'étape est refusée.
 
 ### D945 — Tests en YAML
 `tests:` avec `given` et `expect`, rejoués sans réseau. Un pipeline livré sans test échoue.
@@ -733,6 +733,7 @@ tests:
 |---|---|
 | `GET/POST /api/v1/pipelines`, `…/{id}`, `…/{id}/versions` | Pipelines d'org et leurs versions |
 | `POST /api/v1/pipelines/validate` | Vérifie un document, joue ses tests, rend `PipelineCheck` |
+| `POST /api/v1/pipelines/probe` | Sonde : lit un document jusqu'à l'étape `step`, sur un élément, sans écriture. Rend le journal des étapes et 20 lignes en texte (`pipelines:run`) |
 | `GET/POST /api/v1/pipelines/{id}/runs` | Exécutions |
 | `PUT /api/v1/pipelines/{id}/schedule` | Horaire d'une cible |
 | `GET/POST /api/v1/data-builds`, `…/plan` | Exécutions enchaînées |
@@ -756,7 +757,7 @@ tests:
 - Lecteurs vidéo de l'extension (X, YouTube, TikTok) : encore codés en Rust, sans hôte. Les écrire en règles demande des étapes génériques nouvelles (réponses réseau, mapping JSON, sous-titres). Choix à faire par Shan.
 - D946 : les pipelines des packs restent hors des exécutions enchaînées. `after` d'un pipeline du moteur n'est pas appliqué.
 - D941 : cible `series` non codée.
-- D944 : la sonde n'a pas de route.
+- D944 : la sonde n'a pas encore de bouton dans le studio.
 
 **Écarts connus du moteur :**
 

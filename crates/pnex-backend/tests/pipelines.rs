@@ -674,6 +674,35 @@ async fn an_org_pipeline_browses_and_resumes_under_its_starters_rights() {
     .await;
 }
 
+/// A probe reads a draft up to a step on live sources and keeps nothing
+/// (D944): its writes are left out, an unknown step or a navigation refused.
+#[tokio::test]
+#[serial]
+async fn a_probe_reads_up_to_a_step_and_writes_nothing() {
+    with_app(|server, env, ctx| async move {
+        serve_numbers().await;
+        let org = personal_org(&server, &env.alice).await;
+        let doc = "key: p\nhosts: [data.example.io]\nsteps:\n  - fetch: {as: page, url: \"https://data.example.io/a.csv\"}\n  - read: {as: rows, from: page, format: csv}\n  - write: {from: rows, table: {name: probed}}\n";
+        let probe = |step: &str| json!({ "document": doc, "step": step });
+        let (s, r) = call(&server, "POST", "/api/v1/pipelines/probe", &env.alice, org, Some(probe("rows"))).await;
+        assert_eq!(s, 200, "{r}");
+        let steps: Vec<&str> = r["steps"].as_array().unwrap().iter().map(|x| x["step"].as_str().unwrap()).collect();
+        assert_eq!(steps, ["fetch", "read"]);
+        assert_eq!(r["sample"], json!([{ "n": "1" }, { "n": "2" }]));
+
+        let (s, r) = call(&server, "POST", "/api/v1/pipelines/probe", &env.alice, org, Some(probe("page"))).await;
+        assert_eq!(s, 200, "{r}");
+        assert_eq!(r["sample"][0]["file"], "n\n1\n2\n");
+
+        let (s, r) = call(&server, "POST", "/api/v1/pipelines/probe", &env.alice, org, Some(probe("nope"))).await;
+        assert_eq!(s, 400, "{r}");
+        assert!(r.to_string().contains("step"), "{r}");
+        let n = sql(&ctx, "SELECT name FROM datasets WHERE org_id = $1 AND name = 'probed'", vec![org.into()]).await;
+        assert!(n.is_empty(), "a probe wrote: {n:?}");
+    })
+    .await;
+}
+
 /// A `call` step without a pack names a Starlark function of the org, at its
 /// current version (D934); another org's function of that name is not seen.
 #[tokio::test]

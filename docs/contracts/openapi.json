@@ -25918,6 +25918,104 @@
         ],
         "type": "object"
       },
+      "PipelineProbe": {
+        "description": "A probe (D944): a document read up to the step that outputs `step`, on\none row, without writes.",
+        "properties": {
+          "document": {
+            "type": "string"
+          },
+          "rows": {
+            "description": "Rows of the `asked` axis, as for a run; one is read.",
+            "items": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "propertyNames": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "step": {
+            "description": "The `as` of the last step read.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "document",
+          "step"
+        ],
+        "type": "object"
+      },
+      "PipelineProbeResult": {
+        "description": "The answer of a probe: its steps, and the first rows of the last one as\ntext (`file`: the start of a fetched file).",
+        "properties": {
+          "sample": {
+            "items": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "propertyNames": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/PipelineProbeStep"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "steps",
+          "sample"
+        ],
+        "type": "object"
+      },
+      "PipelineProbeStep": {
+        "description": "What one step of a probe did.",
+        "properties": {
+          "args": {},
+          "bytes": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "code": {
+            "description": "Machine code of its failure.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "rows": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "step": {
+            "description": "Kind of the step (`fetch`, `sql`…).",
+            "type": "string"
+          },
+          "url": {
+            "description": "First address it fetched.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "step",
+          "rows",
+          "bytes"
+        ],
+        "type": "object"
+      },
       "PipelineRun": {
         "description": "One run of a pipeline.",
         "properties": {
@@ -90501,6 +90599,85 @@
           }
         ],
         "summary": "Create a pipeline",
+        "tags": [
+          "pipelines"
+        ]
+      }
+    },
+    "/api/v1/pipelines/probe": {
+      "post": {
+        "description": "Reads a YAML document up to the step whose `as` is `step`, on one row, without saving it and without writes: its write steps are left out and nothing of the probe is kept. Answers what each step did and the first 20 rows of the last one as text. A document with an `asked` axis takes its rows in `rows`, as a run does. A navigation (`browse`) before the step is refused. Requires `pipelines:run`, the table rights of a run (`datasets:read`, `datasets:write`, `connectors:use` for a connector step) and a clearance for every marking of the tables it reads.",
+        "operationId": "pipelines_probe",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PipelineProbe"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PipelineProbeResult"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`pipeline-document-invalid` (`errors.violations`: `path`, `token`); `field-invalid`: `step` unknown or after a navigation (`browse`), `rows` as for a run"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied`, `marking-required` (`errors.args.markings`) · `access-denied` (`args.permission` = `pipelines:run`): the caller's role does not grant it"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Probe a pipeline document",
         "tags": [
           "pipelines"
         ]
