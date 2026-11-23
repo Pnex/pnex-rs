@@ -128,11 +128,29 @@ pub fn call_in_memory(
     Ok(batch_of(&out)?.into_iter().collect())
 }
 
+/// An error of the engine on a step's query. Only an error about the query
+/// itself is shown: one met while running can quote a cell (R4) or name a
+/// bucket and a key.
 fn invalid(e: &datafusion::error::DataFusionError) -> Failure {
-    Failure::new(
-        err_codes::PIPELINE_SQL_INVALID,
-        json!({ "reason": cut(&e.find_root().to_string()) }),
-    )
+    use datafusion::error::DataFusionError as E;
+    match e.find_root() {
+        E::ResourcesExhausted(_) => Failure::new(err_codes::PIPELINE_MEMORY_EXCEEDED, Value::Null),
+        E::ObjectStore(_) | E::IoError(_) | E::ParquetError(_) | E::External(_) => {
+            Failure::storage(e)
+        }
+        root @ (E::Plan(_)
+        | E::SQL(..)
+        | E::SchemaError(..)
+        | E::NotImplemented(_)
+        | E::Configuration(_)) => Failure::new(
+            err_codes::PIPELINE_SQL_INVALID,
+            json!({ "reason": cut(&root.to_string()) }),
+        ),
+        _ => {
+            tracing::info!("pipeline step stopped: {e}");
+            Failure::new(err_codes::PIPELINE_SQL_INVALID, Value::Null)
+        }
+    }
 }
 
 /// Runs `sql` over in-memory tables, with the session of a transform: what
@@ -194,7 +212,9 @@ impl Worker {
     /// Runs one step and records its rows or why it stopped.
     pub(crate) async fn run_step(&self, q: Queued) -> Result<(), sqlx::Error> {
         self.empty_spill_dir();
-        let outcome = tokio::time::timeout(STEP_TIMEOUT, self.step_rows(&q))
+        // The setting may only shorten it: past 15 min a step is taken for dead.
+        let limit = self.config.transform_timeout.min(STEP_TIMEOUT);
+        let outcome = tokio::time::timeout(limit, self.step_rows(&q))
             .await
             .unwrap_or_else(|_| Err(Failure::new(err_codes::PIPELINE_TIMEOUT, Value::Null)));
         let (state, rows, code, args) = match outcome {

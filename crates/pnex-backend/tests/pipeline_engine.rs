@@ -315,3 +315,179 @@ async fn a_table_write_keeps_lineage_retention_and_checks() {
     })
     .await;
 }
+
+/// Runs `steps` as a pipeline of the org, its `sql` steps on the worker.
+async fn run_steps(
+    ctx: &loco_rs::app::AppContext,
+    org: i64,
+    steps: &str,
+) -> pnex_backend::services::pipeline_engine::RunOutcome {
+    let doc: pnex_core::pipeline::doc::Document =
+        serde_saphyr::from_str(&format!("key: t\nsteps:\n{steps}")).unwrap();
+    assert!(doc.violations().is_empty(), "{:?}", doc.violations());
+    let sp = pnex_backend::services::pipeline_engine::store::Shipped {
+        pack: "companies".into(),
+        doc,
+    };
+    let store = pnex_backend::services::datasets::store_of(&ctx.config).unwrap();
+    let net = Fixtures {
+        calls: AtomicUsize::new(0),
+    };
+    run_for_org(&ctx.db, &store, org, &sp, &net, Utc::now(), None)
+        .await
+        .unwrap()
+}
+
+async fn first_org(server: &axum_test::TestServer, token: &str) -> i64 {
+    server
+        .get("/api/v1/user-info")
+        .add_header("Authorization", format!("Bearer {token}"))
+        .await
+        .json::<Value>()["orgs"][0]["id"]
+        .as_i64()
+        .unwrap()
+}
+
+/// Committed versions of a table of the org: (rows) in order.
+async fn committed(ctx: &loco_rs::app::AppContext, org: i64, table: &str) -> Vec<i64> {
+    ctx.db
+        .query_all_raw(Statement::from_sql_and_values(
+            sea_orm::DatabaseBackend::Postgres,
+            "SELECT t.rows FROM dataset_transactions t JOIN datasets d ON d.id = t.dataset_id \
+             WHERE d.org_id = $1 AND d.name = $2 AND t.state = 'committed' ORDER BY t.created_at",
+            vec![org.into(), table.into()],
+        ))
+        .await
+        .unwrap()
+        .iter()
+        .map(|r| r.try_get::<i64>("", "rows").unwrap())
+        .collect()
+}
+
+/// D576 (ported from the worker's transforms): each check alone refuses with
+/// what it measured, and the committed version stays the only one.
+#[tokio::test]
+#[serial]
+async fn each_table_check_alone_refuses_and_keeps_the_version() {
+    with_app(|server, ctx, token| async move {
+        let worker = common::spawn_pipeline_worker();
+        let org = first_org(&server, &token).await;
+        let seed = "- sql: { as: rows, sql: \"SELECT 'a' AS k, '1' AS v UNION ALL SELECT 'b', '2' \
+                    UNION ALL SELECT 'c', '3' UNION ALL SELECT 'd', '4'\" }\n\
+                    - write: { from: rows, table: { name: raw, replace: true } }\n";
+        assert!(run_steps(&ctx, org, seed).await.failure.is_none());
+        let clean = |checks: &str, sql: &str| {
+            format!(
+                "- sql: {{ as: rows, tables: {{ r: raw }}, sql: \"{sql}\" }}\n\
+                 - write: {{ from: rows, table: {{ name: clean, replace: true, checks: {checks} }} }}\n"
+            )
+        };
+        let all = "SELECT k, v FROM r";
+        let out = run_steps(
+            &ctx,
+            org,
+            &clean("{ min_rows: 1, unique: [k], max_empty_pct: { v: 0 } }", all),
+        )
+        .await;
+        assert!(out.failure.is_none(), "{:?}", out.failure);
+        assert_eq!(committed(&ctx, org, "clean").await, [4]);
+
+        let doubled = "SELECT k, v FROM r UNION ALL SELECT k, v FROM r";
+        let blanks = "SELECT k, CASE WHEN k = 'a' THEN v ELSE ' ' END AS v FROM r";
+        let renamed = "SELECT k, v AS other FROM r";
+        let few = "SELECT k, v FROM r WHERE k = 'a'";
+        for (checks, sql, check, value) in [
+            ("{ min_rows: 5 }", all, "min_rows", "4"),
+            ("{ max_rows: 3 }", all, "max_rows", "4"),
+            ("{ unique: [k] }", doubled, "unique", "4"),
+            ("{ unique: [gone] }", all, "unique", "-1"),
+            ("{ max_empty_pct: { v: 50 } }", blanks, "max_empty_pct", "75"),
+            ("{ max_empty_pct: { gone: 100 } }", all, "max_empty_pct", "100"),
+            ("{ max_drop_pct: 50 }", few, "max_drop_pct", "75"),
+            ("{ same_columns: true }", renamed, "same_columns", "k, other"),
+        ] {
+            let f = run_steps(&ctx, org, &clean(checks, sql))
+                .await
+                .failure
+                .unwrap_or_else(|| panic!("{checks} passed"));
+            assert_eq!(f.code, pnex_core::err_codes::PIPELINE_CHECK_FAILED, "{checks}");
+            assert_eq!(f.args["check"], check, "{checks}: {}", f.args);
+            assert_eq!(f.args["value"], value, "{checks}: {}", f.args);
+            assert_eq!(committed(&ctx, org, "clean").await, [4], "{checks}");
+        }
+        worker.abort();
+    })
+    .await;
+}
+
+/// The table of an import is not written by a pipeline, and a refused run
+/// leaves it as it is. A value declared erased never comes back in a table a
+/// pipeline writes. A failed `sql` step does not repeat a cell (R4).
+#[tokio::test]
+#[serial]
+async fn a_table_write_spares_import_tables_erasures_and_cells() {
+    with_app(|server, ctx, token| async move {
+        let worker = common::spawn_pipeline_worker();
+        let org = first_org(&server, &token).await;
+        let exec = |sql: &str, values: Vec<sea_orm::Value>| {
+            let db = ctx.db.clone();
+            let st = Statement::from_sql_and_values(sea_orm::DatabaseBackend::Postgres, sql, values);
+            async move { db.execute_raw(st).await.unwrap() }
+        };
+        exec(
+            "WITH i AS (INSERT INTO object_imports (id, org_id, name, mapping_yaml) \
+               VALUES (gen_random_uuid(), $1, 'x', 'x') RETURNING id) \
+             INSERT INTO datasets (org_id, name, import_id, retain_days) \
+             SELECT $1, 'imported', id, 30 FROM i",
+            vec![org.into()],
+        )
+        .await;
+        // An org's own pipeline: a pack's may feed its import.
+        let yaml = "key: t\nsteps:\n- sql: { as: rows, sql: \"SELECT 'a' AS k\" }\n\
+                    - write: { from: rows, table: { name: imported, replace: true } }\n";
+        let doc = pnex_backend::services::pipelines::checked(yaml).unwrap();
+        let net = Fixtures { calls: AtomicUsize::new(0) };
+        let out = pnex_backend::services::pipeline_engine::store::run_own(
+            &ctx,
+            org,
+            uuid::Uuid::new_v4(),
+            1,
+            &doc,
+            None,
+            Vec::new(),
+            &net,
+        )
+        .await
+        .unwrap();
+        assert_eq!(out.failure.map(|f| f.code), Some("table_reserved"));
+        assert!(committed(&ctx, org, "imported").await.is_empty());
+
+        let partners = "- sql: { as: rows, sql: \"SELECT '732829320' AS siren UNION ALL SELECT '552081317'\" }\n\
+                        - write: { from: rows, table: { name: partners, replace: true } }\n";
+        assert!(run_steps(&ctx, org, partners).await.failure.is_none());
+        exec(
+            "INSERT INTO dataset_erasures (org_id, dataset_id, column_name, value, type_key, done_at) \
+             SELECT $1, id, 'siren', $2, 't', now() FROM datasets WHERE org_id = $1 AND name = 'partners'",
+            vec![
+                org.into(),
+                pnex_core::datasets::fingerprint("732829320").unwrap().into(),
+            ],
+        )
+        .await;
+        assert!(run_steps(&ctx, org, partners).await.failure.is_none());
+        assert_eq!(committed(&ctx, org, "partners").await, [2, 1]);
+
+        let f = run_steps(
+            &ctx,
+            org,
+            "- sql: { as: rows, tables: { p: partners }, sql: \"SELECT CAST(siren || 'x' AS BIGINT) AS n FROM p\" }\n\
+             - write: { from: rows, table: { name: cast, replace: true } }\n",
+        )
+        .await
+        .failure
+        .expect("the cast fails");
+        assert!(!f.args.to_string().contains("552081317"), "{}", f.args);
+        worker.abort();
+    })
+    .await;
+}

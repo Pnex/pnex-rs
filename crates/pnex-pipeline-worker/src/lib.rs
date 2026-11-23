@@ -45,6 +45,7 @@ pub struct Config {
     pub s3_secret_key: String,
     pub s3_path_style: bool,
     pub limits: Limits,
+    /// Longest `sql` or `call` step; capped at 10 minutes.
     pub transform_timeout: Duration,
     /// All the transforms of a run together: the worker runs one at a time, and a
     /// long document must not hold every other org back.
