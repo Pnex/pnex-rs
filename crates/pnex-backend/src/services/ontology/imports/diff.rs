@@ -821,7 +821,7 @@ async fn ids_of<C: ConnectionTrait>(
                 .query_all_raw(Statement::from_sql_and_values(
                     DatabaseBackend::Postgres,
                     key_sql(
-                        &key_prop,
+                        key_prop,
                         "SELECT id, properties ->> $3 AS k FROM objects \
                          WHERE org_id = $1 AND type_key = $2 AND valid_to IS NULL \
                            AND properties ->> $3 = ANY($4)",
