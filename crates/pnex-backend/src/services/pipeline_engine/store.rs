@@ -1965,22 +1965,65 @@ async fn resume_locked(
     Ok(sink.asked)
 }
 
+/// When the last run of `pipeline` ended for the org, and its state.
 async fn last_run(
     db: &DatabaseConnection,
     org: i64,
     pipeline: &str,
-) -> Result<Option<DateTime<Utc>>, sea_orm::DbErr> {
-    db.query_one_raw(stmt(
-        "SELECT updated_at FROM pipeline_items WHERE org_id = $1 AND pipeline = $2 AND item = ''",
-        vec![org.into(), pipeline.into()],
-    ))
-    .await?
-    .map(|r| r.try_get("", "updated_at"))
-    .transpose()
+) -> Result<Option<(DateTime<Utc>, String)>, sea_orm::DbErr> {
+    let Some(r) = db
+        .query_one_raw(stmt(
+            "SELECT updated_at, state FROM pipeline_items \
+             WHERE org_id = $1 AND pipeline = $2 AND item = ''",
+            vec![org.into(), pipeline.into()],
+        ))
+        .await?
+    else {
+        return Ok(None);
+    };
+    Ok(Some((
+        r.try_get("", "updated_at")?,
+        r.try_get("", "state")?,
+    )))
+}
+
+/// Pipelines of its pack that `sp` runs after (D946): those its `after`
+/// names, and those writing a table it reads.
+pub fn upstream(sp: &Shipped) -> Vec<&'static Shipped> {
+    let reads = sp.doc.table_reads();
+    shipped()
+        .iter()
+        .filter(|o| o.pack == sp.pack && o.doc.key != sp.doc.key)
+        .filter(|o| {
+            sp.doc.after.contains(&o.doc.key)
+                || o.doc.table_writes().iter().any(|w| reads.contains(w))
+        })
+        .collect()
+}
+
+/// Whether the scheduler runs `sp` for the org now: its schedule is due
+/// and the org holds the quota of a large one.
+async fn due(
+    db: &DatabaseConnection,
+    org: i64,
+    sp: &Shipped,
+    now: DateTime<Utc>,
+) -> Result<bool, DatasetError> {
+    let Some(every) = sp.doc.schedule.as_deref().and_then(duration_ms) else {
+        return Ok(false);
+    };
+    if sp.doc.large && datasets::quota_override(db, org).await?.is_none() {
+        return Ok(false);
+    }
+    Ok(last_run(db, org, &sp.id())
+        .await?
+        .is_none_or(|(t, _)| (now - t).num_milliseconds() >= every as i64))
 }
 
 /// One pass of the scheduler (D946): every scheduled pipeline of every pack
-/// an org installed, when its last run is older than its schedule.
+/// an org installed, when its last run is older than its schedule. It waits
+/// while a pipeline upstream is due itself or failed its last run: that one
+/// runs first, and a failure never feeds the steps after it.
 pub async fn sweep(
     ctx: &AppContext,
     transport: &impl Transport,
@@ -1988,9 +2031,9 @@ pub async fn sweep(
 ) -> Result<(), DatasetError> {
     let store = datasets::store_of(&ctx.config)?;
     for sp in shipped() {
-        let Some(every) = sp.doc.schedule.as_deref().and_then(duration_ms) else {
+        if sp.doc.schedule.is_none() {
             continue;
-        };
+        }
         let orgs: Vec<i64> = ctx
             .db
             .query_all_raw(stmt(
@@ -2001,19 +2044,29 @@ pub async fn sweep(
             .iter()
             .filter_map(|r| r.try_get("", "org_id").ok())
             .collect();
-        for org in orgs {
-            if sp.doc.large && datasets::quota_override(&ctx.db, org).await?.is_none() {
+        'org: for org in orgs {
+            if !due(&ctx.db, org, sp, now).await? {
                 continue;
+            }
+            // A run asked by a member (no schedule) that failed blocks nothing.
+            for up in upstream(sp)
+                .into_iter()
+                .filter(|u| u.doc.schedule.is_some())
+            {
+                let failed = last_run(&ctx.db, org, &up.id())
+                    .await?
+                    .is_some_and(|(_, state)| state == "failed");
+                if failed || due(&ctx.db, org, up, now).await? {
+                    continue 'org;
+                }
             }
             let Ok(lock) =
                 TenantLock::acquire(&ctx.db, ns::PIPELINE_RUN, org, Duration::from_secs(1)).await
             else {
                 continue;
             };
-            let due = last_run(&ctx.db, org, &sp.id())
-                .await?
-                .is_none_or(|t| (now - t).num_milliseconds() >= every as i64);
-            if due {
+            // Checked again under the lock: another pod may have run it.
+            if due(&ctx.db, org, sp, now).await? {
                 run_with(Some(ctx), &ctx.db, &store, org, sp, transport, now, None).await?;
             }
             lock.release().await;

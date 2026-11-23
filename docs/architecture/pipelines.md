@@ -313,7 +313,7 @@ On planifie une cible (D575). L'exécution enchaînée remonte les dépendances 
 
 Les droits sont revérifiés à chaque déclenchement, sur le rôle géré de la personne qui a posé l'horaire. Sinon l'horaire échoue (`build-author-forbidden`).
 
-Les pipelines du moteur ne passent pas par ces exécutions enchaînées. Un balayage par minute lance chaque pipeline d'un pack installé quand son `schedule` est échu (`pipeline_engine::store::sweep`). Un seul run de pipeline à la fois par org (verrou `PIPELINE_RUN`).
+Les pipelines des packs ne passent pas par ces exécutions enchaînées. Un balayage par minute lance chaque pipeline d'un pack installé quand son `schedule` est échu (`pipeline_engine::store::sweep`). Un pipeline attend ses pipelines amont du même pack : ceux que nomme son `after`, et ceux qui écrivent une table qu'il lit. Il attend tant qu'un amont planifié est échu ou a échoué à son dernier run. Un run demandé par un membre (sans `schedule`) qui échoue ne bloque rien. Un seul run de pipeline à la fois par org (verrou `PIPELINE_RUN`).
 
 Les flows reçoivent `dataset.committed` et `dataset.synced` par le nœud `dataset_trigger` (D578). Le serveur les publie depuis une marque en base (`published_at`). Un flow ne lance ni n'écrit jamais une table.
 
@@ -613,7 +613,7 @@ Une table de travail vit le temps du run, en mémoire ou dans un fichier tempora
 `call` dans le worker, sans réseau ni secret. Un `call` répété devient un lecteur.
 
 ### D941 — Cibles d'écriture
-`table`, `objects`, `time_ranges`, `proposals`, `media`, `ask`. La cible `series` n'est pas codée. Les champs du mapping par source sont supprimés.
+`table`, `objects`, `time_ranges`, `proposals`, `media`, `ask`. Pas de cible `series` (choix de Shan, 2026-11-23) : une série s'écrit en `table` et se lit en `sql`. Les champs du mapping par source sont supprimés.
 
 ### D942 — Hôtes déclarés, secrets par connecteur
 `hosts` obligatoires, egress par adresse. Un pipeline de pack peut nommer une clé du coffre, envoyée à ses seuls hôtes.
@@ -628,7 +628,7 @@ Lecture jusqu'à une étape, sur un élément, sans écriture : `POST /pipelines
 `tests:` avec `given` et `expect`, rejoués sans réseau. Un pipeline livré sans test échoue.
 
 ### D946 — Un ordonnanceur
-Les balayages par domaine disparaissent. Les pipelines des packs ont encore leur balayage par minute (§3.9).
+Les balayages par domaine disparaissent. Les pipelines des packs gardent leur balayage par minute, qui applique `after` et l'ordre des tables (§3.9). Ils n'entrent pas dans les exécutions enchaînées (choix de Shan, 2026-11-23).
 
 ### D947 — Un pack est un dossier
 `packs/<pack>.yaml`, `packs/<pack>/pipelines/`, `packs/<pack>/fixtures/`. Requêtes et fonctions restent dans le YAML du pack.
@@ -755,8 +755,6 @@ tests:
 
 - PE8 : mesure autour d'événements et chaînes candidates dans `/analysis`, note de séance en règle.
 - Lecteurs vidéo de l'extension (X, YouTube, TikTok) : encore codés en Rust, sans hôte. Les écrire en règles demande des étapes génériques nouvelles (réponses réseau, mapping JSON, sous-titres). Choix à faire par Shan.
-- D946 : les pipelines des packs restent hors des exécutions enchaînées. `after` d'un pipeline du moteur n'est pas appliqué.
-- D941 : cible `series` non codée.
 - D944 : la sonde n'a pas encore de bouton dans le studio.
 
 **Écarts connus du moteur :**

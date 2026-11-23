@@ -630,3 +630,29 @@ fn the_extension_hooks_every_followed_platform() {
         }
     }
 }
+
+/// `after` names a pipeline of the same pack, and no pipeline waits on
+/// itself through others (D946): the scheduler would never run them.
+#[test]
+fn pack_pipelines_run_after_others_without_a_cycle() {
+    use super::store::upstream;
+    for sp in shipped() {
+        for a in &sp.doc.after {
+            assert!(
+                shipped()
+                    .iter()
+                    .any(|o| o.pack == sp.pack && &o.doc.key == a),
+                "{}: after {a} is not a pipeline of its pack",
+                sp.id()
+            );
+        }
+        let (mut seen, mut next) = (Vec::new(), upstream(sp));
+        while let Some(up) = next.pop() {
+            assert_ne!(up.id(), sp.id(), "{} waits on itself", sp.id());
+            if !seen.contains(&up.id()) {
+                seen.push(up.id());
+                next.extend(upstream(up));
+            }
+        }
+    }
+}
