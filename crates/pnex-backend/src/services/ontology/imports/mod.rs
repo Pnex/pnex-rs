@@ -15,6 +15,7 @@ pub mod source;
 pub mod stop;
 mod sync;
 
+use std::collections::HashSet;
 use std::time::Duration;
 
 use pnex_core::err_codes::{self, FIELD_INVALID, FIELD_MAX_LENGTH, FIELD_REQUIRED};
@@ -674,7 +675,7 @@ pub async fn dry_run(
                     Ok(s) => diff::compute(
                         &db,
                         imp.org_id,
-                        imp.id,
+                        &diff::source_like(imp.id),
                         &s,
                         &m,
                         imp.mode() == ImportMode::Snapshot,
@@ -818,44 +819,195 @@ pub(crate) fn error_code(e: &OntologyError) -> &'static str {
     }
 }
 
-/// One application per org at a time.
-/// Once applied, `diff.written` holds what was really written.
-/// Writes rows planned with `m` at once, without preview (a pipeline's
-/// `write: objects`, pipelines.md D941): planned, diffed and written
-/// under the org's import lock, `source_ref` as provenance. Never closes
-/// what the rows no longer hold. The objects and links created or updated.
+/// Where a pipeline's `write: objects` writes from (pipelines.md D1050).
+pub struct RowsWriter<'a> {
+    pub org_id: i64,
+    /// `<pack>/<key>` or an org pipeline's id: with `step`, names the base kept
+    /// between runs.
+    pub pipeline: &'a str,
+    pub step: &'a str,
+    /// Provenance of every write; the objects it holds are this step's own.
+    pub source_ref: &'a str,
+    /// Author of the version run, whose role is read again at each run (D303).
+    /// `None`: a pack's pipeline, written as a member.
+    pub author: Option<i64>,
+    /// Closes what this step wrote and the rows no longer hold.
+    pub snapshot: bool,
+}
+
+/// The base a step kept and the mapping it was planned with.
+struct Kept {
+    mapping: Value,
+    base: diff::Base,
+    skipped: HashSet<String>,
+}
+
+async fn kept_base(db: &DatabaseConnection, w: &RowsWriter<'_>) -> Result<Option<Kept>> {
+    use std::io::Read;
+    let row = db
+        .query_one_raw(stmt(
+            "SELECT mapping, base, skipped_keys FROM pipeline_object_bases \
+             WHERE org_id = $1 AND pipeline = $2 AND step = $3",
+            vec![w.org_id.into(), w.pipeline.into(), w.step.into()],
+        ))
+        .await?;
+    let Some(row) = row else {
+        return Ok(None);
+    };
+    let packed: Vec<u8> = row.try_get("", "base")?;
+    let mut json = Vec::new();
+    // An unreadable base is no base: the run compares to the ontology.
+    if flate2::read::GzDecoder::new(&packed[..])
+        .read_to_end(&mut json)
+        .is_err()
+    {
+        return Ok(None);
+    }
+    let Ok(base) = serde_json::from_slice(&json) else {
+        return Ok(None);
+    };
+    Ok(Some(Kept {
+        mapping: row.try_get("", "mapping")?,
+        base,
+        skipped: row
+            .try_get::<Vec<String>>("", "skipped_keys")?
+            .into_iter()
+            .collect(),
+    }))
+}
+
+async fn keep_base(
+    db: &DatabaseConnection,
+    w: &RowsWriter<'_>,
+    mapping: &Value,
+    base: &diff::Base,
+    skipped: Vec<String>,
+) -> Result<()> {
+    use std::io::Write;
+    let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
+    let json = serde_json::to_vec(base).map_err(|e| DbErr::Custom(e.to_string()))?;
+    let packed = gz
+        .write_all(&json)
+        .and_then(|_| gz.finish())
+        .map_err(|e| DbErr::Custom(e.to_string()))?;
+    db.execute_raw(stmt(
+        "INSERT INTO pipeline_object_bases (org_id, pipeline, step, mapping, base, skipped_keys) \
+         VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (org_id, pipeline, step) DO UPDATE SET \
+         mapping = EXCLUDED.mapping, base = EXCLUDED.base, \
+         skipped_keys = EXCLUDED.skipped_keys, updated_at = now()",
+        vec![
+            w.org_id.into(),
+            w.pipeline.into(),
+            w.step.into(),
+            mapping.clone().into(),
+            packed.into(),
+            skipped.into(),
+        ],
+    ))
+    .await?;
+    Ok(())
+}
+
+/// Writes a pipeline's rows into objects (pipelines.md D1050), as a dataset sync
+/// does (D577): against the base the step kept, an edit made in the ontology
+/// survives until the source changes that value. Without a base (first run,
+/// mapping changed) the rows are compared to the ontology. With `snapshot`, what
+/// the step wrote and the rows no longer hold is closed, unless that is more than
+/// `max_closures_pct` % of what it holds. Returns what was written.
 pub async fn write_rows(
     db: &DatabaseConnection,
-    org_id: i64,
-    provenance: Uuid,
-    source_ref: &str,
+    w: &RowsWriter<'_>,
     m: &Mapping,
     rows: &[Value],
 ) -> Result<usize> {
     use crate::services::db_lock::{ns, TenantLock};
-    let s = schema(db, org_id).await?;
-    let diff = diff::compute(db, org_id, provenance, &s, m, false, rows, 1).await?;
-    if !diff.errors.is_empty() {
+    let role = match w.author {
+        None => OrgMemberRole::Member,
+        Some(user) => member_role(db, w.org_id, user)
+            .await
+            .ok_or(coded(err_codes::ONTOLOGY_WRITE_FORBIDDEN))?,
+    };
+    let s = schema(db, w.org_id).await?;
+    let types: Vec<_> = s.types.iter().map(|(t, _, _)| t.clone()).collect();
+    let links: Vec<_> = s.links.iter().map(|(l, _, _)| l.clone()).collect();
+    let shape = imp::Schema {
+        types: &types,
+        links: &links,
+    };
+    let mut planned = diff::Planned::default();
+    for (i, row) in rows.iter().enumerate() {
+        planned.push(m, &shape, i + 1, row, imp::PLANNED_MAX)?;
+    }
+    let mapping = serde_json::to_value(m).map_err(|e| DbErr::Custom(e.to_string()))?;
+    let current = planned.base();
+    let kept = kept_base(db, w).await?.filter(|k| k.mapping == mapping);
+    let (closing, old) = match kept {
+        Some(k) => {
+            let gone = planned.delta(m, &diff::Planned::from_base(&k.base), &k.skipped);
+            let closing = match w.snapshot {
+                true => diff::Closing::Gone(gone),
+                false => diff::Closing::None,
+            };
+            (closing, Some(k.base))
+        }
+        None if w.snapshot => (diff::Closing::NotSeen, None),
+        None => (diff::Closing::None, None),
+    };
+    let like = diff::source_exact(w.source_ref);
+    let (mut d, left_out) = diff::against(db, w.org_id, &like, &s, m, planned, closing).await?;
+    if !d.errors.is_empty() {
         tracing::info!(
-            org_id,
-            source_ref,
-            errors = diff.errors.len(),
+            org_id = w.org_id,
+            source_ref = w.source_ref,
+            errors = d.errors.len(),
             "pipeline rows refused"
         );
         return Err(coded(err_codes::IMPORT_HAS_ERRORS));
     }
+    if w.snapshot {
+        let holding = held_by(db, w.org_id, &like).await?;
+        let max_pct = imp::MAX_CLOSURES_PCT;
+        if holding > 0 && d.closed.len() * 100 > holding * max_pct as usize {
+            return Err(OntologyError::Import {
+                code: err_codes::INGEST_SUSPICIOUS_CLOSURES,
+                args: Some(serde_json::json!({
+                    "closed": d.closed.len().to_string(),
+                    "held": holding.to_string(),
+                    "max_pct": max_pct.to_string(),
+                })),
+            });
+        }
+    }
+    if m.observations.is_some() {
+        d.observations = pnex_core::markets::observations(rows);
+    }
     let actor = Actor {
-        user_id: None,
-        role: OrgMemberRole::Member,
-        source_ref: source_ref.to_string(),
+        user_id: w.author,
+        role,
+        source_ref: w.source_ref.to_string(),
     };
     let lock =
-        TenantLock::acquire(db, ns::ONTOLOGY_IMPORT, org_id, Duration::from_secs(600)).await?;
-    let out = write(db, org_id, &actor, &diff).await;
+        TenantLock::acquire(db, ns::ONTOLOGY_IMPORT, w.org_id, Duration::from_secs(600)).await?;
+    let mut out = write(db, w.org_id, &actor, &d).await.map(|left| (left, 0));
+    // After the objects: a series created by this run must exist.
+    if let (Ok((left, _)), Some(target)) = (&out, &m.observations) {
+        let left = *left;
+        out = crate::services::markets::store(db, w.org_id, target, &d.observations, w.source_ref)
+            .await
+            .map(|n| (left, n))
+            .map_err(OntologyError::from);
+    }
     lock.release().await;
-    let left_out = out?;
-    let c = diff.counts();
-    Ok(c.created - left_out + c.updated + c.links_opened + c.links_updated)
+    let (left, observed) = out?;
+    // D431: the watched objects it updated count a check run.
+    super::cases::watch::record_import(db, w.org_id, &actor, &m.name, &d.updated).await;
+    let next = match (w.snapshot, old) {
+        (false, Some(old)) => old.merged(current),
+        _ => current,
+    };
+    keep_base(db, w, &mapping, &next, left_out).await?;
+    let c = d.counts();
+    Ok(c.created - left + c.updated + c.links_opened + c.links_updated + c.closed + observed)
 }
 
 async fn write_locked(
@@ -1150,11 +1302,15 @@ async fn create_pin<C: ConnectionTrait>(
 /// Role of the import's author today: scheduled runs write with it (R2);
 /// an author who left the org (or a viewer) stops the schedule.
 async fn author_role<C: ConnectionTrait>(db: &C, imp: &ImportRow) -> Option<OrgMemberRole> {
+    member_role(db, imp.org_id, imp.created_by?).await
+}
+
+/// The role of `user` in the org, when it may write objects.
+async fn member_role<C: ConnectionTrait>(db: &C, org_id: i64, user: i64) -> Option<OrgMemberRole> {
     use crate::models::_entities::organization_members as om;
     use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
-    let user = imp.created_by?;
     om::Entity::find()
-        .filter(om::Column::OrgId.eq(imp.org_id))
+        .filter(om::Column::OrgId.eq(org_id))
         .filter(om::Column::UserId.eq(user))
         .one(db)
         .await
@@ -1363,7 +1519,11 @@ pub struct StagedOutcome {
 
 /// Live objects and links this import wrote (provenance `import:<id>@…`).
 async fn held<C: ConnectionTrait>(db: &C, org_id: i64, import_id: Uuid) -> Result<usize> {
-    let like = format!("import:{import_id}@%");
+    held_by(db, org_id, &diff::source_like(import_id)).await
+}
+
+/// Live objects and links whose provenance matches `like`.
+async fn held_by<C: ConnectionTrait>(db: &C, org_id: i64, like: &str) -> Result<usize> {
     let row = db
         .query_one_raw(stmt(
             "SELECT (SELECT count(*) FROM objects WHERE org_id = $1 AND valid_to IS NULL \
@@ -1467,7 +1627,18 @@ pub async fn run_staged(
         Err(_) => return end("failed", Some(source::UNREADABLE), Value::Null, None, false).await,
     };
     let first = first_row(&m, &name);
-    let mut d = match diff::compute(db, imp.org_id, imp.id, &s, &m, snapshot, &rows, first).await {
+    let mut d = match diff::compute(
+        db,
+        imp.org_id,
+        &diff::source_like(imp.id),
+        &s,
+        &m,
+        snapshot,
+        &rows,
+        first,
+    )
+    .await
+    {
         Ok(d) => d,
         Err(OntologyError::Import { code, .. }) => {
             return end("failed", Some(code), Value::Null, None, false).await
@@ -1638,7 +1809,18 @@ async fn scheduled(
     // again once, on what that import left.
     let mut again = true;
     let d = loop {
-        let mut d = match diff::compute(db, imp.org_id, imp.id, &s, m, snapshot, &rows, 1).await {
+        let mut d = match diff::compute(
+            db,
+            imp.org_id,
+            &diff::source_like(imp.id),
+            &s,
+            m,
+            snapshot,
+            &rows,
+            1,
+        )
+        .await
+        {
             Ok(d) => d,
             Err(OntologyError::Import { code, .. }) => {
                 return Err(("failed", code, Value::Null, None))

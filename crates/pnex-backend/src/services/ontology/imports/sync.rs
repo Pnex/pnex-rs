@@ -454,7 +454,16 @@ async fn attempt(
         None if snapshot => Closing::NotSeen,
         None => Closing::None,
     };
-    let (mut d, left_out) = diff::against(db, imp.org_id, imp.id, &s, m, planned, closing).await?;
+    let (mut d, left_out) = diff::against(
+        db,
+        imp.org_id,
+        &diff::source_like(imp.id),
+        &s,
+        m,
+        planned,
+        closing,
+    )
+    .await?;
     d.observations = observations;
     db.execute_raw(stmt(
         "UPDATE object_import_runs SET skipped_keys = $2 WHERE id = $1",

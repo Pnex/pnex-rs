@@ -334,15 +334,16 @@ async fn write_share(
             Value::Object(r)
         })
         .collect();
-    let provenance = Uuid::new_v5(&Uuid::NAMESPACE_URL, source_ref(network).as_bytes());
-    ontology::imports::write_rows(
-        db,
+    let source = source_ref(network);
+    let writer = ontology::imports::RowsWriter {
         org_id,
-        provenance,
-        &source_ref(network),
-        &mapping,
-        &rows,
-    )
-    .await
-    .map_err(|e| e.to_string())
+        pipeline: &source,
+        step: "share",
+        source_ref: &source,
+        author: None,
+        snapshot: false,
+    };
+    ontology::imports::write_rows(db, &writer, &mapping, &rows)
+        .await
+        .map_err(|e| e.to_string())
 }

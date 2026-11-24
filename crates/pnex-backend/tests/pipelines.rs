@@ -739,6 +739,130 @@ async fn an_org_pipeline_calls_a_function_of_the_org() {
     .await;
 }
 
+/// D1050: an org pipeline writes objects as an import synced them. An edit made by
+/// hand survives until the source changes that value; `snapshot` closes what the
+/// rows no longer hold, unless that is more than 20 % of what the step holds; the
+/// version's author must still be able to write objects.
+#[tokio::test]
+#[serial]
+async fn an_org_pipeline_writes_objects_against_its_kept_base() {
+    with_app(|server, env, ctx| async move {
+        use std::sync::{Arc, Mutex};
+        let csv = Arc::new(Mutex::new(String::new()));
+        let served = csv.clone();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let app = axum::Router::new().route(
+            "/v.csv",
+            axum::routing::get(move || {
+                let served = served.clone();
+                async move { served.lock().unwrap().clone() }
+            }),
+        );
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        pnex_backend::services::pipeline_engine::store::route_for_tests("data.example.io", &base);
+
+        let org = personal_org(&server, &env.alice).await;
+        let (s, e) = call(
+            &server,
+            "POST",
+            "/api/v1/ontology/types",
+            &env.alice,
+            org,
+            Some(json!({ "def": {
+                "key": "vault", "name": "Vault",
+                "properties": [
+                    { "key": "code", "name": "Code", "kind": "text", "unique": true },
+                    { "key": "label", "name": "Label", "kind": "text" }
+                ]
+            } })),
+        )
+        .await;
+        assert_eq!(s, 201, "{e}");
+        let document = "key: vaults\nhosts: [data.example.io]\nsteps:\n  - fetch: {as: page, url: \"https://data.example.io/v.csv\"}\n  - read: {as: rows, from: page, format: csv}\n  - write:\n      from: rows\n      objects:\n        snapshot: true\n        objects:\n          - {as: v, type: vault, key: code, close_missing: true, properties: {code: {from: code}, label: {from: label}}}\n";
+        let (s, p) = call(
+            &server,
+            "POST",
+            "/api/v1/pipelines",
+            &env.alice,
+            org,
+            Some(json!({ "name": "vaults", "document": document })),
+        )
+        .await;
+        assert_eq!(s, 201, "{p}");
+        let id = p["id"].as_str().unwrap().to_string();
+        let runs = format!("/api/v1/pipelines/{id}/runs");
+        let run = |source: &'static str| {
+            let (server, ctx, runs, alice, csv) = (&server, &ctx, &runs, &env.alice, &csv);
+            async move {
+                *csv.lock().unwrap() = source.to_string();
+                let (s, r) = call(server, "POST", runs, alice, org, None).await;
+                assert_eq!(s, 202, "{r}");
+                assert!(pnex_backend::services::pipelines::run_next(ctx).await.unwrap());
+                let path = format!("{runs}/{}", r["id"].as_str().unwrap());
+                call(server, "GET", &path, alice, org, None).await.1
+            }
+        };
+        let label = |code: &'static str| {
+            let ctx = &ctx;
+            async move {
+                sql(
+                    ctx,
+                    "SELECT properties ->> 'label', (valid_to IS NULL)::text FROM objects \
+                     WHERE org_id = $1 AND type_key = 'vault' AND properties ->> 'code' = $2",
+                    vec![org.into(), code.into()],
+                )
+                .await
+                .first()
+                .cloned()
+                .unwrap_or(Value::Null)
+            }
+        };
+
+        let done = run("code,label\nA1,one\nA2,two\nA3,three\nA4,four\nA5,five\n").await;
+        assert_eq!(done["state"], "done", "{done}");
+        assert_eq!(label("A2").await, json!(["two", "true"]));
+
+        // A1 edited by hand; the source changes A2 only and drops A5 (1 of 5).
+        sql(
+            &ctx,
+            "UPDATE objects SET properties = properties || '{\"label\": \"mine\"}', \
+             version = version + 1 WHERE org_id = $1 AND properties ->> 'code' = 'A1'",
+            vec![org.into()],
+        )
+        .await;
+        let done = run("code,label\nA1,one\nA2,deux\nA3,three\nA4,four\n").await;
+        assert_eq!(done["state"], "done", "{done}");
+        assert_eq!(label("A1").await, json!(["mine", "true"]), "the edit survives");
+        assert_eq!(label("A2").await, json!(["deux", "true"]));
+        assert_eq!(label("A5").await, json!(["five", "false"]), "closed");
+
+        // The source changes A1: its new value wins over the edit.
+        let done = run("code,label\nA1,uno\nA2,deux\nA3,three\nA4,four\n").await;
+        assert_eq!(done["state"], "done", "{done}");
+        assert_eq!(label("A1").await, json!(["uno", "true"]));
+
+        // Three of four gone at once: refused, nothing closed.
+        let refused = run("code,label\nA1,uno\n").await;
+        assert_eq!(refused["state"], "failed", "{refused}");
+        assert_eq!(refused["code"], "ingest-suspicious-closures", "{refused}");
+        assert_eq!(label("A4").await, json!(["four", "true"]));
+
+        // The version's author is gone: its writes stop.
+        sql(
+            &ctx,
+            "UPDATE pipeline_versions SET author_id = NULL WHERE pipeline_id = $1::uuid",
+            vec![id.clone().into()],
+        )
+        .await;
+        let refused = run("code,label\nA1,uno\nA2,dos\nA3,three\nA4,four\n").await;
+        assert_eq!(refused["state"], "failed", "{refused}");
+        assert_eq!(refused["code"], "ontology-write-forbidden", "{refused}");
+        assert_eq!(label("A2").await, json!(["deux", "true"]));
+    })
+    .await;
+}
+
 /// Serves `a.csv` for `data.example.io`, so a `tested` pipeline runs.
 async fn serve_numbers() {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();

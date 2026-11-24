@@ -685,6 +685,8 @@ Choix de Shan (2026-11-24). La table `object_imports` et les routes `/ontology/i
 - `observations:`, attachées à l'objet écrit (D941 reste vrai).
 - droits de l'auteur, relus à chaque run (D303).
 
+Chaque étape `write objects` garde une base : le dernier plan appliqué, dans `pipeline_object_bases` (org, pipeline, table d'entrée). Le run suivant compare ses lignes à cette base. Sans `snapshot`, la base garde aussi les objets absents du run : un run partiel ne perd rien. Sans base (premier run, mapping changé, base retirée par un effacement), le run compare ses lignes à l'ontologie : une édition faite à la main peut être écrasée une fois. Un pipeline de pack écrit avec le rôle Member.
+
 La migration réécrit la provenance `import:<id>` en provenance du pipeline d'org. Un pack copie ses imports en pipelines d'org et garde les éditions de l'org à la mise à jour (D424). Un fichier envoyé va dans une Table, puis un pipeline d'org la lit.
 
 ## 6. Interfaces
@@ -785,7 +787,7 @@ tests:
 - Un client arrêté recommence son envoi depuis le début.
 - Une étape à la fois par exécution enchaînée.
 - Retrait des imports (D1050), avant PE8. Plan :
-  1. `write objects` : delta et éditions protégées, `snapshot`, `close_missing`, `observations`, droits de l'auteur. Tests portés des imports.
+  1. `write objects` : delta et éditions protégées, `snapshot`, `close_missing`, `observations`, droits de l'auteur. Fait (2026-11-24), sans test des `observations`.
   2. Packs : un import de pack devient un pipeline d'org à l'installation, éditions gardées à la mise à jour.
   3. Migration : imports → pipelines d'org, provenance réécrite, Tables libérées, historique des runs.
   4. Retrait : table, routes, service, page, CLI, contrat (`exposure.rs`, `iam.rs`), fiche de l'assistant. `stop.rs` reste, déplacé.

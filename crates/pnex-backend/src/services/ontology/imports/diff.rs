@@ -88,8 +88,17 @@ fn key_column(m: &Mapping, a: &Agg) -> String {
         .unwrap_or_else(|| a.key_prop.clone())
 }
 
-fn source_like(import_id: Uuid) -> String {
+/// What an import wrote, as a `LIKE` pattern on `source_ref`.
+pub fn source_like(import_id: Uuid) -> String {
     format!("import:{import_id}@%")
+}
+
+/// What exactly `source_ref` wrote, as a `LIKE` pattern.
+pub fn source_exact(source_ref: &str) -> String {
+    source_ref
+        .replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_")
 }
 
 fn changes(
@@ -145,6 +154,76 @@ pub struct Planned {
     pub replace: bool,
 }
 
+/// A plan as a pipeline keeps it between runs (pipelines.md D1050): the base its
+/// next run diffs against, as a sync diffs against the transactions it last applied.
+#[derive(Default, serde::Serialize, serde::Deserialize)]
+pub struct Base {
+    objs: Vec<BaseObj>,
+    pairs: Vec<BasePair>,
+}
+
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+struct BaseObj {
+    entry: usize,
+    type_key: String,
+    key_prop: String,
+    key: String,
+    title: String,
+    titled: bool,
+    properties: Map<String, Value>,
+}
+
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+struct BasePair {
+    entry: usize,
+    link_type: String,
+    from: usize,
+    to: usize,
+    attributes: Map<String, Value>,
+}
+
+impl Base {
+    /// This base with `newer` laid over it: what a run without snapshot leaves
+    /// as the next base, since its rows may hold only part of the source.
+    pub fn merged(self, newer: Base) -> Base {
+        let mut out = Base::default();
+        let mut at: HashMap<(String, String), usize> = HashMap::new();
+        let mut put = |out: &mut Base, o: BaseObj| -> usize {
+            let k = (o.type_key.clone(), o.key.clone());
+            match at.get(&k) {
+                Some(&i) => {
+                    out.objs[i] = o;
+                    i
+                }
+                None => {
+                    out.objs.push(o);
+                    at.insert(k, out.objs.len() - 1);
+                    out.objs.len() - 1
+                }
+            }
+        };
+        let mut pairs: HashMap<(String, usize, usize), usize> = HashMap::new();
+        for b in [self, newer] {
+            let index: Vec<usize> = b.objs.into_iter().map(|o| put(&mut out, o)).collect();
+            for p in b.pairs {
+                let p = BasePair {
+                    from: index[p.from],
+                    to: index[p.to],
+                    ..p
+                };
+                match pairs.get(&(p.link_type.clone(), p.from, p.to)) {
+                    Some(&i) => out.pairs[i] = p,
+                    None => {
+                        pairs.insert((p.link_type.clone(), p.from, p.to), out.pairs.len());
+                        out.pairs.push(p);
+                    }
+                }
+            }
+        }
+        out
+    }
+}
+
 /// What the source no longer holds, by key.
 #[derive(Default)]
 pub struct Gone {
@@ -166,6 +245,79 @@ pub enum Closing {
 }
 
 impl Planned {
+    /// What this plan keeps for the next run's delta. Taken before [`Planned::delta`],
+    /// which drops the unchanged links.
+    pub fn base(&self) -> Base {
+        Base {
+            objs: self
+                .objs
+                .iter()
+                .map(|a| BaseObj {
+                    entry: a.entry,
+                    type_key: a.type_key.clone(),
+                    key_prop: a.key_prop.clone(),
+                    key: a.key.clone(),
+                    title: a.title.clone(),
+                    titled: a.titled,
+                    properties: a.properties.clone(),
+                })
+                .collect(),
+            pairs: self
+                .pairs
+                .iter()
+                .map(|p| BasePair {
+                    entry: p.entry,
+                    link_type: p.link_type.clone(),
+                    from: p.from,
+                    to: p.to,
+                    attributes: p.attributes.clone(),
+                })
+                .collect(),
+        }
+    }
+
+    /// A plan that holds a kept base, to diff a run against.
+    pub fn from_base(b: &Base) -> Planned {
+        let mut p = Planned::default();
+        for o in b.objs.iter().cloned() {
+            p.by_key
+                .insert((o.type_key.clone(), o.key.clone()), p.objs.len());
+            p.objs.push(Agg {
+                row: 0,
+                entry: o.entry,
+                type_key: o.type_key,
+                key_prop: o.key_prop,
+                key: o.key,
+                title: o.title,
+                titled: o.titled,
+                properties: o.properties,
+                defaults: Map::new(),
+                location: None,
+                create: false,
+                update: false,
+                missing: Default::default(),
+                needs: Vec::new(),
+                changed: None,
+                title_changed: false,
+                unchanged: false,
+            });
+        }
+        for l in b.pairs.iter().cloned() {
+            p.seen_pairs
+                .insert((l.link_type.clone(), l.from, l.to), p.pairs.len());
+            p.pairs.push(Pair {
+                link_type: l.link_type,
+                from: l.from,
+                to: l.to,
+                valid_from: None,
+                attributes: l.attributes,
+                entry: l.entry,
+                changed: None,
+            });
+        }
+        p
+    }
+
     /// Plans one record into the run. `max`: objects planned before refusing.
     pub fn push(
         &mut self,
@@ -452,7 +604,7 @@ fn key_sql(key_prop: &str, by_property: &'static str) -> String {
 pub async fn compute<C: ConnectionTrait>(
     db: &C,
     org_id: i64,
-    import_id: Uuid,
+    source: &str,
     s: &OrgSchema,
     m: &Mapping,
     snapshot: bool,
@@ -492,7 +644,7 @@ pub async fn compute<C: ConnectionTrait>(
     } else {
         Closing::None
     };
-    let (mut diff, _) = against(db, org_id, import_id, s, m, planned, closing).await?;
+    let (mut diff, _) = against(db, org_id, source, s, m, planned, closing).await?;
     diff.observations = observations;
     Ok(diff)
 }
@@ -502,7 +654,7 @@ pub async fn compute<C: ConnectionTrait>(
 pub async fn against<C: ConnectionTrait>(
     db: &C,
     org_id: i64,
-    import_id: Uuid,
+    source: &str,
     s: &OrgSchema,
     m: &Mapping,
     planned: Planned,
@@ -788,13 +940,13 @@ pub async fn against<C: ConnectionTrait>(
     if matches!(closing, Closing::None) {
         return Ok((diff, skipped));
     }
-    let (edges, others) = held_links(db, org_id, import_id, &held, &ends).await?;
+    let (edges, others) = held_links(db, org_id, source, &held, &ends).await?;
     kept.extend(edges);
     match closing {
         Closing::Gone(gone) => {
-            close_gone(db, org_id, import_id, gone, &others, &kept, &mut diff).await?;
+            close_gone(db, org_id, source, gone, &others, &kept, &mut diff).await?;
         }
-        _ => close_missing(db, org_id, import_id, m, &ends, &others, &kept, &mut diff).await?,
+        _ => close_missing(db, org_id, source, m, &ends, &others, &kept, &mut diff).await?,
     }
     Ok((diff, skipped))
 }
@@ -850,13 +1002,13 @@ async fn ids_of<C: ConnectionTrait>(
 async fn close_gone<C: ConnectionTrait>(
     db: &C,
     org_id: i64,
-    import_id: Uuid,
+    source: &str,
     gone: Gone,
     held_objects: &[Uuid],
     kept: &HashSet<i64>,
     diff: &mut ImportDiff,
 ) -> Result<()> {
-    let like = source_like(import_id);
+    let like = source.to_string();
     let ends: Vec<&GoneEnd> = gone
         .objects
         .iter()
@@ -942,7 +1094,7 @@ struct GoneRow {
 async fn held_links<C: ConnectionTrait>(
     db: &C,
     org_id: i64,
-    import_id: Uuid,
+    source: &str,
     held: &[(String, usize, bool)],
     ends: &[End],
 ) -> Result<(Vec<i64>, Vec<Uuid>)> {
@@ -976,7 +1128,7 @@ async fn held_links<C: ConnectionTrait>(
                     [
                         org_id.into(),
                         relation.into(),
-                        source_like(import_id).into(),
+                        source.into(),
                         chunk.to_vec().into(),
                     ],
                 ))
@@ -996,7 +1148,7 @@ async fn held_links<C: ConnectionTrait>(
 async fn close_missing<C: ConnectionTrait>(
     db: &C,
     org_id: i64,
-    import_id: Uuid,
+    source: &str,
     m: &Mapping,
     ends: &[End],
     held: &[Uuid],
@@ -1023,12 +1175,7 @@ async fn close_missing<C: ConnectionTrait>(
             "SELECT id::text AS id, type_key, title AS label FROM objects \
              WHERE org_id = $1 AND valid_to IS NULL AND type_key = ANY($2) \
                AND source_ref LIKE $3 AND NOT (id = ANY($4))",
-            [
-                org_id.into(),
-                types.into(),
-                source_like(import_id).into(),
-                seen.into(),
-            ],
+            [org_id.into(), types.into(), source.into(), seen.into()],
         ))
         .all(db)
         .await?;
@@ -1056,12 +1203,7 @@ async fn close_missing<C: ConnectionTrait>(
              LEFT JOIN objects t ON t.id = e.target_object_id \
              WHERE e.org_id = $1 AND e.valid_to IS NULL AND e.relation = ANY($2) \
                AND e.source_ref LIKE $3 AND NOT (e.id = ANY($4))",
-            [
-                org_id.into(),
-                relations.into(),
-                source_like(import_id).into(),
-                kept.into(),
-            ],
+            [org_id.into(), relations.into(), source.into(), kept.into()],
         ))
         .all(db)
         .await?;
@@ -1073,4 +1215,61 @@ async fn close_missing<C: ConnectionTrait>(
         }));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Base, BaseObj, BasePair};
+    use serde_json::{json, Map, Value};
+
+    fn obj(key: &str, label: &str) -> BaseObj {
+        let Value::Object(properties) = json!({ "code": key, "label": label }) else {
+            unreachable!()
+        };
+        BaseObj {
+            entry: 0,
+            type_key: "vault".into(),
+            key_prop: "code".into(),
+            key: key.into(),
+            title: String::new(),
+            titled: false,
+            properties,
+        }
+    }
+
+    fn pair(from: usize, to: usize, note: &str) -> BasePair {
+        let mut attributes = Map::new();
+        attributes.insert("note".into(), note.into());
+        BasePair {
+            entry: 0,
+            link_type: "near".into(),
+            from,
+            to,
+            attributes,
+        }
+    }
+
+    #[test]
+    fn a_partial_run_lays_over_the_kept_base() {
+        let old = Base {
+            objs: vec![obj("A", "a"), obj("B", "b")],
+            pairs: vec![pair(0, 1, "old")],
+        };
+        // The newer run holds B (changed) and C, and the A–B link again.
+        let newer = Base {
+            objs: vec![obj("B", "b2"), obj("C", "c"), obj("A", "a")],
+            pairs: vec![pair(2, 0, "new")],
+        };
+        let m = old.merged(newer);
+        let labels: Vec<(&str, &str)> = m
+            .objs
+            .iter()
+            .map(|o| (o.key.as_str(), o.properties["label"].as_str().unwrap()))
+            .collect();
+        assert_eq!(labels, [("A", "a"), ("B", "b2"), ("C", "c")]);
+        // One A–B link, the newer one, its ends in the merged indexes.
+        assert_eq!(m.pairs.len(), 1);
+        assert_eq!((m.pairs[0].from, m.pairs[0].to), (0, 1));
+        assert_eq!(m.pairs[0].attributes["note"], "new");
+    }
 }

@@ -194,9 +194,10 @@ pub trait Sink {
     ) -> Result<u64, Failure>;
 
     /// Creates and updates the org's objects and links the rows map to
-    /// (D941), without preview; the objects and links written.
+    /// (D941, D1050), against the base the step `step` kept; what was written.
     async fn objects(
         &mut self,
+        step: &str,
         target: &pnex_core::pipeline::doc::ObjectsTarget,
         rows: Vec<Map<String, Value>>,
     ) -> Result<u64, Failure>;
@@ -1423,13 +1424,11 @@ impl<T: Transport, S: Sink, Q: sql::SqlRunner> Exec<'_, T, S, Q> {
                 } else if w.ask.is_some() {
                     let rows = blocking(move || records_of(&batches)).await?;
                     *written += self.sink.ask(rows).await?;
-                } else if let Some(o) = w.objects.as_ref().filter(|o| !o.snapshot) {
+                } else if let Some(o) = &w.objects {
                     let rows = blocking(move || records_of(&batches)).await?;
-                    *written += self.sink.objects(o, rows).await?;
+                    *written += self.sink.objects(&w.from, o, rows).await?;
                 } else {
-                    // shortcut: no snapshot outside an import; add closing when a
-                    // pipeline must close what its rows no longer hold.
-                    return Err(fail("step_unsupported", json!({ "step": "write.objects" })));
+                    return Err(fail("step_unsupported", json!({ "step": "write" })));
                 }
                 return Ok(None);
             }

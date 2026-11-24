@@ -911,6 +911,7 @@ impl Sink for DatasetSink<'_> {
 
     async fn objects(
         &mut self,
+        step: &str,
         target: &pnex_core::pipeline::doc::ObjectsTarget,
         rows: Vec<serde_json::Map<String, Value>>,
     ) -> Result<u64, Failure> {
@@ -940,15 +941,26 @@ impl Sink for DatasetSink<'_> {
         let mapping: pnex_core::ontology::import::Mapping = serde_json::from_value(json!({
             "key": self.pipeline.replace('/', "_"),
             "name": self.pipeline,
+            "observations": target.observations,
             "objects": objects,
             "links": links,
         }))
         .map_err(|_| fail("internal", Value::Null))?;
-        // One provenance per pipeline: its writes find their own objects again.
-        let provenance = Uuid::new_v5(
-            &Uuid::NAMESPACE_URL,
-            format!("pipeline:{}", self.pipeline).as_bytes(),
-        );
+        // An org's pipeline writes on the rights of its version's author (D303).
+        let author = match self.own {
+            Some((id, version)) => Some(
+                self.db
+                    .query_one_raw(stmt(
+                        "SELECT author_id FROM pipeline_versions WHERE pipeline_id = $1 AND version = $2",
+                        vec![id.into(), version.into()],
+                    ))
+                    .await
+                    .map_err(|_| fail("storage", json!({ "what": "objects" })))?
+                    .and_then(|r| r.try_get::<Option<i64>>("", "author_id").ok().flatten())
+                    .ok_or_else(|| fail(pnex_core::err_codes::ONTOLOGY_WRITE_FORBIDDEN, Value::Null))?,
+            ),
+            None => None,
+        };
         // D999: the member's own connections also go to the orgs they share them with.
         let shared = match (&target.share, self.user) {
             (Some(network), Some(user)) => Some((network, user, rows.clone())),
@@ -956,15 +968,26 @@ impl Sink for DatasetSink<'_> {
         };
         let rows: Vec<Value> = rows.into_iter().map(Value::Object).collect();
         let source_ref = format!("pipeline:{}", self.pipeline);
-        let n = crate::services::ontology::imports::write_rows(
-            self.db, self.org, provenance, &source_ref, &mapping, &rows,
-        )
-        .await
-        .map(|n| n as u64)
-        .map_err(|e| {
-            tracing::info!(org = self.org, pipeline = self.pipeline, error = %e, "pipeline objects not written");
-            fail("objects_refused", Value::Null)
-        })?;
+        let writer = crate::services::ontology::imports::RowsWriter {
+            org_id: self.org,
+            pipeline: self.pipeline,
+            step,
+            source_ref: &source_ref,
+            author,
+            snapshot: target.snapshot,
+        };
+        let n = crate::services::ontology::imports::write_rows(self.db, &writer, &mapping, &rows)
+            .await
+            .map(|n| n as u64)
+            .map_err(|e| {
+                tracing::info!(org = self.org, pipeline = self.pipeline, error = %e, "pipeline objects not written");
+                match e {
+                    crate::services::ontology::OntologyError::Import { code, args } => {
+                        fail(code, args.unwrap_or(Value::Null))
+                    }
+                    _ => fail("objects_refused", Value::Null),
+                }
+            })?;
         if let Some((network, user, rows)) = shared {
             crate::services::connection_shares::fan_out(
                 self.db, self.org, user, network, target, &rows,

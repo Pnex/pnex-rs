@@ -316,6 +316,14 @@ async fn erase_in<C: ConnectionTrait>(
         vec![org_id.into()],
     ))
     .await?;
+    // A pipeline's kept base holds the values it wrote: its next run compares
+    // to the ontology instead (pipelines.md D1050).
+    db.execute_raw(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        "DELETE FROM pipeline_object_bases WHERE org_id = $1",
+        vec![org_id.into()],
+    ))
+    .await?;
     let mut props = row.properties.as_object().cloned().unwrap_or_default();
     for k in personal_keys(s, &row.type_key) {
         props.remove(&k);

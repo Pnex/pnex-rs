@@ -203,6 +203,7 @@ impl Sink for Memory {
 
     async fn objects(
         &mut self,
+        _: &str,
         _: &pnex_core::pipeline::doc::ObjectsTarget,
         rows: Vec<Map<String, Value>>,
     ) -> Result<u64, Failure> {
