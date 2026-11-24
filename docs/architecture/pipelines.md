@@ -771,7 +771,7 @@ tests:
 
 **Imports et tables :**
 
-- D345, D346, D348, D351, D354 non codées. Statut de D351 (zip à plusieurs fichiers à l'upload) à vérifier dans `import_read`.
+- D346, D351, D354 non codées. D345 et D348 sont remplacées (D573, D577). Statut de D351 (zip à plusieurs fichiers à l'upload) à vérifier dans `import_read`.
 - Pas de transaction `delete`. Quota de 20 Go en constante, pas par tier.
 - Un client arrêté recommence son envoi depuis le début.
 - Une étape à la fois par exécution enchaînée.
