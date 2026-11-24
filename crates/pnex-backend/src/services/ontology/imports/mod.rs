@@ -934,6 +934,11 @@ pub async fn write_rows(
         types: &types,
         links: &links,
     };
+    let rows: Vec<Value> = rows
+        .iter()
+        .flat_map(|r| sync::expanded(r.clone(), &m.json_column))
+        .collect();
+    let rows = &rows[..];
     let mut planned = diff::Planned::default();
     for (i, row) in rows.iter().enumerate() {
         planned.push(m, &shape, i + 1, row, imp::PLANNED_MAX)?;
@@ -2252,10 +2257,187 @@ async fn set_written(
     Ok(())
 }
 
+/// The org pipeline a pack import becomes (pipelines.md D1050): the steps
+/// of its pack pipeline, the table it writes kept (other pipelines read
+/// it), then the import's mapping written as objects from the same rows. A
+/// file import reads the Table named after it, where a member sends the
+/// file. Left out: the pack pipeline's `tests:` (they read the pack's
+/// fixture files), `schedule` and `after` (an org pipeline runs on its
+/// recurrence). `None`: the pack pipeline is gone or writes no table.
+pub fn pack_copy(p: &imp::PackImport) -> Option<pnex_core::pipeline::doc::Document> {
+    use pnex_core::pipeline::doc::{Document, ObjectsTarget, Sql, Step, Write};
+    let m = &p.mapping;
+    let objects = |from: String| {
+        Step::Write(Write {
+            from,
+            table: None,
+            objects: Some(ObjectsTarget {
+                objects: m.objects.clone(),
+                links: m.links.clone(),
+                snapshot: p.mode == ImportMode::Snapshot,
+                observations: m.observations.clone(),
+                json_column: m.json_column.clone(),
+                share: None,
+            }),
+            time_ranges: None,
+            proposals: None,
+            media: None,
+            ask: None,
+        })
+    };
+    let mut doc = match &m.pipeline {
+        Some(id) => {
+            let sp = crate::services::pipeline_engine::store::shipped()
+                .iter()
+                .find(|s| s.id() == *id)?;
+            let mut doc = sp.doc.clone();
+            let at = doc
+                .steps
+                .iter()
+                .position(|s| matches!(s, Step::Write(w) if w.table.is_some()))?;
+            let Step::Write(w) = &doc.steps[at] else {
+                return None;
+            };
+            let from = w.from.clone();
+            doc.steps.insert(at + 1, objects(from));
+            doc.tests.clear();
+            doc.schedule = None;
+            doc.after.clear();
+            doc
+        }
+        None => Document {
+            key: m.key.clone(),
+            name: String::new(),
+            hosts: Vec::new(),
+            object_hosts: Vec::new(),
+            steps: vec![
+                Step::Sql(Sql {
+                    as_: "rows".into(),
+                    tables: [("source".to_string(), p.name.clone())].into(),
+                    columns: Default::default(),
+                    sql: "SELECT * FROM source".into(),
+                }),
+                objects("rows".into()),
+            ],
+            schedule: None,
+            large: false,
+            after: Vec::new(),
+            requires: Vec::new(),
+            tests: Vec::new(),
+        },
+    };
+    doc.name = p.name.clone();
+    Some(doc)
+}
+
+/// Copies a pack's imports into org pipelines (pipelines.md D1050, D424):
+/// created at install, with the import's recurrence; at an upgrade, a copy
+/// the org left as is (or named in `take`) gets the pack's new document,
+/// one it edited stays. A pipeline of the same name the pack never wrote is
+/// the org's own, left alone. The pack writes with no author: a pack's role.
+pub async fn install_copies(
+    db: &DatabaseConnection,
+    org_id: i64,
+    pack: &pnex_core::ontology::api::Pack,
+    take: &[String],
+) -> Result<()> {
+    for p in &pack.imports {
+        let Some(doc) = pack_copy(p) else {
+            continue;
+        };
+        let document =
+            serde_json::to_string_pretty(&doc).map_err(|e| DbErr::Custom(e.to_string()))?;
+        let written = serde_json::json!({ "written": document });
+        let row = db
+            .query_one_raw(stmt(
+                "SELECT id, version, document, pack, pack_written ->> 'written' AS written \
+                 FROM pipelines WHERE org_id = $1 AND name = $2",
+                vec![org_id.into(), p.name.clone().into()],
+            ))
+            .await?;
+        let tx = db.begin().await?;
+        match row {
+            None => {
+                let recurrence = p.recurrence.clone();
+                let id: Uuid = tx
+                    .query_one_raw(stmt(
+                        "INSERT INTO pipelines (org_id, name, document, pack, pack_written, \
+                           recurrence, next_run_at) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id",
+                        vec![
+                            org_id.into(),
+                            p.name.clone().into(),
+                            document.clone().into(),
+                            pack.key.clone().into(),
+                            written.into(),
+                            recurrence.clone().into(),
+                            next_run(recurrence.as_ref()).into(),
+                        ],
+                    ))
+                    .await?
+                    .ok_or(OntologyError::NotFound)?
+                    .try_get("", "id")?;
+                tx.execute_raw(stmt(
+                    "INSERT INTO pipeline_versions (pipeline_id, version, document) VALUES ($1, 1, $2)",
+                    vec![id.into(), document.into()],
+                ))
+                .await?;
+            }
+            Some(r) => {
+                let owner: Option<String> = r.try_get("", "pack")?;
+                let current: String = r.try_get("", "document")?;
+                let last: Option<String> = r.try_get("", "written")?;
+                if owner.as_deref() != Some(pack.key.as_str()) || current == document {
+                    continue;
+                }
+                if last.as_deref() != Some(current.as_str()) && !take.contains(&p.name) {
+                    continue;
+                }
+                let id: Uuid = r.try_get("", "id")?;
+                let version: i32 = r.try_get("", "version")?;
+                tx.execute_raw(stmt(
+                    "UPDATE pipelines SET document = $2, version = version + 1, \
+                       updated_at = now(), pack_written = $3 WHERE id = $1",
+                    vec![id.into(), document.clone().into(), written.into()],
+                ))
+                .await?;
+                tx.execute_raw(stmt(
+                    "INSERT INTO pipeline_versions (pipeline_id, version, document) VALUES ($1, $2, $3)",
+                    vec![id.into(), (version + 1).into(), document.into()],
+                ))
+                .await?;
+            }
+        }
+        tx.commit().await?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use pnex_core::ontology::import::ImportCounts;
+
+    /// D1050: each import a pack ships becomes an org pipeline the server
+    /// accepts, which writes objects.
+    #[test]
+    fn every_pack_import_makes_a_valid_org_pipeline() {
+        use pnex_core::pipeline::doc::Step;
+        let mut n = 0;
+        for pack in crate::services::ontology::packs::shipped() {
+            for p in &pack.imports {
+                let doc = pack_copy(p).unwrap_or_else(|| panic!("{}: {}", pack.key, p.name));
+                let yaml = serde_json::to_string_pretty(&doc).unwrap();
+                crate::services::pipelines::checked(&yaml)
+                    .unwrap_or_else(|e| panic!("{}: {}: {e:?}", pack.key, p.name));
+                assert!(doc
+                    .steps
+                    .iter()
+                    .any(|s| matches!(s, Step::Write(w) if w.objects.is_some())));
+                n += 1;
+            }
+        }
+        assert!(n > 50, "{n} pack imports");
+    }
 
     /// The sweep's SQL key matches the lock an application holds: a run
     /// still writing is not swept as lost.

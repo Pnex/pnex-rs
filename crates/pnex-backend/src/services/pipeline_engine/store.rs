@@ -935,30 +935,50 @@ impl Sink for DatasetSink<'_> {
                         .all(|a| objects.iter().any(|o| &o.alias == *a))
             })
             .collect();
-        if objects.is_empty() {
+        if objects.is_empty() && target.observations.is_none() {
             return Ok(0);
         }
         let mapping: pnex_core::ontology::import::Mapping = serde_json::from_value(json!({
             "key": self.pipeline.replace('/', "_"),
             "name": self.pipeline,
             "observations": target.observations,
+            "json_column": target.json_column,
             "objects": objects,
             "links": links,
         }))
         .map_err(|_| fail("internal", Value::Null))?;
-        // An org's pipeline writes on the rights of its version's author (D303).
+        // An org's pipeline writes on the rights of its version's author (D303);
+        // a version its pack wrote, on a pack's (D1050).
         let author = match self.own {
-            Some((id, version)) => Some(
-                self.db
+            Some((id, version)) => {
+                let row = self
+                    .db
                     .query_one_raw(stmt(
-                        "SELECT author_id FROM pipeline_versions WHERE pipeline_id = $1 AND version = $2",
+                        "SELECT v.author_id, p.pack FROM pipeline_versions v \
+                         JOIN pipelines p ON p.id = v.pipeline_id \
+                         WHERE v.pipeline_id = $1 AND v.version = $2",
                         vec![id.into(), version.into()],
                     ))
                     .await
-                    .map_err(|_| fail("storage", json!({ "what": "objects" })))?
-                    .and_then(|r| r.try_get::<Option<i64>>("", "author_id").ok().flatten())
-                    .ok_or_else(|| fail(pnex_core::err_codes::ONTOLOGY_WRITE_FORBIDDEN, Value::Null))?,
-            ),
+                    .map_err(|_| fail("storage", json!({ "what": "objects" })))?;
+                let author = row
+                    .as_ref()
+                    .and_then(|r| r.try_get::<Option<i64>>("", "author_id").ok().flatten());
+                let packed = row
+                    .as_ref()
+                    .and_then(|r| r.try_get::<Option<String>>("", "pack").ok().flatten())
+                    .is_some();
+                match (author, packed) {
+                    (Some(a), _) => Some(a),
+                    (None, true) => None,
+                    (None, false) => {
+                        return Err(fail(
+                            pnex_core::err_codes::ONTOLOGY_WRITE_FORBIDDEN,
+                            Value::Null,
+                        ))
+                    }
+                }
+            }
             None => None,
         };
         // D999: the member's own connections also go to the orgs they share them with.

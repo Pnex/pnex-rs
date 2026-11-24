@@ -700,13 +700,22 @@ fn present<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<serde_json::
 
 /// Whether the first CSV line names the columns: `true`, `false`, or `auto`
 /// (a line whose typed cells do not read as their type).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
-#[serde(rename_all = "snake_case")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Header {
     #[default]
     Yes,
     No,
     Auto,
+}
+
+impl Serialize for Header {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Header::Yes => s.serialize_bool(true),
+            Header::No => s.serialize_bool(false),
+            Header::Auto => s.serialize_str("auto"),
+        }
+    }
 }
 
 impl<'de> Deserialize<'de> for Header {
@@ -883,6 +892,10 @@ pub struct ObjectsTarget {
     /// The rows are also dated values of an object written (D541).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub observations: Option<crate::markets::ObservationTarget>,
+    /// The column holding each record as JSON: its object, or each object
+    /// of its array, is read as a record beside the row's other columns.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub json_column: String,
     /// The rows are the run member's own connections on this network
     /// (crm.md D999): also written into each team org where the member
     /// shares them, with a `knows` link from the member's person.
@@ -1270,7 +1283,6 @@ impl Document {
         for (path, set) in [
             ("schedule", self.schedule.is_some()),
             ("after", !self.after.is_empty()),
-            ("requires", !self.requires.is_empty()),
         ] {
             if set {
                 bad(path.into(), "org_unsupported");
@@ -1794,7 +1806,11 @@ fn step_violations(
                     bad(format!("{at}.table.retain_days"), "invalid");
                 }
             }
-            if w.objects.as_ref().is_some_and(|o| o.objects.is_empty()) {
+            // Dated values only (D541): they go to objects already there.
+            if w.objects
+                .as_ref()
+                .is_some_and(|o| o.objects.is_empty() && o.observations.is_none())
+            {
                 bad(format!("{at}.objects"), "required");
             }
         }
@@ -2043,7 +2059,6 @@ mod tests {
             org,
             [
                 "schedule org_unsupported",
-                "requires org_unsupported",
                 "steps.2.objects.share org_unsupported",
                 "tests max_bytes:65536",
             ]

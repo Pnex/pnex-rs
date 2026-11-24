@@ -171,7 +171,7 @@ pub(super) async fn declare_identity<C: ConnectionTrait>(
 /// (a pipeline's `json` column): its object, or each object of its array,
 /// is a record, beside the row's other columns. A value that is no JSON
 /// object gives no record.
-fn expanded(row: Value, column: &str) -> Vec<Value> {
+pub(super) fn expanded(row: Value, column: &str) -> Vec<Value> {
     let Value::Object(mut cols) = row else {
         return vec![row];
     };

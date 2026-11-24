@@ -340,23 +340,31 @@ pub fn rights_of(steps: &[BuildStep]) -> Vec<&'static str> {
 
 /// R2: whoever set a schedule must still hold what its steps need. Only the managed
 /// role of the membership counts here: rights from an assigned role need a person.
+/// Nobody behind the schedule of a pipeline a pack copied: a pack's role (D1050).
 async fn may_run(
     db: &DatabaseConnection,
     org_id: i64,
     user: Option<i64>,
+    target: Uuid,
     steps: &[BuildStep],
 ) -> Result<bool, DbErr> {
     use crate::models::_entities::organization_members as om;
     use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
-    let Some(user) = user else {
-        return Ok(false);
+    let role: Option<OrgMemberRole> = match user {
+        Some(user) => om::Entity::find()
+            .filter(om::Column::OrgId.eq(org_id))
+            .filter(om::Column::UserId.eq(user))
+            .one(db)
+            .await?
+            .map(|m| m.role),
+        None => db
+            .query_one_raw(stmt(
+                "SELECT 1 AS one FROM pipelines WHERE id = $1 AND org_id = $2 AND pack IS NOT NULL",
+                vec![target.into(), org_id.into()],
+            ))
+            .await?
+            .map(|_| OrgMemberRole::Member),
     };
-    let role: Option<OrgMemberRole> = om::Entity::find()
-        .filter(om::Column::OrgId.eq(org_id))
-        .filter(om::Column::UserId.eq(user))
-        .one(db)
-        .await?
-        .map(|m| m.role);
     Ok(role.is_some_and(|r| {
         rights_of(steps)
             .iter()
@@ -391,7 +399,7 @@ async fn fire_due_pipelines(db: &DatabaseConnection) -> Result<(), DbErr> {
             Ok((_, steps)) => steps,
             Err(_) => Vec::new(),
         };
-        if may_run(db, org_id, author, &steps).await? {
+        if may_run(db, org_id, author, id, &steps).await? {
             fire(db, org_id, kind, id, &name, author).await?;
         } else {
             let code = err_codes::BUILD_AUTHOR_FORBIDDEN;
@@ -591,7 +599,8 @@ async fn advance(
         // Nobody is connected behind a schedule: its author's rights are read before each
         // step, or someone demoted would keep writing tables with every recurrence.
         let trigger: String = row.try_get("", "trigger")?;
-        if trigger == "schedule" && !may_run(db, org_id, author, &steps).await? {
+        let target: Uuid = row.try_get("", "target_id")?;
+        if trigger == "schedule" && !may_run(db, org_id, author, target, &steps).await? {
             steps[i].state = BuildStepState::Failed;
             steps[i].code = Some(err_codes::BUILD_AUTHOR_FORBIDDEN.to_string());
             return save_steps(db, id, &steps, true).await;

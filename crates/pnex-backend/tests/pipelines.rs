@@ -863,6 +863,91 @@ async fn an_org_pipeline_writes_objects_against_its_kept_base() {
     .await;
 }
 
+/// D1050: a pack copies its file import into an org pipeline that reads the
+/// Table named after it and writes objects on a pack's role; an upgrade
+/// replaces the copy the org left as is, never the one it edited (D424).
+#[tokio::test]
+#[serial]
+async fn a_pack_copies_its_imports_into_org_pipelines() {
+    with_app(|server, env, ctx| async move {
+        use pnex_backend::services::ontology::{imports::install_copies, packs::shipped};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let app = axum::Router::new().route(
+            "/list.csv",
+            axum::routing::get(|| async {
+                "list,name,company,email\nFair,Ann Lee,Acme,ann@acme.test\nFair,Bo Kim,Beta,bo@beta.test\n"
+            }),
+        );
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        pnex_backend::services::pipeline_engine::store::route_for_tests("data.example.io", &base);
+
+        let org = personal_org(&server, &env.alice).await;
+        let path = "/api/v1/ontology/packs/prospecting_b2b/install";
+        let (s, e) = call(&server, "POST", path, &env.alice, org, None).await;
+        assert_eq!(s, 200, "{e}");
+        let pack = shipped().into_iter().find(|p| p.key == "prospecting_b2b").unwrap();
+        install_copies(&ctx.db, org, &pack, &[]).await.unwrap();
+        let name = "Trade show or association list (file)";
+        let row = sql(
+            &ctx,
+            "SELECT p.id::text, p.pack, v.author_id::text FROM pipelines p \
+             JOIN pipeline_versions v ON v.pipeline_id = p.id WHERE p.org_id = $1 AND p.name = $2",
+            vec![org.into(), name.into()],
+        )
+        .await;
+        assert_eq!(row[0][1], "prospecting_b2b");
+        assert_eq!(row[0][2], Value::Null, "written by the pack");
+        let id = row[0][0].as_str().unwrap().to_string();
+
+        // Its `sql` step reads the Table through the worker binary, absent
+        // here: the version the pack wrote reads the same rows from the source.
+        let doc = sql(&ctx, "SELECT document FROM pipelines WHERE id = $1::uuid", vec![id.clone().into()]).await;
+        let mut doc: Value = serde_json::from_str(doc[0][0].as_str().unwrap()).unwrap();
+        doc["hosts"] = json!(["data.example.io"]);
+        let steps = doc["steps"].as_array_mut().unwrap();
+        steps[0] = json!({ "fetch": { "as": "page", "url": "https://data.example.io/list.csv" } });
+        steps.insert(1, json!({ "read": { "as": "rows", "from": "page", "format": "csv" } }));
+        let doc = doc.to_string();
+        sql(&ctx, "UPDATE pipelines SET document = $2 WHERE id = $1::uuid", vec![id.clone().into(), doc.clone().into()]).await;
+        sql(&ctx, "UPDATE pipeline_versions SET document = $2 WHERE pipeline_id = $1::uuid", vec![id.clone().into(), doc.into()]).await;
+        let runs = format!("/api/v1/pipelines/{id}/runs");
+        let (s, r) = call(&server, "POST", &runs, &env.alice, org, None).await;
+        assert_eq!(s, 202, "{r}");
+        assert!(pnex_backend::services::pipelines::run_next(&ctx).await.unwrap());
+        let done = call(&server, "GET", &format!("{runs}/{}", r["id"].as_str().unwrap()), &env.alice, org, None).await.1;
+        assert_eq!(done["state"], "done", "{done}");
+        let n = sql(&ctx, "SELECT count(*)::text FROM objects WHERE org_id = $1 AND type_key = 'list_contact'",
+            vec![org.into()]).await;
+        assert_eq!(n[0][0], "2");
+
+        let document = |ctx: &loco_rs::app::AppContext| {
+            let (ctx, id) = (ctx.clone(), id.clone());
+            async move {
+                sql(&ctx, "SELECT document, version::text FROM pipelines WHERE id = $1::uuid", vec![id.into()]).await[0].clone()
+            }
+        };
+        // Left as is, an older copy follows the pack.
+        sql(&ctx, "UPDATE pipelines SET document = 'old', pack_written = '{\"written\": \"old\"}' WHERE id = $1::uuid",
+            vec![id.clone().into()]).await;
+        install_copies(&ctx.db, org, &pack, &[]).await.unwrap();
+        let now = document(&ctx).await;
+        assert_ne!(now[0], "old");
+        assert_eq!(now[1], "2");
+
+        // Edited by the org: kept, unless the upgrade takes it.
+        let edited = now[0].as_str().unwrap().replace(name, "My list");
+        let (s, e) = call(&server, "PUT", &format!("/api/v1/pipelines/{id}"), &env.alice, org,
+            Some(json!({ "document": edited, "expected_version": 2 }))).await;
+        assert_eq!(s, 200, "{e}");
+        install_copies(&ctx.db, org, &pack, &[]).await.unwrap();
+        assert_eq!(document(&ctx).await[0], edited.as_str());
+        install_copies(&ctx.db, org, &pack, &[name.to_string()]).await.unwrap();
+        assert_eq!(document(&ctx).await[0], now[0]);
+    })
+    .await;
+}
+
 /// Serves `a.csv` for `data.example.io`, so a `tested` pipeline runs.
 async fn serve_numbers() {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
