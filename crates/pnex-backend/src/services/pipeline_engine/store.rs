@@ -39,6 +39,44 @@ impl Shipped {
     }
 }
 
+/// The mapping a `write: objects` step of `pipeline` applies (D1050): an
+/// entry of a type the org does not have is left out with its links, as a
+/// pack enriches what another pack brought, when it is there. `None`:
+/// nothing to write. The migration of imports seeds bases with it.
+pub fn objects_mapping(
+    pipeline: &str,
+    target: &pnex_core::pipeline::doc::ObjectsTarget,
+    schema: &crate::services::ontology::OrgSchema,
+) -> Option<pnex_core::ontology::import::Mapping> {
+    let objects: Vec<_> = target
+        .objects
+        .iter()
+        .filter(|o| schema.object_type(&o.type_key).is_some())
+        .collect();
+    let links: Vec<_> = target
+        .links
+        .iter()
+        .filter(|l| {
+            schema.link_type(&l.link_type).is_some()
+                && [&l.from, &l.to]
+                    .iter()
+                    .all(|a| objects.iter().any(|o| &o.alias == *a))
+        })
+        .collect();
+    if objects.is_empty() && target.observations.is_none() {
+        return None;
+    }
+    serde_json::from_value(json!({
+        "key": pipeline.replace('/', "_"),
+        "name": pipeline,
+        "observations": target.observations,
+        "json_column": target.json_column,
+        "objects": objects,
+        "links": links,
+    }))
+    .ok()
+}
+
 /// Every pipeline of the shipped packs, parsed once.
 pub fn shipped() -> &'static [Shipped] {
     static ALL: LazyLock<Vec<Shipped>> = LazyLock::new(|| {
@@ -915,38 +953,12 @@ impl Sink for DatasetSink<'_> {
         target: &pnex_core::pipeline::doc::ObjectsTarget,
         rows: Vec<serde_json::Map<String, Value>>,
     ) -> Result<u64, Failure> {
-        // An entry of a type the org does not have is left out with its
-        // links: a pack enriches what another pack brought, when it is there.
         let schema = crate::services::ontology::schema(self.db, self.org)
             .await
             .map_err(|_| fail("storage", json!({ "what": "objects" })))?;
-        let objects: Vec<_> = target
-            .objects
-            .iter()
-            .filter(|o| schema.object_type(&o.type_key).is_some())
-            .collect();
-        let links: Vec<_> = target
-            .links
-            .iter()
-            .filter(|l| {
-                schema.link_type(&l.link_type).is_some()
-                    && [&l.from, &l.to]
-                        .iter()
-                        .all(|a| objects.iter().any(|o| &o.alias == *a))
-            })
-            .collect();
-        if objects.is_empty() && target.observations.is_none() {
+        let Some(mapping) = objects_mapping(self.pipeline, target, &schema) else {
             return Ok(0);
-        }
-        let mapping: pnex_core::ontology::import::Mapping = serde_json::from_value(json!({
-            "key": self.pipeline.replace('/', "_"),
-            "name": self.pipeline,
-            "observations": target.observations,
-            "json_column": target.json_column,
-            "objects": objects,
-            "links": links,
-        }))
-        .map_err(|_| fail("internal", Value::Null))?;
+        };
         // An org's pipeline writes on the rights of its version's author (D303);
         // a version its pack wrote, on a pack's (D1050).
         let author = match self.own {

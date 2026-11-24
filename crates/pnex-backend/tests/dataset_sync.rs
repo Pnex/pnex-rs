@@ -1047,3 +1047,107 @@ links:
     })
     .await;
 }
+
+/// pipelines.md D1050, step 3: a Table import becomes an org pipeline reading
+/// its Table, with the base of its last applied run, so an edit made by hand
+/// survives its first run. What it wrote is the pipeline's; the Table is
+/// freed. A pack's import becomes the pack's copy.
+#[tokio::test]
+#[serial]
+async fn imports_become_org_pipelines() {
+    with_app(|server, alice, ctx| async move {
+        let org = server
+            .get("/api/v1/user-info")
+            .add_header("Authorization", format!("Bearer {alice}"))
+            .await
+            .json::<Value>()["orgs"][0]["id"]
+            .as_i64()
+            .unwrap();
+        let api = Api { server: &server, token: &alice, org };
+        let db = &ctx.db;
+        let (s, e) = api.call("POST", "/api/v1/ontology/packs/quali_watch/install", None).await;
+        assert_eq!(s, 200, "{e}");
+        let (s, e) = api
+            .call(
+                "POST",
+                "/api/v1/ontology/objects",
+                Some(json!({ "type_key": "certification", "title": "RS1", "properties": { "code": "RS1" } })),
+            )
+            .await;
+        assert_eq!(s, 201, "{e}");
+        let dataset = api.dataset("partners").await;
+        api.load_partners(&dataset, V1).await;
+        let (s, imp) = api
+            .call(
+                "POST",
+                "/api/v1/ontology/imports",
+                Some(json!({ "name": "partners", "mapping": MAPPING, "source": "dataset",
+                             "source_url": dataset, "mode": "snapshot" })),
+            )
+            .await;
+        assert_eq!(s, 201, "{imp}");
+        let r = api.run(imp["id"].as_str().unwrap(), 30).await;
+        assert_eq!(r["run"]["state"], "applied", "{r}");
+        let acme = "732829320";
+        let (acme_id, version, _, _) = org_of(db, acme).await.unwrap();
+        let (s, e) = api
+            .call(
+                "PUT",
+                &format!("/api/v1/ontology/objects/{acme_id}"),
+                Some(json!({ "title": "Acme edited", "expected_version": version,
+                             "properties": { "siren": acme, "nda": "99999999999" } })),
+            )
+            .await;
+        assert_eq!(s, 200, "{e}");
+        // A pack import of an org installed before D1050.
+        let pack = pnex_backend::services::ontology::packs::shipped()
+            .into_iter()
+            .find(|p| p.key == "quali_watch")
+            .unwrap();
+        let shipped = pack.imports.iter().find(|i| i.name == "France Compétences · certifiers").unwrap();
+        db.execute_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "INSERT INTO object_imports (id, org_id, name, mapping_yaml, pack_key) \
+             VALUES (gen_random_uuid(), $1, $2, $3, 'quali_watch')",
+            vec![org.into(), shipped.name.clone().into(), serde_saphyr::to_string(&shipped.mapping).unwrap().into()],
+        ))
+        .await
+        .unwrap();
+
+        let store = pnex_backend::services::datasets::store_of(&ctx.config).unwrap();
+        let n = pnex_backend::services::ontology::imports::migrate_to_pipelines(db, Some(&store)).await.unwrap();
+        assert_eq!(n, 2);
+        let left = sql(db, &format!("SELECT 1 FROM object_imports WHERE org_id = {org}")).await;
+        assert!(left.is_empty());
+        let row = &sql(db, &format!(
+            "SELECT p.id::text AS id, p.pack, v.author_id FROM pipelines p JOIN pipeline_versions v ON v.pipeline_id = p.id \
+             WHERE p.org_id = {org} AND p.name = 'partners'")).await[0];
+        let id: String = row.try_get("", "id").unwrap();
+        assert_eq!(row.try_get::<Option<String>>("", "pack").unwrap(), None);
+        // Beta, never edited (Acme's edit made it `manual`).
+        let beta = org_of(db, "552100554").await.unwrap().0;
+        let source: String = sql(db, &format!("SELECT source_ref FROM objects WHERE id = '{beta}'")).await[0]
+            .try_get("", "source_ref").unwrap();
+        assert_eq!(source, format!("pipeline:{id}"));
+        let freed = sql(db, &format!("SELECT 1 FROM datasets WHERE id = '{dataset}' AND import_id IS NULL")).await;
+        assert_eq!(freed.len(), 1);
+        let copy = &sql(db, &format!(
+            "SELECT p.pack, v.author_id FROM pipelines p JOIN pipeline_versions v ON v.pipeline_id = p.id \
+             WHERE p.org_id = {org} AND p.name = 'France Compétences · certifiers'")).await[0];
+        assert_eq!(copy.try_get::<Option<String>>("", "pack").unwrap().as_deref(), Some("quali_watch"));
+        assert_eq!(copy.try_get::<Option<i64>>("", "author_id").unwrap(), None);
+
+        // Its first run reads the same Table: the edit stays.
+        let worker = common::spawn_pipeline_worker();
+        let runs = format!("/api/v1/pipelines/{id}/runs");
+        let (s, r) = api.call("POST", &runs, None).await;
+        assert_eq!(s, 202, "{r}");
+        assert!(pnex_backend::services::pipelines::run_next(&ctx).await.unwrap());
+        let (_, done) = api.call("GET", &format!("{runs}/{}", r["id"].as_str().unwrap()), None).await;
+        worker.abort();
+        assert_eq!(done["state"], "done", "{done}");
+        let (_, _, nda, title) = org_of(db, acme).await.unwrap();
+        assert_eq!((nda.as_deref(), title.as_str()), (Some("99999999999"), "Acme edited"));
+    })
+    .await;
+}

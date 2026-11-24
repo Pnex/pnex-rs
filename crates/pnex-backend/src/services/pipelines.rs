@@ -920,6 +920,30 @@ async fn run_job(ctx: &AppContext, job: &Job) -> Result<(), (String, serde_json:
     store::journal(&ctx.db, job.org_id, &node, job.id, &steps)
         .await
         .map_err(db_failure)?;
+    // D802: objects written from the org's tables carry their markings.
+    let writes_objects = doc
+        .steps
+        .iter()
+        .any(|s| matches!(s, pnex_core::pipeline::doc::Step::Write(w) if w.objects.is_some()));
+    if writes_objects {
+        let source = crate::services::ontology::imports::diff::source_exact(&node);
+        for table in doc.table_reads() {
+            let dataset = ctx
+                .db
+                .query_one_raw(stmt(
+                    "SELECT id FROM datasets WHERE org_id = $1 AND name = $2",
+                    vec![job.org_id.into(), table.into()],
+                ))
+                .await
+                .map_err(db_failure)?
+                .and_then(|r| r.try_get::<Uuid>("", "id").ok());
+            if let Some(dataset) = dataset {
+                crate::services::governance::propagate_sync(&ctx.db, job.org_id, &source, dataset)
+                    .await
+                    .map_err(db_failure)?;
+            }
+        }
+    }
     // What the member can fix gets its message (D1050: as an import's run did).
     match out.failure {
         Some(f) => Err((

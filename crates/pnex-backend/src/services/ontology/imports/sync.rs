@@ -201,7 +201,7 @@ pub(super) fn expanded(row: Value, column: &str) -> Vec<Value> {
         .collect()
 }
 
-async fn plan(
+pub(super) async fn plan(
     store: &S3Store,
     files: &[ViewFile],
     m: &Mapping,
@@ -321,7 +321,8 @@ async fn attempt(
         if state == "applied" {
             // D802: what the sync wrote carries the table's markings before the run
             // is seen as done.
-            crate::services::governance::propagate_sync(db, imp.org_id, imp.id, id).await?;
+            let source = diff::source_like(imp.id);
+            crate::services::governance::propagate_sync(db, imp.org_id, &source, id).await?;
         }
         finish_run(db, run.id, state, code, &args, d.as_ref(), keep).await?;
         if state == "refused" {

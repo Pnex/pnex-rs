@@ -306,6 +306,20 @@ impl Hooks for App {
         crate::services::internal_agents::spawn(ctx);
         crate::services::environments::spawn_rescans(ctx);
         crate::services::agent_artifacts::spawn_sweeper(ctx);
+        // Imports become org pipelines, once (pipelines.md D1050). Tests call it.
+        if ctx.environment != Environment::Test {
+            let db = ctx.db.clone();
+            let store = crate::services::datasets::store_of(&ctx.config).ok();
+            tokio::spawn(async move {
+                match crate::services::ontology::imports::migrate_to_pipelines(&db, store.as_ref())
+                    .await
+                {
+                    Ok(0) => {}
+                    Ok(n) => tracing::info!(imports = n, "imports converted into pipelines"),
+                    Err(e) => tracing::warn!(error = %e, "imports not converted into pipelines"),
+                }
+            });
+        }
         // Scheduled ontology imports (partners.md D303).
         crate::services::ontology::imports::spawn_scheduler(ctx);
         // Chained runs, stale tables, dataset events (pipelines.md D575–D578).

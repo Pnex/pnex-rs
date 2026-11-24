@@ -698,6 +698,7 @@ Un pack copie chaque import en pipeline d'org (choix de Shan, 2026-11-24) :
 - `pipelines.pack` nomme le pack qui a écrit la copie. Une version sans auteur écrite par le pack écrit avec le rôle Member, à la main comme à l'horaire. Dès qu'un membre l'édite, elle écrit avec le rôle de ce membre.
 - À la mise à jour du pack, une copie que l'org n'a pas éditée prend le nouveau document. Une copie éditée reste, sauf si l'org la reprend (D424). `pack_written` garde le dernier document écrit par le pack.
 - Un `write objects` peut n'écrire que des `observations:` sur des objets déjà présents.
+- Les objets écrits par un pipeline d'org portent les marquages des Tables que lit son `sql` (D802), comme ceux d'une synchronisation.
 
 ## 6. Interfaces
 
@@ -802,7 +803,13 @@ tests:
      - 2a. Fait (2026-11-24) : `pack_copy` et `install_copies`, colonnes `pipelines.pack` et `pack_written`. L'installation crée encore des imports.
      - 2b. Fait (2026-11-24) : l'installation crée les copies, plus les imports. Une org installée avant garde ses imports jusqu'à l'étape 3. Les tests qui envoient un fichier à un import de pack créent un import d'org avec le mapping du pack, jusqu'à l'étape 4.
      - Limites de 2b : une exécution de pipeline ne montre pas les compteurs de l'import (créés, mis à jour, fermés, avertissements). À l'étape 5, choisir avec Shan s'il les faut. Le message « reprendre la version du pack » d'une copie parle encore du mode et des pages d'un import.
-  3. Migration : imports → pipelines d'org, provenance réécrite, Tables libérées, historique des runs.
+  3. Migration : imports → pipelines d'org. Fait (2026-11-24). Choix de Shan : au démarrage, une fois, historique supprimé, base semée.
+     - Le serveur convertit chaque import restant dans sa transaction, ligne verrouillée : deux pods ne convertissent jamais le même import. Un import qui échoue reste pour le démarrage suivant.
+     - Un import de pack devient la copie du pack. Si l'org l'a édité et que son mapping nomme un pipeline, la copie garde la version de l'org. Une édition de l'ancienne forme (URL lue par l'import) prend la version du pack, avec une ligne de journal.
+     - Un import d'org lit sa Table. Un import de fichier, d'URL ou d'API lit la Table au nom de l'import : l'adresse d'un import d'URL de l'org est perdue (aucun sur dev).
+     - La provenance `import:<id>@<n>` devient `pipeline:<id>` (objets, liens, versions de liens, observations). La Table est libérée. Les runs, leur journal et les builds de l'import sont supprimés.
+     - Un import sur Table sème la base de son pipeline depuis les transactions de son dernier run appliqué, si le mapping n'a pas changé depuis.
+     - Un nom déjà pris par un pipeline de l'org reçoit le suffixe « (import) ».
   4. Retrait : table, routes, service, page, CLI, contrat (`exposure.rs`, `iam.rs`), fiche de l'assistant. `stop.rs` reste, déplacé.
   5. Front : l'écran d'import enchaîne l'envoi dans une Table et le pipeline. E2E.
 - `fc_rs_xml` : vérifier qu'il passe par la table et protège les éditions depuis son portage en pipeline.

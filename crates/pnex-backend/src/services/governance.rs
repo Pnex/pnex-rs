@@ -577,11 +577,12 @@ pub async fn declassify_object(
     Ok(object_markings(db, object).await?)
 }
 
-/// D802: the objects an import wrote from a table carry the table's markings.
+/// D802: the objects written from a table carry the table's markings.
+/// `source`: a `LIKE` pattern on their `source_ref` (an import's run, a pipeline).
 pub async fn propagate_sync(
     db: &DatabaseConnection,
     org_id: i64,
-    import: Uuid,
+    source: &str,
     dataset: Uuid,
 ) -> Result<(), DbErr> {
     db.execute_raw(stmt(
@@ -589,11 +590,7 @@ pub async fn propagate_sync(
          SELECT o.id, dm.marking_id FROM objects o, dataset_markings dm \
          WHERE o.org_id = $1 AND o.source_ref LIKE $2 AND dm.dataset_id = $3 \
          ON CONFLICT DO NOTHING",
-        vec![
-            org_id.into(),
-            format!("import:{import}@%").into(),
-            dataset.into(),
-        ],
+        vec![org_id.into(), source.into(), dataset.into()],
     ))
     .await?;
     Ok(())

@@ -350,6 +350,25 @@ async fn a_sync_needs_a_cleared_author_and_marks_what_it_writes() {
              WHERE o.org_id = {org} AND o.type_key = 'employee'")).await[0]
             .try_get("", "n").unwrap();
         assert_eq!(marked, 2, "what the sync wrote carries the table's marking: {r}");
+
+        // So does what an org pipeline reading the table writes (D802, D1050).
+        let document = "key: staff\nsteps:\n  - sql: { as: rows, tables: { s: staff }, sql: \"SELECT 'C3' AS code, 'Cyd' AS name FROM s LIMIT 1\" }\n  - write:\n      from: rows\n      objects:\n        objects:\n          - { as: e, type: employee, key: code, title: { from: name }, properties: { code: { from: code } } }\n";
+        let (s, p) = call(&server, a, org, "POST", "/api/v1/pipelines",
+            Some(json!({ "name": "staff copy", "document": document }))).await;
+        assert_eq!(s, 201, "{p}");
+        let worker = common::spawn_pipeline_worker();
+        let runs = format!("/api/v1/pipelines/{}/runs", p["id"].as_str().unwrap());
+        let (s, r) = call(&server, a, org, "POST", &runs, None).await;
+        assert_eq!(s, 202, "{r}");
+        assert!(pnex_backend::services::pipelines::run_next(&ctx).await.unwrap());
+        let (_, done) = call(&server, a, org, "GET", &format!("{runs}/{}", r["id"].as_str().unwrap()), None).await;
+        worker.abort();
+        assert_eq!(done["state"], "done", "{done}");
+        let marked: i64 = sql(&ctx.db, &format!(
+            "SELECT count(*) AS n FROM object_markings om JOIN objects o ON o.id = om.object_id \
+             WHERE o.org_id = {org} AND o.properties ->> 'code' = 'C3'")).await[0]
+            .try_get("", "n").unwrap();
+        assert_eq!(marked, 1, "what the pipeline wrote carries the table's marking");
     })
     .await;
 }

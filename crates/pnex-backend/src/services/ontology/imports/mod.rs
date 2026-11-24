@@ -11,7 +11,9 @@
 //! writes need `can_write`, and the type write roles still apply (D188).
 
 pub mod diff;
+mod migrate;
 pub mod source;
+pub use migrate::run as migrate_to_pipelines;
 pub mod stop;
 mod sync;
 
@@ -2290,6 +2292,23 @@ pub fn pack_copy(
     pack: &pnex_core::ontology::api::Pack,
     p: &imp::PackImport,
 ) -> Option<pnex_core::pipeline::doc::Document> {
+    let after = p
+        .mapping
+        .after
+        .iter()
+        .filter_map(|k| pack.imports.iter().find(|i| i.mapping.key == *k))
+        .map(|i| i.name.clone())
+        .collect();
+    copy_of(p, &p.name, after)
+}
+
+/// The org pipeline of the import `p`: [`pack_copy`]'s document, a file
+/// import reading `table`, run after the pipelines named in `after`.
+fn copy_of(
+    p: &imp::PackImport,
+    table: &str,
+    after: Vec<String>,
+) -> Option<pnex_core::pipeline::doc::Document> {
     use pnex_core::pipeline::doc::{Document, ObjectsTarget, Sql, Step, Write};
     let m = &p.mapping;
     let objects = |from: String| {
@@ -2346,7 +2365,7 @@ pub fn pack_copy(
             steps: vec![
                 Step::Sql(Sql {
                     as_: "rows".into(),
-                    tables: [("source".to_string(), p.name.clone())].into(),
+                    tables: [("source".to_string(), table.to_string())].into(),
                     columns: Default::default(),
                     sql: "SELECT * FROM source".into(),
                 }),
@@ -2360,12 +2379,7 @@ pub fn pack_copy(
         },
     };
     doc.name = p.name.clone();
-    doc.after = m
-        .after
-        .iter()
-        .filter_map(|k| pack.imports.iter().find(|i| i.mapping.key == *k))
-        .map(|i| i.name.clone())
-        .collect();
+    doc.after = after;
     Some(doc)
 }
 
