@@ -203,6 +203,8 @@ pub fn pair_stats(
 /// `distance` links apart.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+// The ontology traversal `Hop` already owns that schema name.
+#[cfg_attr(feature = "openapi", schema(as = ChainHop))]
 pub struct Hop {
     pub cause: Signal,
     pub effect: Signal,

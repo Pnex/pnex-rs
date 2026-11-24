@@ -5747,7 +5747,7 @@
           },
           "hops": {
             "items": {
-              "$ref": "#/components/schemas/Hop"
+              "$ref": "#/components/schemas/ChainHop"
             },
             "type": "array"
           },
@@ -5765,6 +5765,44 @@
           "confidence",
           "placebo",
           "lift"
+        ],
+        "type": "object"
+      },
+      "ChainHop": {
+        "description": "One step of a chain: `cause` precedes `effect` by `gap` seconds,\n`distance` links apart.",
+        "properties": {
+          "cause": {
+            "$ref": "#/components/schemas/Signal"
+          },
+          "distance": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "effect": {
+            "$ref": "#/components/schemas/Signal"
+          },
+          "gap": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "pair": {
+            "description": "Index of the pair in the list given.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "score": {
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "cause",
+          "effect",
+          "gap",
+          "distance",
+          "pair",
+          "score"
         ],
         "type": "object"
       },
