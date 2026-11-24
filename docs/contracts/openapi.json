@@ -26103,6 +26103,13 @@
           "state": {
             "$ref": "#/components/schemas/PipelineRunState"
           },
+          "steps": {
+            "description": "Its steps, in order, with the rows each gave (D944). Read on one run only.",
+            "items": {
+              "$ref": "#/components/schemas/IngestStepView"
+            },
+            "type": "array"
+          },
           "version": {
             "description": "Version of the pipeline it runs.",
             "format": "int32",

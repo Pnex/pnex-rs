@@ -1015,21 +1015,18 @@ async fn an_import_does_not_bring_back_an_erased_address() {
         )
         .await;
         assert_eq!(st, 200);
-        let (st, l) = call(
+        let (st, import) = call(
             &server,
-            "GET",
+            "POST",
             "/api/v1/ontology/imports",
             &env.alice,
             org,
-            None,
+            Some(common::pack_import_body(
+                "Trade show or association list (file)",
+            )),
         )
         .await;
-        assert_eq!(st, 200, "{l}");
-        let imports = l["results"].as_array().unwrap();
-        let import = imports
-            .iter()
-            .find(|i| i["name"] == "Trade show or association list (file)")
-            .unwrap_or_else(|| panic!("{l}"));
+        assert_eq!(st, 201, "{import}");
         let id = import["id"].as_str().unwrap().to_string();
 
         let lee = object(
@@ -1144,15 +1141,9 @@ async fn a_network_export_makes_one_person_per_profile() {
             .unwrap();
         let (st, e) = call(&server, "POST", "/api/v1/ontology/packs/crm/install", &env.alice, org, None).await;
         assert_eq!(st, 200, "{e}");
-        let (st, l) = call(&server, "GET", "/api/v1/ontology/imports", &env.alice, org, None).await;
-        assert_eq!(st, 200, "{l}");
-        let import = l["results"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .find(|i| i["name"] == "Network profiles export (file)")
-            .unwrap_or_else(|| panic!("{l}"))
-            .clone();
+        let body = common::pack_import_body("Network profiles export (file)");
+        let (st, import) = call(&server, "POST", "/api/v1/ontology/imports", &env.alice, org, Some(body)).await;
+        assert_eq!(st, 201, "{import}");
         let id = import["id"].as_str().unwrap().to_string();
 
         let gone = "https://www.linkedin.com/in/lee-roe";

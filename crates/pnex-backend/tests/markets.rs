@@ -39,6 +39,7 @@ where
         move |server, ctx| async move {
             common::seed_catalogue(&ctx.db).await;
             let worker = common::spawn_pipeline_worker();
+            pnex_backend::services::pipelines::spawn(&ctx);
             f(server, ctx.clone(), token).await;
             worker.abort();
         },
@@ -74,12 +75,11 @@ impl Api<'_> {
         )
     }
 
-    async fn run(&self, name: &str) -> Value {
-        let (st, list) = self
-            .call("GET", "/api/v1/ontology/imports?limit=50", None)
-            .await;
+    /// The org pipeline a pack copied from its import `name` (D1050).
+    async fn pipeline(&self, name: &str) -> String {
+        let (st, list) = self.call("GET", "/api/v1/pipelines?limit=100", None).await;
         assert_eq!(st, 200, "{list}");
-        let id = list["results"]
+        list["results"]
             .as_array()
             .unwrap()
             .iter()
@@ -87,51 +87,39 @@ impl Api<'_> {
             .unwrap_or_else(|| panic!("{name}: {list}"))["id"]
             .as_str()
             .unwrap()
-            .to_string();
-        let (st, r) = self
-            .call("POST", &format!("/api/v1/ontology/imports/{id}/runs"), None)
-            .await;
-        assert_eq!(st, 202, "{r}");
-        let run = r["id"].as_str().unwrap().to_string();
-        for _ in 0..1200 {
-            let path = format!("/api/v1/ontology/imports/{id}/runs/{run}");
-            let (_, r) = self.call("GET", &path, None).await;
-            if r["run"]["state"] != "running" {
-                return r;
-            }
-            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-        }
-        panic!("{name} never settled");
+            .to_string()
+    }
+
+    async fn run(&self, name: &str) -> Value {
+        self.run_within(name, std::time::Duration::from_secs(120))
+            .await
+            .0
     }
 
     /// `run` with a long wait: a real download can take minutes.
     async fn run_long(&self, name: &str) -> (Value, std::time::Duration) {
+        self.run_within(name, std::time::Duration::from_secs(3600))
+            .await
+    }
+
+    async fn run_within(
+        &self,
+        name: &str,
+        max: std::time::Duration,
+    ) -> (Value, std::time::Duration) {
         let started = std::time::Instant::now();
-        let (_, list) = self
-            .call("GET", "/api/v1/ontology/imports?limit=50", None)
-            .await;
-        let id = list["results"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .find(|i| i["name"] == name)
-            .unwrap_or_else(|| panic!("{name}: {list}"))["id"]
-            .as_str()
-            .unwrap()
-            .to_string();
-        let (st, r) = self
-            .call("POST", &format!("/api/v1/ontology/imports/{id}/runs"), None)
-            .await;
+        let id = self.pipeline(name).await;
+        let runs = format!("/api/v1/pipelines/{id}/runs");
+        let (st, r) = self.call("POST", &runs, None).await;
         assert_eq!(st, 202, "{r}");
-        let run = r["id"].as_str().unwrap().to_string();
+        let path = format!("{runs}/{}", r["id"].as_str().unwrap());
         loop {
-            let path = format!("/api/v1/ontology/imports/{id}/runs/{run}");
             let (_, r) = self.call("GET", &path, None).await;
-            if r["run"]["state"] != "running" {
+            if r["state"] == "done" || r["state"] == "failed" {
                 return (r, started.elapsed());
             }
-            assert!(started.elapsed().as_secs() < 3600, "{name} never settled");
-            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            assert!(started.elapsed() < max, "{name} never settled: {r}");
+            tokio::time::sleep(std::time::Duration::from_millis(200)).await;
         }
     }
 
@@ -268,8 +256,8 @@ async fn primary_sources_keep_what_was_known_when() {
 
         // No declared contact: refused, nothing read.
         let r = api.run("Companies followed (SEC)").await;
-        assert_eq!(r["run"]["state"], "failed", "{r}");
-        assert_eq!(r["run"]["state_code"], "import-contact-required", "{r}");
+        assert_eq!(r["state"], "failed", "{r}");
+        assert_eq!(r["code"], "import-contact-required", "{r}");
 
         api.settings(json!({
             "source_contact": CONTACT, "covered_tickers": "acme", "macro_series": "TESTCPI"
@@ -292,13 +280,13 @@ async fn primary_sources_keep_what_was_known_when() {
 
         // Only the followed ticker becomes a company.
         let r = api.run("Companies followed (SEC)").await;
-        assert_eq!(r["run"]["state"], "applied", "{r}");
+        assert_eq!(r["state"], "done", "{r}");
         let acme = object_id(&db, org, "organization", "cik", "0000000042").await.expect("followed");
         assert!(object_id(&db, org, "organization", "cik", "0000000043").await.is_none());
 
         // Its result filing, with the document address; the insider form stays out.
         let r = api.run("Filings (SEC EDGAR)").await;
-        assert_eq!(r["run"]["state"], "applied", "{r}");
+        assert_eq!(r["state"], "done", "{r}");
         let filing = object_id(&db, org, "filing", "accession", "0000000042-26-000001").await.expect("10-K");
         assert!(object_id(&db, org, "filing", "accession", "0000000042-26-000002").await.is_none());
         let (_, links) = api.call("GET", &format!("/api/v1/ontology/objects/{filing}/links"), None).await;
@@ -307,7 +295,7 @@ async fn primary_sources_keep_what_was_known_when() {
         // A figure restated in a later filing: each date reads its own truth.
         for _ in 0..2 {
             let r = api.run("Reported figures (SEC EDGAR)").await;
-            assert_eq!(r["run"]["state"], "applied", "{r}");
+            assert_eq!(r["state"], "done", "{r}");
         }
         let value = |rows: Vec<Value>| rows[0]["value"].as_f64();
         assert_eq!(value(api.observations(&acme, "").await), Some(120.0));
@@ -331,7 +319,7 @@ async fn primary_sources_keep_what_was_known_when() {
         // A macro series has no publication date: flagged on first sight,
         // kept out of a past-dated reading; its revision is a real one.
         let r = api.run("Macroeconomic series (FRED)").await;
-        assert_eq!(r["run"]["state"], "applied", "{r}");
+        assert_eq!(r["state"], "done", "{r}");
         let series = object_id(&db, org, "macro_series", "code", "TESTCPI").await.expect("created");
         let first = api.observations(&series, "").await;
         assert_eq!(first[0]["backfilled"], true, "{first:?}");
@@ -499,7 +487,7 @@ async fn prices_with_a_vault_key_and_the_reaction_to_a_filing() {
 
         // No key in the vault: refused, with a code the UI can explain.
         let r = api.run("Benchmark prices (Tiingo)").await;
-        assert_eq!(r["run"]["state_code"], "import-key-required", "{r}");
+        assert_eq!(r["code"], "import-key-required", "{r}");
         let (st, r) = api
             .call("POST", "/api/v1/secrets", Some(json!({"name": "markets_tiingo_key", "value": "k-123"})))
             .await;
@@ -507,7 +495,7 @@ async fn prices_with_a_vault_key_and_the_reaction_to_a_filing() {
 
         for name in ["Companies followed (SEC)", "Filings (SEC EDGAR)", "Benchmark prices (Tiingo)", "Daily prices (Tiingo)"] {
             let r = api.run(name).await;
-            assert_eq!(r["run"]["state"], "applied", "{name}: {r}");
+            assert_eq!(r["state"], "done", "{name}: {r}");
         }
         let calls = seen.lock().unwrap().clone();
         assert!(calls.iter().all(|(a, _)| a == "Token k-123"), "{calls:?}");
@@ -520,7 +508,7 @@ async fn prices_with_a_vault_key_and_the_reaction_to_a_filing() {
         // The watched tickers, then the search for abnormal sessions (D946).
         for name in ["Watched prices (Tiingo)", "Abnormal sessions"] {
             let r = api.run(name).await;
-            assert_eq!(r["run"]["state"], "applied", "{name}: {r}");
+            assert_eq!(r["state"], "done", "{name}: {r}");
         }
         // D810: the volume spike is a move of measure `volume`, the only one.
         let spike = format!("move:ACME:{}:volume", price_day(300));
@@ -649,19 +637,19 @@ async fn prices_with_a_vault_key_and_the_reaction_to_a_filing() {
 
         // European sources: the ECB code becomes a path, a report its filing.
         let r = api.run("European series (ECB)").await;
-        assert_eq!(r["run"]["state"], "applied", "{r}");
+        assert_eq!(r["state"], "done", "{r}");
         let series = object_id(&db, org, "macro_series", "code", "FM.D.U2.EUR").await.expect("series");
         assert_eq!(api.observations(&series, "metric=FM.D.U2.EUR").await[0]["period_end"], "2026-09-01");
         // D880: a BIS answer names no series, the queried key is its metric.
         let r = api.run("Central bank series (BIS)").await;
-        assert_eq!(r["run"]["state"], "applied", "{r}");
+        assert_eq!(r["state"], "done", "{r}");
         let rate = object_id(&db, org, "macro_series", "code", "WS_CBPOL.D.JP").await.expect("BIS series");
         let rates = api.observations(&rate, "metric=WS_CBPOL.D.JP").await;
         assert_eq!(rates.len(), 100, "{rates:?}");
         assert_eq!(rates[0]["period_end"], "2026-09-08");
         // D881, D888: the cut is a market move, the only one of the series.
         let r = api.run("Abnormal sessions").await;
-        assert_eq!(r["run"]["state"], "applied", "{r}");
+        assert_eq!(r["state"], "done", "{r}");
         let cut = object_id(&db, org, "market_event", "ref", "move:WS_CBPOL.D.JP:2026-08-20:diff").await;
         assert!(cut.is_some(), "the policy rate cut is a move");
         let moves = count(
@@ -674,7 +662,7 @@ async fn prices_with_a_vault_key_and_the_reaction_to_a_filing() {
         .await;
         assert_eq!(moves, 1);
         let r = api.run("European reports (ESEF)").await;
-        assert_eq!(r["run"]["state"], "applied", "{r}");
+        assert_eq!(r["state"], "done", "{r}");
         let f = object_id(&db, org, "filing", "accession", "LEITEST-2025").await;
         assert!(f.is_some(), "{r}");
         assert!(object_id(&db, org, "organization", "lei", "LEITEST").await.is_some());
@@ -717,8 +705,8 @@ async fn markets_real_sources() {
         ] {
             let started = std::time::Instant::now();
             let r = api.run(name).await;
-            println!("{name}: {} in {:?}: {}", r["run"]["state"], started.elapsed(), r["run"]["counts"]);
-            assert_eq!(r["run"]["state"], "applied", "{r}");
+            println!("{name}: {} in {:?}: {}", r["state"], started.elapsed(), r["args"]);
+            assert_eq!(r["state"], "done", "{r}");
         }
         let nvda = object_id(&db, org, "organization", "ticker", "NVDA").await.expect("NVDA");
         let now = api.observations(&nvda, "metric=RevenueFromContractWithCustomerExcludingAssessedTax").await;
@@ -901,7 +889,7 @@ async fn abnormal_sessions_and_their_window() {
         let read = || async {
             for name in ["Watched series (FRED)", "Abnormal sessions"] {
                 let r = api.run(name).await;
-                assert_eq!(r["run"]["state"], "applied", "{name}: {r}");
+                assert_eq!(r["state"], "done", "{name}: {r}");
             }
         };
         // First reading: the old crash is found, caught up from history.
@@ -1241,7 +1229,7 @@ async fn gdelt_leads_come_from_the_events_pipeline() {
 
         // Nothing watched: nothing read.
         let r = api.run("World events (GDELT)").await;
-        assert_eq!(r["run"]["state"], "applied", "{r}");
+        assert_eq!(r["state"], "done", "{r}");
         assert_eq!(
             asked.load(Ordering::SeqCst),
             0,
@@ -1257,7 +1245,7 @@ async fn gdelt_leads_come_from_the_events_pipeline() {
             .await;
         assert_eq!(st, 200, "{r}");
         let r = api.run("World events (GDELT)").await;
-        assert_eq!(r["run"]["state"], "applied", "{r}");
+        assert_eq!(r["state"], "done", "{r}");
         let iso = slice.format("%Y-%m-%d");
         let id = object_id(&db, org, "geo_event", "ref", &format!("gdelt:UA:19:{iso}"))
             .await
@@ -1336,7 +1324,7 @@ async fn verified_events_confirm_leads_and_reach_the_map() {
         // The GED download needs no token: the history of the watched
         // country, dated by its first report.
         let r = api.run("Verified events history (UCDP GED download)").await;
-        assert_eq!(r["run"]["state"], "applied", "{r}");
+        assert_eq!(r["state"], "done", "{r}");
         let old = object_id(&db, org, "geo_event", "ref", "ucdp:UA:attack:2015-02-01")
             .await
             .expect("2015 history");
@@ -1351,7 +1339,7 @@ async fn verified_events_confirm_leads_and_reach_the_map() {
 
         // No token in the vault: refused, nothing sent.
         let r = api.run("Verified events (UCDP)").await;
-        assert_eq!(r["run"]["state_code"], "import-key-required", "{r}");
+        assert_eq!(r["code"], "import-key-required", "{r}");
         assert!(seen.lock().unwrap().is_empty());
 
         // A GDELT lead of the day before, unconfirmed.
@@ -1385,7 +1373,7 @@ async fn verified_events_confirm_leads_and_reach_the_map() {
             assert!(st == 200 || st == 201, "{r}");
         }
         let r = api.run("Verified events (UCDP)").await;
-        assert_eq!(r["run"]["state"], "applied", "{r}");
+        assert_eq!(r["state"], "done", "{r}");
         // Only the watched country, confirmed, and the lead with it.
         let ucdp_ref = format!("ucdp:UA:armed_conflict:{day}");
         let ucdp = object_id(&db, org, "geo_event", "ref", &ucdp_ref)
@@ -1408,7 +1396,7 @@ async fn verified_events_confirm_leads_and_reach_the_map() {
             .await;
         assert_eq!(o["properties"]["status"], "unconfirmed", "{o}");
         let r = api.run("World event confirmations").await;
-        assert_eq!(r["run"]["state"], "applied", "{r}");
+        assert_eq!(r["state"], "done", "{r}");
         let (_, o) = api
             .call("GET", &format!("/api/v1/ontology/objects/{lead}"), None)
             .await;
@@ -1418,7 +1406,7 @@ async fn verified_events_confirm_leads_and_reach_the_map() {
         assert_eq!(o["properties"]["kind"], "attack", "the other properties stay");
 
         let r = api.run("Verified events (ACLED, your account)").await;
-        assert_eq!(r["run"]["state"], "applied", "{r}");
+        assert_eq!(r["state"], "done", "{r}");
         assert!(
             object_id(&db, org, "geo_event", "ref", &format!("acled:UA:attack:{day}"))
                 .await
@@ -1512,8 +1500,8 @@ async fn world_events_real_sources() {
             "Verified events this year (UCDP Candidate download)",
         ] {
             let (r, took) = api.run_long(name).await;
-            println!("{name}: {} in {took:?}: {}", r["run"]["state"], r["run"]["counts"]);
-            assert_eq!(r["run"]["state"], "applied", "{r}");
+            println!("{name}: {} in {took:?}: {}", r["state"], r["args"]);
+            assert_eq!(r["state"], "done", "{r}");
         }
         let moves = count(format!(
             "SELECT count(*) AS n FROM objects WHERE org_id = {org} AND type_key = 'market_event'"
@@ -1629,11 +1617,11 @@ async fn world_events_volume() {
             let (r, took) = api.run_long(name).await;
             println!(
                 "{name}: {} in {took:?}: {} — geo_event now {}",
-                r["run"]["state"],
-                r["run"]["counts"],
+                r["state"],
+                r["args"],
                 size("").await
             );
-            assert_eq!(r["run"]["state"], "applied", "{r}");
+            assert_eq!(r["state"], "done", "{r}");
         }
         for (label, what) in [
             ("leads", "AND properties ->> 'source_kind' = 'gdelt'"),
@@ -1646,8 +1634,8 @@ async fn world_events_volume() {
         }
         let started = std::time::Instant::now();
         let (r, _) = api.run_long("World event confirmations").await;
-        assert_eq!(r["run"]["state"], "applied", "{r}");
-        println!("the confirmation import: {} in {:?}", r["run"]["counts"], started.elapsed());
+        assert_eq!(r["state"], "done", "{r}");
+        println!("the confirmation import: {} in {:?}", r["args"], started.elapsed());
         let sizes = db
             .query_one_raw(Statement::from_string(
                 sea_orm::DatabaseBackend::Postgres,
@@ -1786,7 +1774,7 @@ async fn exhibit_21_subsidiaries_become_organizations() {
         pnex_backend::services::pipeline_engine::store::route_for_tests("www.sec.gov", &base);
         for _ in 0..2 {
             let r = api.run("Declared subsidiaries (SEC Exhibit 21)").await;
-            assert_eq!(r["run"]["state"], "applied", "{r}");
+            assert_eq!(r["state"], "done", "{r}");
         }
         let nl = object_id(&db, org, "organization", "declared_key", "NL|ACME WIDGETS B V")
             .await
@@ -1840,7 +1828,7 @@ async fn exhibit_21_subsidiaries_become_organizations() {
             .await;
         assert_eq!(st, 201, "{r}");
         let r = api.run("Declared subsidiaries (SEC Exhibit 21)").await;
-        assert_eq!(r["run"]["state"], "applied", "{r}");
+        assert_eq!(r["state"], "done", "{r}");
         let uk = object_id(&db, org, "organization", "declared_key", "GB|ACME WIDGETS UK LIMITED")
             .await
             .expect("British subsidiary");
@@ -1987,20 +1975,20 @@ async fn fred_first_releases_date_the_moves() {
         let name = "Watched series first releases (ALFRED)";
 
         let r = api.run(name).await;
-        assert_eq!(r["run"]["state_code"], "import-key-required", "{r}");
+        assert_eq!(r["code"], "import-key-required", "{r}");
         assert!(seen.lock().unwrap().is_empty(), "nothing sent without a key");
         let (st, r) = api
             .call("POST", "/api/v1/secrets", Some(json!({"name": "markets_fred_key", "value": "k-fred"})))
             .await;
         assert_eq!(st, 201, "{r}");
         let r = api.run(name).await;
-        assert_eq!(r["run"]["state"], "applied", "{r}");
+        assert_eq!(r["state"], "done", "{r}");
         let q = seen.lock().unwrap().last().cloned().unwrap();
         assert!(q.contains("series_id=TESTIDX") && q.ends_with("&api_key=k-fred"), "{q}");
         let stored: Value = db
             .query_one_raw(Statement::from_string(
                 sea_orm::DatabaseBackend::Postgres,
-                format!("SELECT coalesce(source_url, '') || mapping_yaml AS u FROM object_imports WHERE org_id = {org} AND name = '{name}'"),
+                format!("SELECT document AS u FROM pipelines WHERE org_id = {org} AND name = '{name}'"),
             ))
             .await
             .unwrap()
@@ -2012,7 +2000,7 @@ async fn fred_first_releases_date_the_moves() {
 
         // The search reads the first releases' table: no FRED table yet.
         let r = api.run("Abnormal sessions").await;
-        assert_eq!(r["run"]["state"], "applied", "{r}");
+        assert_eq!(r["state"], "done", "{r}");
         let day = move_day(120).to_string();
         let ev = object_id(&db, org, "market_event", "ref", &format!("move:TESTIDX:{day}:log_return"))
             .await
@@ -2586,7 +2574,7 @@ END:VCALENDAR\r\n".to_string())
             .unwrap();
         }
         let r = api.run("European statistics (Eurostat)").await;
-        assert_eq!(r["run"]["state"], "applied", "{r}");
+        assert_eq!(r["state"], "done", "{r}");
         let energy = object_id(&db, org, "macro_series", "code", "PRC_HICP_MANR.M.RCH_A.NRG.EA").await.expect("series");
         let v = api.observations(&energy, "metric=PRC_HICP_MANR.M.RCH_A.NRG.EA").await;
         assert_eq!(v.len(), 2, "{v:?}");
@@ -2594,30 +2582,30 @@ END:VCALENDAR\r\n".to_string())
 
         // EIA: with the org's key, sent at request time only.
         let r = api.run("Oil and gas statistics (EIA)").await;
-        assert_eq!(r["run"]["state_code"], "import-key-required", "{r}");
+        assert_eq!(r["code"], "import-key-required", "{r}");
         let (st, r) = api
             .call("POST", "/api/v1/secrets", Some(json!({"name": "markets_eia_key", "value": "k-eia"})))
             .await;
         assert_eq!(st, 201, "{r}");
         let r = api.run("Oil and gas statistics (EIA)").await;
-        assert_eq!(r["run"]["state"], "applied", "{r}");
+        assert_eq!(r["state"], "done", "{r}");
         let crude = object_id(&db, org, "macro_series", "code", "PET.WCESTUS1.W").await.expect("EIA series");
         let stocks = api.observations(&crude, "metric=PET.WCESTUS1.W").await;
         assert_eq!(stocks[0]["value"], 421345.0, "{stocks:?}");
         assert!(stocks[0]["known_at"].as_str().unwrap().starts_with("2026-11-04"), "{stocks:?}");
         let stored = count(
             &db,
-            format!("SELECT count(*) AS n FROM object_imports WHERE org_id = {org} AND source_url LIKE '%k-eia%'"),
+            format!("SELECT count(*) AS n FROM pipelines WHERE org_id = {org} AND document LIKE '%k-eia%'"),
         )
         .await;
         assert_eq!(stored, 0, "the key is never stored with the URL");
 
         // CFTC COT: positions of Tuesday, known on Friday (no look-ahead).
         let r = api.run("Positions of traders (CFTC COT)").await;
-        assert_eq!(r["run"]["state"], "applied", "{r}");
+        assert_eq!(r["state"], "done", "{r}");
         // The run history shows the pipeline's steps (pipelines.md D944).
         let steps: Vec<&str> = r["steps"].as_array().unwrap().iter().filter_map(|s| s["step"].as_str()).collect();
-        assert_eq!(steps, ["enumerate", "fetch", "read", "sql", "write"], "{r}");
+        assert_eq!(steps, ["enumerate", "fetch", "read", "sql", "write", "write"], "{r}");
         let gold = object_id(&db, org, "macro_series", "code", "088691").await.expect("COT series");
         let net = api.observations(&gold, "metric=noncommercial_net").await;
         assert_eq!(net[0]["value"], 179548.0, "{net:?}");
@@ -2626,7 +2614,7 @@ END:VCALENDAR\r\n".to_string())
         assert!(before.is_empty(), "not known before its release: {before:?}");
 
         let r = api.run("Shipping chokepoints (IMF PortWatch)").await;
-        assert_eq!(r["run"]["state"], "applied", "{r}");
+        assert_eq!(r["state"], "done", "{r}");
         let q = asked.lock().unwrap().clone();
         assert!(q[0].contains("chokepoint6"), "PortWatch ids are lower-case: {q:?}");
         assert!(q[0].contains("orderByFields=date+DESC"), "the latest days first: {q:?}");
@@ -2699,7 +2687,7 @@ async fn open_prices_give_one_series_per_shop() {
         .await
         .unwrap();
         let r = api.run("Product prices (Open Prices)").await;
-        assert_eq!(r["run"]["state"], "applied", "{r}");
+        assert_eq!(r["state"], "done", "{r}");
         let (q, ua) = asked.lock().unwrap()[0].clone();
         assert!(q.contains("product_code=3017620422003") && q.contains("order_by=-date"), "{q}");
         assert!(ua.contains("test@example.com"), "the declared contact: {ua}");
@@ -2949,8 +2937,8 @@ async fn gold_real_sources() {
         ] {
             let started = std::time::Instant::now();
             let r = api.run(name).await;
-            println!("{name}: {} in {:?}: {}", r["run"]["state"], started.elapsed(), r["run"]["counts"]);
-            assert_eq!(r["run"]["state"], "applied", "{r}");
+            println!("{name}: {} in {:?}: {}", r["state"], started.elapsed(), r["args"]);
+            assert_eq!(r["state"], "done", "{r}");
         }
         let per_metric = db
             .query_all_raw(Statement::from_string(
@@ -3971,7 +3959,7 @@ async fn prediction_markets_collect_resolve_and_feed_the_model() {
         let import = || async {
             tokio::time::sleep(std::time::Duration::from_millis(1_100)).await;
             let r = api.run("Prediction markets").await;
-            assert_eq!(r["run"]["state"], "applied", "{r}");
+            assert_eq!(r["state"], "done", "{r}");
         };
         import().await;
         let market = object_id(&ctx.db, org, "prediction_market", "condition_id", C).await.expect("market recorded");
@@ -4085,7 +4073,7 @@ async fn prediction_markets_collect_resolve_and_feed_the_model() {
         route_for_tests("gamma-api.polymarket.com", "http://127.0.0.1:1");
         let before = calls.load(Ordering::SeqCst);
         let r = api.run("Prediction markets").await;
-        assert_eq!(r["run"]["state"], "applied", "{r}");
+        assert_eq!(r["state"], "done", "{r}");
         assert_eq!(calls.load(Ordering::SeqCst), before + 1, "the market was read through the proxy");
     })
     .await;

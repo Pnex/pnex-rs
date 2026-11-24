@@ -93,12 +93,13 @@ pub(crate) fn pipeline_node(id: Uuid, name: String, doc: Option<&Document>) -> G
     GraphNode {
         kind: BuildTargetKind::Pipeline,
         id: id.to_string(),
+        key: Some(name.clone()),
         name,
         runnable: doc.is_some(),
         reads,
         writes,
-        after: Vec::new(),
-        key: None,
+        // An org's pipeline names the org's pipelines it runs after (D1050).
+        after: doc.map(|d| d.after.clone()).unwrap_or_default(),
     }
 }
 

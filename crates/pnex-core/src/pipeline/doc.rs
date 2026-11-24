@@ -48,7 +48,8 @@ pub struct Document {
     /// whose table quota a platform administrator set.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub large: bool,
-    /// Keys of pipelines it runs after, besides the tables it reads (D946).
+    /// Pipelines it runs after, besides the tables it reads (D946): keys of
+    /// its pack's, or names of the org's for an org's pipeline (D1050).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub after: Vec<String>,
     /// `<pack>.<key>` of settings that must hold a value: while one is
@@ -1121,7 +1122,8 @@ impl Document {
                 bad(format!("hosts.{i}"), "invalid");
             }
         }
-        if self.after.len() > AFTER_MAX || self.after.iter().any(|a| !valid_name(a)) {
+        // A pack's key, or the name of an org's pipeline (D1050).
+        if self.after.len() > AFTER_MAX || self.after.iter().any(|a| !valid_table(a)) {
             bad("after".into(), "invalid");
         }
         if self.requires.len() > 8
@@ -1280,10 +1282,7 @@ impl Document {
                 token: token.into(),
             })
         };
-        for (path, set) in [
-            ("schedule", self.schedule.is_some()),
-            ("after", !self.after.is_empty()),
-        ] {
+        for (path, set) in [("schedule", self.schedule.is_some())] {
             if set {
                 bad(path.into(), "org_unsupported");
             }

@@ -261,6 +261,9 @@ pub struct PipelineRun {
     pub started_at: Option<String>,
     #[cfg_attr(feature = "openapi", schema(format = "date-time"))]
     pub finished_at: Option<String>,
+    /// Its steps, in order, with the rows each gave (D944). Read on one run only.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub steps: Vec<crate::ingest::IngestStepView>,
 }
 
 /// What a pipeline document reads and writes, once checked and tested.
@@ -380,9 +383,10 @@ pub struct GraphNode {
     pub runnable: bool,
     pub reads: Vec<String>,
     pub writes: Vec<String>,
-    /// Keys of the imports it runs after. Empty on a pipeline.
+    /// Keys of what it runs after: an import's mapping keys, a pipeline's
+    /// names of the org's pipelines.
     pub after: Vec<String>,
-    /// Mapping key of an import.
+    /// Mapping key of an import, name of a pipeline.
     pub key: Option<String>,
 }
 

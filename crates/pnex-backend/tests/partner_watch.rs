@@ -47,6 +47,7 @@ where
         move |server, ctx| async move {
             common::seed_catalogue(&ctx.db).await;
             let worker = common::spawn_pipeline_worker();
+            pnex_backend::services::pipelines::spawn(&ctx);
             f(
                 server,
                 Env {
@@ -174,9 +175,10 @@ async fn natural_keys_extensions_and_hierarchy() {
             6
         );
         assert_eq!(count(format!("SELECT count(*)::bigint AS n FROM flows WHERE org_id = {org}")).await, 6);
-        // SIRENE, GLEIF ×2, Wikidata, the partner sheet, the five France
-        // Compétences imports, and the network's SIRENE, DGEFP and CPF ×2.
-        assert_eq!(count(format!("SELECT count(*)::bigint AS n FROM object_imports WHERE org_id = {org}")).await, 14);
+        // Copied into pipelines (D1050): SIRENE, GLEIF ×2, Wikidata, the partner
+        // sheet, the five France Compétences imports, and the network's SIRENE,
+        // DGEFP and CPF ×2.
+        assert_eq!(count(format!("SELECT count(*)::bigint AS n FROM pipelines WHERE org_id = {org} AND pack IS NOT NULL")).await, 14);
 
         // D302: one live organization per SIREN.
         let (st, a) = object(&server, &env.alice, org, "organization", "ACME", json!({"siren": "123456789"})).await;
@@ -306,12 +308,8 @@ async fn group_links_from_gleif_and_wikidata() {
         let run = |name: &'static str| {
             let (server, token) = (&server, env.alice.clone());
             async move {
-                let (id, _) = import_named(server, &token, org, name).await;
-                let (st, r) = call(server, "POST", &format!("/api/v1/ontology/imports/{id}/runs"), &token, org, None).await;
-                assert_eq!(st, 202, "{r}");
-                let r = settle_within(server, &token, org, &id, r["id"].as_str().unwrap(), 300).await;
-                assert_eq!(r["run"]["state"], "applied", "{name}: {r}");
-                id
+                let r = run_pipeline(server, &token, org, name, 300).await;
+                assert_eq!(r["state"], "done", "{name}: {r}");
             }
         };
         let subsidiaries = |id: &str| {
@@ -448,35 +446,17 @@ async fn target_list_enters_new_accounts_as_targets() {
         .await;
         assert_eq!(st, 201, "{c}");
 
-        let (id, _) = import_named(
+        let r = run_pipeline(
             &server,
             &env.alice,
             org,
             "Target list (company register search)",
-        )
-        .await;
-        let (st, r) = call(
-            &server,
-            "POST",
-            &format!("/api/v1/ontology/imports/{id}/runs"),
-            &env.alice,
-            org,
-            None,
-        )
-        .await;
-        assert_eq!(st, 202, "{r}");
-        let r = settle_within(
-            &server,
-            &env.alice,
-            org,
-            &id,
-            r["id"].as_str().unwrap(),
             300,
         )
         .await;
         assert_eq!(
-            (r["run"]["state"].as_str(), r["run"]["rows"].as_u64()),
-            (Some("applied"), Some(3)),
+            (r["state"].as_str(), rows_of(&r, "write")),
+            (Some("done"), Some(3)),
             "{r}"
         );
         let client = props_of(&env.db, org, "organization", "siren", "429853351").await;
@@ -808,12 +788,9 @@ async fn legal_announcements_become_signals() {
         let (_, meca) = object(&server, &env.alice, org, "organization", "MECAWORKS FRANCE", json!({"siren": "429853351", "account_status": "customer"})).await;
         object(&server, &env.alice, org, "organization", "Inconnue", json!({"siren": "999999999"})).await;  // english-guard: allow (French source data)
 
-        let (id, _) = import_named(&server, &env.alice, org, "Legal announcements (BODACC)").await;
         let run = || async {
-            let (st, r) = call(&server, "POST", &format!("/api/v1/ontology/imports/{id}/runs"), &env.alice, org, None).await;
-            assert_eq!(st, 202, "{r}");
-            let r = settle_within(&server, &env.alice, org, &id, r["id"].as_str().unwrap(), 300).await;
-            assert_eq!(r["run"]["state"], "applied", "{r}");
+            let r = run_pipeline(&server, &env.alice, org, "Legal announcements (BODACC)", 300).await;
+            assert_eq!(r["state"], "done", "{r}");
         };
         run().await;
         // Followed accounts only: the unknown company is not asked about.
@@ -876,11 +853,8 @@ async fn the_sites_of_a_followed_account_come_from_a_search_by_name() {
             json!({"siren": "429853351", "account_status": "customer"})).await;
         object(&server, &env.alice, org, "organization", "Unfollowed", json!({"siren": "999999999"})).await;
 
-        let (id, _) = import_named(&server, &env.alice, org, "Establishments (company register)").await;
-        let (st, r) = call(&server, "POST", &format!("/api/v1/ontology/imports/{id}/runs"), &env.alice, org, None).await;
-        assert_eq!(st, 202, "{r}");
-        let r = settle_within(&server, &env.alice, org, &id, r["id"].as_str().unwrap(), 300).await;
-        assert_eq!(r["run"]["state"], "applied", "{r}");
+        let r = run_pipeline(&server, &env.alice, org, "Establishments (company register)", 300).await;
+        assert_eq!(r["state"], "done", "{r}");
 
         assert_eq!(*asked.lock().unwrap(), vec!["MECAWORKS FRANCE".to_string()], "the name, of followed accounts only");
         let open = props_of(&env.db, org, "map_pin", "siret", "42985335100022").await;
@@ -1304,36 +1278,32 @@ async fn imports_preview_apply_and_close_missing_links() {
     .await;
 }
 
-/// partners.md D424: an upgrade rewrites the pack's imports the org
-/// left as is, keeps the edited ones (named, with what differs), and taking
-/// the pack's version keeps the org's schedule.
+/// partners.md D424: an upgrade rewrites the pipelines the pack copied from
+/// its imports (D1050) that the org left as is, keeps the edited ones (named,
+/// with what differs), and taking the pack's version keeps the org's schedule.
 #[tokio::test]
 #[serial]
-async fn pack_upgrade_follows_untouched_imports() {
+async fn pack_upgrade_follows_untouched_copies() {
     with_app(|server, env| async move {
         let org = personal_org(&server, &env.alice).await;
         install(&server, &env.alice, org, "quali_watch").await;
         let (rs, rncp) = ("CPF catalogue · RS certifications", "CPF catalogue · RNCP certifications");
         let sql = |s: String| { let db = env.db.clone(); async move { db.execute_unprepared(&s).await.unwrap(); } };
         // RS as an older pack wrote it; RNCP edited by the org, scheduled.
-        sql(format!("UPDATE object_imports SET mapping_yaml = replace(mapping_yaml, 'offers (RS)', 'old offers'), \
-                     pack_written = jsonb_set(pack_written, '{{written,mapping,name}}', '\"CPF old offers\"') \
+        sql(format!("UPDATE pipelines SET document = replace(document, 'RS certifications', 'old RS'), \
+                     pack_written = jsonb_build_object('written', replace(pack_written ->> 'written', 'RS certifications', 'old RS')) \
                      WHERE org_id = {org} AND name = '{rs}'")).await;
-        sql(format!("UPDATE object_imports SET mapping_yaml = replace(mapping_yaml, 'offers (RNCP)', 'my offers'), \
+        sql(format!("UPDATE pipelines SET document = replace(document, 'RNCP certifications', 'my RNCP'), \
                      recurrence = '{{\"start\": \"2026-01-01\", \"every\": 1, \"unit\": \"week\"}}' \
                      WHERE org_id = {org} AND name = '{rncp}'")).await;
         let mapping_of = |name: &'static str| {
             let db = env.db.clone();
             async move {
                 let r = db.query_one_raw(sea_orm::Statement::from_string(sea_orm::DatabaseBackend::Postgres,
-                    format!("SELECT mapping_yaml, recurrence, version FROM object_imports WHERE org_id = {org} AND name = '{name}'"))).await.unwrap().unwrap();
-                (r.try_get::<String>("", "mapping_yaml").unwrap(), r.try_get::<Option<Value>>("", "recurrence").unwrap(), r.try_get::<i32>("", "version").unwrap())
+                    format!("SELECT document, recurrence, version FROM pipelines WHERE org_id = {org} AND name = '{name}'"))).await.unwrap().unwrap();
+                (r.try_get::<String>("", "document").unwrap(), r.try_get::<Option<Value>>("", "recurrence").unwrap(), r.try_get::<i32>("", "version").unwrap())
             }
         };
-        // An import from before `pack_written`: the pack's at the upgrade.
-        let dgefp = "DGEFP · training organizations (network)";
-        sql(format!("UPDATE object_imports SET mapping_yaml = replace(mapping_yaml, 'organizations (DGEFP)', 'orgs old'), \
-                     pack_written = NULL WHERE org_id = {org} AND name = '{dgefp}'")).await;
         let (_, _, rs_version) = mapping_of(rs).await;
         // D359: the pack's retired ingestion flow, as 1.4.0 left it, and a
         // flow of the org holding the retired node.
@@ -1356,12 +1326,11 @@ async fn pack_upgrade_follows_untouched_imports() {
         sql(format!("UPDATE packs SET version = '1.0.0' WHERE org_id = {org} AND key = 'quali_watch'")).await;
         let (st, up) = call(&server, "POST", "/api/v1/ontology/packs/quali_watch/install", &env.alice, org, None).await;
         assert_eq!(st, 200, "{up}");
-        assert_eq!((up["kept"].clone(), up["differs"].clone()), (json!([rncp]), json!({rncp: ["mapping.name"]})), "{up}");
+        assert_eq!((up["kept"].clone(), up["differs"].clone()), (json!([rncp]), json!({rncp: ["name"]})), "{up}");
         let (yaml, _, v) = mapping_of(rs).await;
-        assert!(yaml.contains("offers (RS)") && v == rs_version + 1, "untouched import upgraded: {yaml}");
-        assert!(mapping_of(dgefp).await.0.contains("organizations (DGEFP)"), "legacy import upgraded");
+        assert!(yaml.contains("RS certifications") && v == rs_version + 1, "untouched copy upgraded: {yaml}");
         let (yaml, recurrence, _) = mapping_of(rncp).await;
-        assert!(yaml.contains("my offers"), "edited import kept");
+        assert!(yaml.contains("my RNCP"), "edited copy kept");
         let left = |id: i64| { let db = env.db.clone(); async move {
             db.query_one_raw(sea_orm::Statement::from_string(sea_orm::DatabaseBackend::Postgres,
                 format!("SELECT 1 AS x FROM flows WHERE id = {id}"))).await.unwrap().is_some() } };
@@ -1371,7 +1340,7 @@ async fn pack_upgrade_follows_untouched_imports() {
         let (st, p) = call(&server, "POST", "/api/v1/ontology/packs/quali_watch/take", &env.alice, org, Some(json!({"names": [rncp]}))).await;
         assert_eq!((st, p.get("kept").cloned()), (200, None), "{p}");
         let (yaml, kept_recurrence, _) = mapping_of(rncp).await;
-        assert!(yaml.contains("offers (RNCP)"), "the pack's version: {yaml}");
+        assert!(yaml.contains("RNCP certifications"), "the pack's version: {yaml}");
         assert_eq!(kept_recurrence, recurrence);
         assert!(recurrence.is_some());
     })
@@ -1488,11 +1457,12 @@ async fn imports_apply_thousands_of_records_quickly() {
     .await;
 }
 
-/// An import with its own steps runs them on "Run now" (pipelines.md
-/// D344): no flow, the zip fetched, extracted, filtered, then applied.
+/// A pack import copied into an org pipeline runs its steps on "Run now"
+/// (pipelines.md D344, D1050): the zip fetched, extracted, filtered, then
+/// written as a Table and as objects.
 #[tokio::test]
 #[serial]
-async fn import_runs_its_own_steps() {
+async fn pack_pipeline_copy_runs_its_own_steps() {
     with_app(|server, env| async move {
         use sea_orm::Statement;
         let org = personal_org(&server, &env.alice).await;
@@ -1501,80 +1471,219 @@ async fn import_runs_its_own_steps() {
         let zip = std::sync::Arc::new(std::sync::Mutex::new(fc_zip(&fc_partners(&[]))));
         let base = mock_datagouv(zip.clone()).await;
         unsafe { std::env::set_var("PNEX_DATAGOUV_API_URL", format!("{base}/api/1")) };
-        let q = |sql: String| env.db.query_one_raw(Statement::from_string(sea_orm::DatabaseBackend::Postgres, sql));
+        let q = |sql: String| {
+            env.db.query_one_raw(Statement::from_string(
+                sea_orm::DatabaseBackend::Postgres,
+                sql,
+            ))
+        };
 
-        // A file import without steps has nothing to fetch, and nothing to
-        // schedule.
-        let (sheet_id, _) = import_named(&server, &env.alice, org, "Partner network (sheet)").await;
-        let (_, sheet) = call(&server, "GET", &format!("/api/v1/ontology/imports/{sheet_id}"), &env.alice, org, None).await;
-        let (st, e) = call(&server, "POST", &format!("/api/v1/ontology/imports/{sheet_id}/runs"), &env.alice, org, None).await;
-        assert_eq!((st, e["error"].as_str()), (409, Some("ingest-entry-missing")), "{e}");
-        let start = (chrono::Utc::now().date_naive() + chrono::Days::new(7)).to_string();
-        let weekly = json!({"start": start, "every": 1, "unit": "week"});
-        let (st, e) = call(&server, "PUT", &format!("/api/v1/ontology/imports/{sheet_id}"), &env.alice, org,
-            Some(json!({"name": sheet["name"], "mapping": sheet["mapping"], "source": "file", "mode": sheet["mode"],
-                        "recurrence": weekly, "expected_version": sheet["version"]}))).await;
-        assert_eq!((st, e["errors"]["fields"]["recurrence"].as_str()), (400, Some("invalid")), "{e}");
+        // A file import reads the Table named after it, where the member sends the file.
+        let (sheet_id, _) =
+            pipeline_named(&server, &env.alice, org, "Partner network (sheet)").await;
+        let (_, sheet) = call(
+            &server,
+            "GET",
+            &format!("/api/v1/pipelines/{sheet_id}"),
+            &env.alice,
+            org,
+            None,
+        )
+        .await;
+        assert!(
+            sheet["document"]
+                .as_str()
+                .unwrap()
+                .contains("\"source\": \"Partner network (sheet)\""),
+            "{sheet}"
+        );
 
         // D359: the pack ships the certifiers import with its steps; the followed
         // certifiers come from the pack setting. D575: one schedule, on the last
-        // import, and the others run first in the order they need.
-        let (import_id, _) = import_named(&server, &env.alice, org, "France Compétences · certifiers").await;
-        let (_, imp) = call(&server, "GET", &format!("/api/v1/ontology/imports/{import_id}"), &env.alice, org, None).await;
-        assert!(imp["next_run_at"].is_null() && imp["mapping"].as_str().unwrap().contains("pipeline: quali_watch/fc_certifiers"), "{imp}");
-        let (last, _) = import_named(&server, &env.alice, org, "France Compétences · RS sheets (XML)").await;
-        let (_, imp) = call(&server, "GET", &format!("/api/v1/ontology/imports/{last}"), &env.alice, org, None).await;
-        assert!(imp["next_run_at"].is_string(), "{imp}");
-        let (st, plan) = call(&server, "GET", &format!("/api/v1/data-builds/plan?target_kind=import&target_id={last}"), &env.alice, org, None).await;
+        // copy, and the others run first in the order they need.
+        let (certifiers, _) =
+            pipeline_named(&server, &env.alice, org, "France Compétences · certifiers").await;
+        let (_, p) = call(
+            &server,
+            "GET",
+            &format!("/api/v1/pipelines/{certifiers}"),
+            &env.alice,
+            org,
+            None,
+        )
+        .await;
+        assert!(p["next_run_at"].is_null(), "{p}");
+        let (last, _) = pipeline_named(
+            &server,
+            &env.alice,
+            org,
+            "France Compétences · RS sheets (XML)",
+        )
+        .await;
+        let (_, p) = call(
+            &server,
+            "GET",
+            &format!("/api/v1/pipelines/{last}"),
+            &env.alice,
+            org,
+            None,
+        )
+        .await;
+        assert!(p["next_run_at"].is_string(), "{p}");
+        let (st, plan) = call(
+            &server,
+            "GET",
+            &format!("/api/v1/data-builds/plan?target_kind=pipeline&target_id={last}"),
+            &env.alice,
+            org,
+            None,
+        )
+        .await;
         assert_eq!(st, 200, "{plan}");
-        let names: Vec<&str> = plan["steps"].as_array().unwrap().iter().map(|s| s["name"].as_str().unwrap()).collect();
-        assert_eq!(names, ["France Compétences · certifiers", "France Compétences · sheets", "France Compétences · partners",
-            "France Compétences · skill blocks", "France Compétences · RS sheets (XML)"]);
-        let (st, p) = call(&server, "PATCH", "/api/v1/ontology/packs/quali_watch/settings", &env.alice, org,
-            Some(json!({"values": {"certifiers": "80259488700019"}}))).await;
+        let names: Vec<&str> = plan["steps"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|s| s["name"].as_str().unwrap())
+            .collect();
+        assert_eq!(
+            names,
+            [
+                "France Compétences · certifiers",
+                "France Compétences · sheets",
+                "France Compétences · partners",
+                "France Compétences · skill blocks",
+                "France Compétences · RS sheets (XML)"
+            ]
+        );
+        let (st, p) = call(
+            &server,
+            "PATCH",
+            "/api/v1/ontology/packs/quali_watch/settings",
+            &env.alice,
+            org,
+            Some(json!({"values": {"certifiers": "80259488700019"}})),
+        )
+        .await;
         assert_eq!(st, 200, "{p}");
 
         // R2: a viewer starts nothing.
         personal_org(&server, &env.bob).await;
-        common::join_org(&server, &env.alice, &env.bob, org, "bob@example.com", "viewer").await;
-        let (st, _) = call(&server, "POST", &format!("/api/v1/ontology/imports/{import_id}/runs"), &env.bob, org, None).await;
+        common::join_org(
+            &server,
+            &env.alice,
+            &env.bob,
+            org,
+            "bob@example.com",
+            "viewer",
+        )
+        .await;
+        let (st, _) = call(
+            &server,
+            "POST",
+            &format!("/api/v1/pipelines/{certifiers}/runs"),
+            &env.bob,
+            org,
+            None,
+        )
+        .await;
         assert_eq!(st, 403);
 
-        let (st, run) = call(&server, "POST", &format!("/api/v1/ontology/imports/{import_id}/runs"), &env.alice, org, None).await;
-        assert_eq!((st, run["state"].as_str(), run["trigger"].as_str()), (202, Some("running"), Some("manual")), "{run}");
-        let r = settle_within(&server, &env.alice, org, &import_id, run["id"].as_str().unwrap(), 600).await;
-        assert_eq!(r["run"]["state"], "applied", "{r}");
-        assert_eq!(r["run"]["rows"], 2, "the client's certifications only: {r}");
+        let r = run_pipeline(
+            &server,
+            &env.alice,
+            org,
+            "France Compétences · certifiers",
+            600,
+        )
+        .await;
+        assert_eq!(r["state"], "done", "{r}");
+        assert_eq!(
+            rows_of(&r, "write"),
+            Some(2),
+            "the client's certifications only: {r}"
+        );
         // History shows the run's steps, in order.
-        let names: Vec<&str> = r["steps"].as_array().unwrap().iter().map(|s| s["step"].as_str().unwrap()).collect();
-        assert_eq!(names, ["fetch", "extract", "fetch", "unpack", "read", "enumerate", "sql", "write"], "{r}");
-        let links = format!("SELECT count(*)::bigint AS n FROM resource_edges WHERE org_id = {org} \
-            AND relation = 'holds' AND valid_to IS NULL");
+        let names: Vec<&str> = r["steps"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|s| s["step"].as_str().unwrap())
+            .collect();
+        assert_eq!(
+            names,
+            [
+                "fetch",
+                "extract",
+                "fetch",
+                "unpack",
+                "read",
+                "enumerate",
+                "sql",
+                "write",
+                "write"
+            ],
+            "{r}"
+        );
+        let links = format!(
+            "SELECT count(*)::bigint AS n FROM resource_edges WHERE org_id = {org} \
+            AND relation = 'holds' AND valid_to IS NULL"
+        );
         assert_eq!(count(q(links).await.unwrap()), 2);
         // Journaled under the run, the staging emptied at its end.
-        let steps = format!("SELECT count(*)::bigint AS n FROM ingest_steps WHERE org_id = {org} \
-            AND node_id = 'import:{import_id}' AND run_id = '{}'", run["id"].as_str().unwrap());
-        assert_eq!(count(q(steps).await.unwrap()), 8);
-        // The steps left a CSV: it went through a table named after the mapping.
-        let table = format!("SELECT count(*)::bigint AS n FROM dataset_transactions t \
+        let steps = format!(
+            "SELECT count(*)::bigint AS n FROM ingest_steps WHERE org_id = {org} \
+            AND node_id = 'pipeline:{certifiers}' AND run_id = '{}'",
+            r["id"].as_str().unwrap()
+        );
+        assert_eq!(count(q(steps).await.unwrap()), 9);
+        // The table other pipelines read is kept.
+        let table = format!(
+            "SELECT count(*)::bigint AS n FROM dataset_transactions t \
             JOIN datasets d ON d.id = t.dataset_id \
-            WHERE t.org_id = {org} AND d.name = 'fc_certifiers' AND t.state = 'committed'");
+            WHERE t.org_id = {org} AND d.name = 'fc_certifiers' AND t.state = 'committed'"
+        );
         assert_eq!(count(q(table).await.unwrap()), 1);
-        let live = format!("SELECT count(*)::bigint AS n FROM ingest_steps WHERE org_id = {org} \
-            AND node_id = 'import:{import_id}' AND purged_at IS NULL AND keys <> '[]'::jsonb \
-            AND (keep_until IS NULL OR keep_until <= now())");
+        let live = format!(
+            "SELECT count(*)::bigint AS n FROM ingest_steps WHERE org_id = {org} \
+            AND node_id = 'pipeline:{certifiers}' AND purged_at IS NULL AND keys <> '[]'::jsonb \
+            AND (keep_until IS NULL OR keep_until <= now())"
+        );
         assert_eq!(count(q(live).await.unwrap()), 0);
 
         // A failed step: the run keeps its code and arguments, and shows
         // where it stopped.
-        *zip.lock().unwrap() = fc_zip_of(FC_STANDARD, &FC_CERTIFIERS.replace("Nom_Certificateur", "Nom"), &fc_partners(&[]));
-        let (st, run) = call(&server, "POST", &format!("/api/v1/ontology/imports/{import_id}/runs"), &env.alice, org, None).await;
-        assert_eq!(st, 202, "{run}");
-        let r = settle_within(&server, &env.alice, org, &import_id, run["id"].as_str().unwrap(), 600).await;
-        assert_eq!((r["run"]["state"].as_str(), r["run"]["state_code"].as_str()), (Some("failed"), Some("import-schema-changed")), "{r}");
-        assert!(r["run"]["state_args"]["columns"].as_str().unwrap().contains("Nom_Certificateur"), "{r}");
+        *zip.lock().unwrap() = fc_zip_of(
+            FC_STANDARD,
+            &FC_CERTIFIERS.replace("Nom_Certificateur", "Nom"),
+            &fc_partners(&[]),
+        );
+        let r = run_pipeline(
+            &server,
+            &env.alice,
+            org,
+            "France Compétences · certifiers",
+            600,
+        )
+        .await;
+        assert_eq!(
+            (r["state"].as_str(), r["code"].as_str()),
+            (Some("failed"), Some("import-schema-changed")),
+            "{r}"
+        );
+        assert!(
+            r["args"]["columns"]
+                .as_str()
+                .unwrap()
+                .contains("Nom_Certificateur"),
+            "{r}"
+        );
         let last = r["steps"].as_array().unwrap().last().unwrap();
-        assert_eq!((last["step"].as_str(), last["port"].as_u64()), (Some("read"), Some(1)), "{r}");
+        assert_eq!(
+            (last["step"].as_str(), last["port"].as_u64()),
+            (Some("read"), Some(1)),
+            "{r}"
+        );
 
         unsafe { std::env::remove_var("PNEX_DATAGOUV_API_URL") };
     })
@@ -2053,10 +2162,7 @@ async fn open_data_ingestion_chain() {
         let run = |name: &'static str| {
             let (server, token) = (&server, env.alice.clone());
             async move {
-                let (id, _) = import_named(server, &token, org, name).await;
-                let (st, r) = call(server, "POST", &format!("/api/v1/ontology/imports/{id}/runs"), &token, org, None).await;
-                assert_eq!(st, 202, "{r}");
-                settle_within(server, &token, org, &id, r["id"].as_str().unwrap(), 600).await
+                run_pipeline(server, &token, org, name, 600).await
             }
         };
         let step = |r: &Value, name: &str| r["steps"].as_array().unwrap().iter()
@@ -2065,7 +2171,7 @@ async fn open_data_ingestion_chain() {
             ("France Compétences · certifiers", "France Compétences · sheets", "France Compétences · partners");
 
         let rc = run(certifiers).await;
-        assert_eq!(rc["run"]["state"], "applied", "{rc}");
+        assert_eq!(rc["state"], "done", "{rc}");
         // The newest export of the dataset, its one CSV of certifiers, read
         // whole (3 rows), the client's certifier kept (2).
         let fetched: Vec<Value> = rc["steps"].as_array().unwrap().iter()
@@ -2075,10 +2181,10 @@ async fn open_data_ingestion_chain() {
         assert_eq!(step(&rc, "read")["rows"], 3, "{rc}");
         assert_eq!(step(&rc, "sql")["rows"], 2, "{rc}");
         let rs = run(sheets).await;
-        assert_eq!(rs["run"]["state"], "applied", "{rs}");
+        assert_eq!(rs["state"], "done", "{rs}");
         assert_eq!(step(&rs, "sql")["rows"], 2, "only the client's sheets");
         let rp = run(partners).await;
-        assert_eq!(rp["run"]["state"], "applied", "{rp}");
+        assert_eq!(rp["state"], "done", "{rp}");
         // RNCP1 is not held, RS6766 is inactive: RS6765's six rows only.
         assert_eq!(step(&rp, "sql")["rows"], 6, "{rp}");
         let quatre = format!("SELECT count(*)::bigint AS n FROM objects WHERE org_id = {org} \
@@ -2102,7 +2208,6 @@ async fn open_data_ingestion_chain() {
         assert_eq!(count(q(links("holds")).await.unwrap()), 2);
         assert_eq!(count(q(links("accredited_for")).await.unwrap()), 3, "two SIRET of one SIREN, one link");
         // A SIREN failing its check digit: the row is a warning, not an error.
-        assert_eq!(rp["run"]["counts"]["warnings"], 1, "{rp}");
         let aftral = format!("SELECT count(*)::bigint AS n FROM objects WHERE org_id = {org} \
             AND type_key = 'organization' AND properties ->> 'siren' = '305405046'");
         assert_eq!(count(q(aftral).await.unwrap()), 0);
@@ -2123,29 +2228,26 @@ async fn open_data_ingestion_chain() {
             .replace("11111111800001", "11111111900001")
             .replace("11111111800019", "11111111900019"));
         let rk = run(partners).await;
-        let c = &rk["run"]["counts"];
-        assert_eq!((rk["run"]["state"].clone(), c["warnings"].clone(), c["closed"].clone()),
-            (json!("applied"), json!(3), json!(0)), "{rk}");
+        assert_eq!(rk["state"], "done", "{rk}");
         assert_eq!(count(q(links("accredited_for")).await.unwrap()), 3);
 
         // A partner gone from the open data: its accreditation closes.
         // (AFTRAL out too: left out by its key, it would hold RS6765's links.)
         *zip.lock().unwrap() = fc_zip(&fc_partners(&["333", "305"]));
         let r3 = run(partners).await;
-        assert_eq!(r3["run"]["counts"]["closed"], 1, "{r3}");
         assert_eq!(count(q(links("accredited_for")).await.unwrap()), 2);
 
         // Most of the network gone at once: refused, nothing closed.
         // (AFTRAL out too: a row left out by its key keeps its sheet's links.)
         *zip.lock().unwrap() = fc_zip(&fc_partners(&["111", "222", "305"]));
         let r4 = run(partners).await;
-        assert_eq!(r4["run"]["state_code"], "ingest-suspicious-closures", "{r4}");
+        assert_eq!(r4["code"], "ingest-suspicious-closures", "{r4}");
         assert_eq!(count(q(links("accredited_for")).await.unwrap()), 2);
 
         // A changed shape stops the steps before the import.
         *zip.lock().unwrap() = fc_zip(&fc_partners(&[]).replace("Habilitation_Partenaire", "Habilitation"));
         let r5 = run(partners).await;
-        assert_eq!((r5["run"]["state"].as_str(), r5["run"]["state_code"].as_str()), (Some("failed"), Some("import-schema-changed")), "{r5}");
+        assert_eq!((r5["state"].as_str(), r5["code"].as_str()), (Some("failed"), Some("import-schema-changed")), "{r5}");
 
         unsafe { std::env::remove_var("PNEX_DATAGOUV_API_URL") };
     })
@@ -2241,7 +2343,8 @@ const BLOCS_CSV: &str = concat!(
 );
 
 /// The pack import of this name.
-async fn import_named(
+/// The org pipeline a pack copied from its import `name` (D1050): id, version.
+async fn pipeline_named(
     server: &axum_test::TestServer,
     token: &str,
     org: i64,
@@ -2250,19 +2353,73 @@ async fn import_named(
     let (st, list) = call(
         server,
         "GET",
-        "/api/v1/ontology/imports?limit=50",
+        "/api/v1/pipelines?limit=100",
         token,
         org,
         None,
     )
     .await;
     assert_eq!(st, 200, "{list}");
-    let imp = list["results"]
+    let p = list["results"]
         .as_array()
         .unwrap()
         .iter()
         .find(|i| i["name"] == name)
         .unwrap_or_else(|| panic!("{name}: {list}"));
+    (p["id"].as_str().unwrap().to_string(), p["version"].clone())
+}
+
+/// Starts a run of the pipeline `name` and waits for its end, `polls` × 100 ms.
+async fn run_pipeline(
+    server: &axum_test::TestServer,
+    token: &str,
+    org: i64,
+    name: &str,
+    polls: u32,
+) -> Value {
+    let (id, _) = pipeline_named(server, token, org, name).await;
+    let runs = format!("/api/v1/pipelines/{id}/runs");
+    let (st, r) = call(server, "POST", &runs, token, org, None).await;
+    assert_eq!(st, 202, "{r}");
+    let path = format!("{runs}/{}", r["id"].as_str().unwrap());
+    for _ in 0..polls {
+        let (st, r) = call(server, "GET", &path, token, org, None).await;
+        assert_eq!(st, 200, "{r}");
+        if r["state"] == "done" || r["state"] == "failed" {
+            return r;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    panic!("{name} never settled");
+}
+
+/// Rows its first step of `step` gave, from the run's journal: for `write`,
+/// the Table the copy keeps, before its objects.
+fn rows_of(run: &Value, step: &str) -> Option<u64> {
+    run["steps"]
+        .as_array()?
+        .iter()
+        .find(|s| s["step"] == step)?["manifest"]["rows"]
+        .as_u64()
+}
+
+/// An org import holding the mapping of the pack import `name`.
+async fn pack_import(
+    server: &axum_test::TestServer,
+    token: &str,
+    org: i64,
+    name: &str,
+) -> (String, Value) {
+    let (st, imp) = call(
+        server,
+        "POST",
+        "/api/v1/ontology/imports",
+        token,
+        org,
+        Some(common::pack_import_body(name)),
+    )
+    .await;
+    assert_eq!(st, 201, "{imp}");
     (
         imp["id"].as_str().unwrap().to_string(),
         imp["version"].clone(),
@@ -2314,7 +2471,7 @@ async fn france_competences_sheet_content() {
         }
 
         // RNCP skill blocks.
-        let (id, v) = import_named(&server, &env.alice, org, "France Compétences · skill blocks").await;
+        let (id, v) = pack_import(&server, &env.alice, org, "France Compétences · skill blocks").await;
         let p = preview(&server, &env.alice, org, &id, BLOCS_CSV).await;
         assert_eq!((p["run"]["counts"]["created"].clone(), p["run"]["counts"]["links_opened"].clone()), (json!(2), json!(2)), "{p}");
         let (_, r) = apply(&server, &env.alice, org, &id, &p, &v).await;
@@ -2323,7 +2480,7 @@ async fn france_competences_sheet_content() {
         assert_eq!((b["rank"].as_f64(), b["nature"].clone()), (Some(2.0), json!("skill_block")), "{b}");
 
         // RS sheets: RS56 is not one of the org's, nothing of it is written.
-        let (id, v) = import_named(&server, &env.alice, org, "France Compétences · RS sheets (XML)").await;
+        let (id, v) = pack_import(&server, &env.alice, org, "France Compétences · RS sheets (XML)").await;
         let p = preview(&server, &env.alice, org, &id, RS_XML).await;
         assert_eq!(p["run"]["state"], "preview", "{p}");
         assert!(p["diff"]["errors"].as_array().unwrap().is_empty(), "{p}");
@@ -2445,16 +2602,13 @@ async fn partners_import_memory() {
             let server = &server;
             let token = env.alice.clone();
             async move {
-                let (import_id, _) = import_named(server, &token, org, name).await;
-                let (st, run) = call(server, "POST", &format!("/api/v1/ontology/imports/{import_id}/runs"), &token, org, None).await;
-                assert_eq!(st, 202, "{run}");
-                settle_within(server, &token, org, &import_id, run["id"].as_str().unwrap(), 6_000).await
+                run_pipeline(server, &token, org, name, 6_000).await
             }
         };
         let r = run("France Compétences · certifiers").await;
-        assert_eq!(r["run"]["state"], "applied", "{r}");
+        assert_eq!(r["state"], "done", "{r}");
         let r = run("France Compétences · sheets").await;
-        assert_eq!(r["run"]["state"], "applied", "{r}");
+        assert_eq!(r["state"], "done", "{r}");
 
         let hwm = || {
             std::fs::read_to_string("/proc/self/status").unwrap().lines()
@@ -2466,9 +2620,9 @@ async fn partners_import_memory() {
         println!("before partners: {}", hwm());
         let t = std::time::Instant::now();
         let r = run("France Compétences · partners").await;
-        println!("partners run: {} in {:?}, peak {}", r["run"]["state"], t.elapsed(), hwm());
-        println!("rows {} counts {}", r["run"]["rows"], r["run"]["counts"]);
-        assert_eq!(r["run"]["state"], "applied", "{r}");
+        println!("partners run: {} in {:?}, peak {}", r["state"], t.elapsed(), hwm());
+        println!("rows {:?} args {}", rows_of(&r, "write"), r["args"]);
+        assert_eq!(r["state"], "done", "{r}");
 
         // The next export: same partners, other scopes.
         *zip.lock().unwrap() = fc_zip_of(&standard, &certifiers, &partners(1));
@@ -2476,9 +2630,9 @@ async fn partners_import_memory() {
         println!("before update: {}", hwm());
         let t = std::time::Instant::now();
         let r = run("France Compétences · partners").await;
-        println!("update run: {} in {:?}, peak {}", r["run"]["state"], t.elapsed(), hwm());
-        println!("rows {} counts {}", r["run"]["rows"], r["run"]["counts"]);
-        assert_eq!(r["run"]["state"], "applied", "{r}");
+        println!("update run: {} in {:?}, peak {}", r["state"], t.elapsed(), hwm());
+        println!("rows {:?} args {}", rows_of(&r, "write"), r["args"]);
+        assert_eq!(r["state"], "done", "{r}");
         // The org id comes back in the next test: its staging is emptied.
         empty_staging(org).await;
         unsafe { std::env::remove_var("PNEX_DATAGOUV_API_URL") };
@@ -2550,13 +2704,13 @@ async fn france_competences_from_one_schedule() {
             &loco_rs::config::Config::new(&loco_rs::environment::Environment::Test).unwrap(),
         ).store().unwrap();
 
-        let (last, _) = import_named(&server, &env.alice, org, "France Compétences · RS sheets (XML)").await;
-        let due = format!("UPDATE object_imports SET next_run_at = now() - interval '1 minute' WHERE id = '{last}'");
+        let (last, _) = pipeline_named(&server, &env.alice, org, "France Compétences · RS sheets (XML)").await;
+        let due = format!("UPDATE pipelines SET next_run_at = now() - interval '1 minute' WHERE id = '{last}'");
         let run_build = |s: String| {
             let (server, token, db, store) = (&server, env.alice.clone(), env.db.clone(), store.clone());
             async move {
                 db.execute_unprepared(&s).await.unwrap();
-                pnex_backend::services::ontology::imports::sweep(&db).await.unwrap();
+                pnex_backend::services::data_builds::tick(&db, Some(&store)).await.unwrap();
                 let (_, list) = call(server, "GET", "/api/v1/data-builds", &token, org, None).await;
                 let id = list["results"][0]["id"].as_str().expect("a build").to_string();
                 assert_eq!(list["results"][0]["trigger"], "schedule", "{list}");
@@ -2577,11 +2731,6 @@ async fn france_competences_from_one_schedule() {
         let b = run_build(due.clone()).await;
         assert_eq!(b["state"], "done", "{b}");
         assert_eq!(states(&b), ["done", "done", "done", "done", "done"], "{b}");
-        // Tables filled by these imports say so: the screen offers no load on them.
-        let (_, tables) = call(&server, "GET", "/api/v1/datasets", &env.alice, org, None).await;
-        let filled: Vec<&Value> = tables["results"].as_array().unwrap().iter()
-            .filter(|t| t["import_name"].is_string()).collect();
-        assert!(!filled.is_empty(), "{tables}");
         let n = |sql: String| { let db = env.db.clone(); async move {
             db.query_one_raw(sea_orm::Statement::from_string(sea_orm::DatabaseBackend::Postgres, sql))
                 .await.unwrap().unwrap().try_get::<i64>("", "n").unwrap() } };
@@ -2772,11 +2921,8 @@ async fn network_registers_and_query() {
         let run = |name: &'static str| {
             let (server, token) = (&server, env.alice.clone());
             async move {
-                let (id, _) = import_named(server, &token, org, name).await;
-                let (st, r) = call(server, "POST", &format!("/api/v1/ontology/imports/{id}/runs"), &token, org, None).await;
-                assert_eq!(st, 202, "{r}");
-                let r = settle_within(server, &token, org, &id, r["id"].as_str().unwrap(), 300).await;
-                assert_eq!(r["run"]["state"], "applied", "{name}: {r}");
+                let r = run_pipeline(server, &token, org, name, 300).await;
+                assert_eq!(r["state"], "done", "{name}: {r}");
                 r
             }
         };
@@ -3155,12 +3301,9 @@ async fn the_press_feed_writes_signals_on_the_accounts_followed() {
         mk("IGNORED CO", json!({"siren": "111111111", "account_status": "excluded"})).await;
         mk("NO KEY CO", json!({"account_status": "target"})).await;
 
-        let (id, _) = import_named(&server, &env.alice, org, "Press (GDELT)").await;
         for _ in 0..2 {
-            let (st, r) = call(&server, "POST", &format!("/api/v1/ontology/imports/{id}/runs"), &env.alice, org, None).await;
-            assert_eq!(st, 202, "{r}");
-            let r = settle_within(&server, &env.alice, org, &id, r["id"].as_str().unwrap(), 120).await;
-            assert_eq!(r["run"]["state"], "applied", "{r}");
+            let r = run_pipeline(&server, &env.alice, org, "Press (GDELT)", 120).await;
+            assert_eq!(r["state"], "done", "{r}");
         }
         let (_, q) = call(&server, "POST", "/api/v1/ontology/query", &env.alice, org, Some(json!({"type_key": "news_item"}))).await;
         assert_eq!(q["count"], 2, "two articles, twice the run, nothing else: {q}");
@@ -3265,12 +3408,9 @@ async fn a_feed_of_the_org_becomes_news_items_of_its_company() {
         let (st, r) = call(&server, "POST", "/api/v1/ontology/links", &env.alice, org, Some(link)).await;
         assert_eq!(st, 201, "{r}");
 
-        let (id, _) = import_named(&server, &env.alice, org, "News feeds (RSS, Atom)").await;
         for _ in 0..2 {
-            let (st, r) = call(&server, "POST", &format!("/api/v1/ontology/imports/{id}/runs"), &env.alice, org, None).await;
-            assert_eq!(st, 202, "{r}");
-            let r = settle_within(&server, &env.alice, org, &id, r["id"].as_str().unwrap(), 120).await;
-            assert_eq!(r["run"]["state"], "applied", "{r}");
+            let r = run_pipeline(&server, &env.alice, org, "News feeds (RSS, Atom)", 120).await;
+            assert_eq!(r["state"], "done", "{r}");
         }
         let (_, q) = call(&server, "POST", "/api/v1/ontology/query", &env.alice, org, Some(json!({
             "type_key": "organization", "ids": [acme],
@@ -3299,12 +3439,12 @@ async fn upgrading_the_layer_on_an_older_base() {
         install(&server, &env.alice, org, "prospecting_b2b_fr").await;
         let sql = |s: String| { let db = env.db.clone(); async move { db.execute_unprepared(&s).await.unwrap(); } };
         // As the older packs left it: the property not unique, older versions,
-        // no downward import yet, two companies on one item.
+        // no downward copy yet, two companies on one item.
         sql(format!("UPDATE object_type_versions v SET definition = jsonb_set(v.definition, '{{properties}}', \
              (SELECT jsonb_agg(CASE WHEN p ->> 'key' = 'wikidata' THEN p - 'unique' ELSE p END) FROM jsonb_array_elements(v.definition -> 'properties') p)) \
              FROM object_types t WHERE v.object_type_id = t.id AND t.org_id = {org} AND t.key = 'organization' AND v.version = t.current_version")).await;
         sql(format!("UPDATE packs SET version = '1.0.0' WHERE org_id = {org} AND key IN ('investigation', 'companies', 'companies_fr', 'prospecting_b2b', 'prospecting_b2b_fr')")).await;
-        sql(format!("DELETE FROM object_imports WHERE org_id = {org} AND name IN ('Direct subsidiaries (GLEIF)', 'Group subsidiaries (GLEIF)', 'Foreign parents and subsidiaries (Wikidata)', 'Press (GDELT)')")).await;
+        sql(format!("DELETE FROM pipelines WHERE org_id = {org} AND name IN ('Direct subsidiaries (GLEIF)', 'Group subsidiaries (GLEIF)', 'Foreign parents and subsidiaries (Wikidata)', 'Press (GDELT)')")).await;
         for t in ["A", "B"] {
             let (st, o) = object(&server, &env.alice, org, "organization", t, json!({"wikidata": "Q1"})).await;
             assert_eq!(st, 201, "{o}");
@@ -3319,7 +3459,7 @@ async fn upgrading_the_layer_on_an_older_base() {
         sql(format!("UPDATE objects SET properties = properties - 'wikidata' WHERE org_id = {org} AND title = 'B'")).await;
         let (st, r) = call(&server, "POST", up, &env.alice, org, None).await;
         assert_eq!(st, 200, "{r}");
-        let (_, list) = call(&server, "GET", "/api/v1/ontology/imports?limit=50", &env.alice, org, None).await;
+        let (_, list) = call(&server, "GET", "/api/v1/pipelines?limit=100", &env.alice, org, None).await;
         for name in ["Direct subsidiaries (GLEIF)", "Foreign parents and subsidiaries (Wikidata)", "Press (GDELT)"] {
             assert!(list.to_string().contains(name), "{name}: {list}");
         }

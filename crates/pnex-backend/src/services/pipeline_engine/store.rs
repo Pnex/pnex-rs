@@ -1566,10 +1566,11 @@ impl Transport for HttpTransport {
 /// The steps of an import's run in its history (the `ingest_steps` journal
 /// an import's steps write, read by `ingest::run_steps`): one line per step,
 /// its rows and the bytes it read, its error with its code and arguments.
+/// `node`: whose run it is, `import:<id>` or `pipeline:<id>`.
 pub async fn journal(
     db: &impl ConnectionTrait,
     org: i64,
-    import_id: Uuid,
+    node: &str,
     run_id: Uuid,
     steps: &[super::StepRecord],
 ) -> Result<(), sea_orm::DbErr> {
@@ -1587,7 +1588,7 @@ pub async fn journal(
             vec![
                 Uuid::new_v4().into(),
                 org.into(),
-                format!("import:{import_id}").into(),
+                node.into(),
                 run_id.into(),
                 s.step.into(),
                 // Ports of the step journal: 0 done, 1 error.
@@ -1729,6 +1730,7 @@ pub async fn run_own(
     user: Option<i64>,
     asked: Vec<serde_json::Map<String, Value>>,
     transport: &impl Transport,
+    journal: Option<&mut Vec<super::StepRecord>>,
 ) -> Result<RunOutcome, DatasetError> {
     let store = datasets::store_of(&ctx.config)?;
     let key = id.to_string();
@@ -1754,7 +1756,7 @@ pub async fn run_own(
         org,
     };
     let out = run(
-        doc, &inputs, transport, &mut sink, &sql, &items, None, None, None,
+        doc, &inputs, transport, &mut sink, &sql, &items, None, None, journal,
     )
     .await;
     if out.failure.is_none() {

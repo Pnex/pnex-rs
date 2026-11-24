@@ -34,11 +34,12 @@ fn step_view(r: &sea_orm::QueryResult) -> Option<pnex_core::ingest::IngestStepVi
     })
 }
 
-/// Steps journaled for the import's run `run_id`, in order.
+/// Steps journaled for the run `run_id` of `node` (`import:<id>`,
+/// `pipeline:<id>`), in order.
 pub async fn run_steps<C: ConnectionTrait>(
     db: &C,
     org_id: i64,
-    import_id: Uuid,
+    node: &str,
     run_id: Uuid,
 ) -> Result<Vec<pnex_core::ingest::IngestStepView>, sea_orm::DbErr> {
     let rows = db
@@ -47,11 +48,7 @@ pub async fn run_steps<C: ConnectionTrait>(
                 "SELECT {STEP_COLUMNS} FROM ingest_steps \
                  WHERE org_id = $1 AND node_id = $2 AND run_id = $3 ORDER BY created_at"
             ),
-            vec![
-                org_id.into(),
-                format!("import:{import_id}").into(),
-                run_id.into(),
-            ],
+            vec![org_id.into(), node.into(), run_id.into()],
         ))
         .await?;
     Ok(rows.iter().filter_map(step_view).collect())

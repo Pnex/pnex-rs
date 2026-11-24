@@ -324,6 +324,7 @@ fn run_of(row: &QueryResult) -> Result<PipelineRun, DbErr> {
         created_at: row.try_get("", "created_at")?,
         started_at: row.try_get("", "started_at")?,
         finished_at: row.try_get("", "finished_at")?,
+        steps: Vec::new(),
     })
 }
 
@@ -611,7 +612,10 @@ pub async fn get_run(
         .query_one_raw(stmt(&sql, vec![org_id.into(), id.into(), run_id.into()]))
         .await?
         .ok_or(PipelineError::RunNotFound)?;
-    Ok(run_of(&row)?)
+    let mut run = run_of(&row)?;
+    let node = format!("pipeline:{id}");
+    run.steps = crate::services::ingest::run_steps(db, org_id, &node, run_id).await?;
+    Ok(run)
 }
 
 pub async fn runs(
@@ -898,6 +902,7 @@ async fn run_job(ctx: &AppContext, job: &Job) -> Result<(), (String, serde_json:
         return Err((code.to_string(), args));
     }
     use crate::services::pipeline_engine::store;
+    let mut steps = Vec::new();
     let out = store::run_own(
         ctx,
         job.org_id,
@@ -907,11 +912,27 @@ async fn run_job(ctx: &AppContext, job: &Job) -> Result<(), (String, serde_json:
         job.started_by,
         job.asked.clone(),
         &store::HttpTransport,
+        Some(&mut steps),
     )
     .await
     .map_err(|e| (e.code().to_string(), serde_json::Value::Null))?;
+    let node = format!("pipeline:{}", job.pipeline_id);
+    store::journal(&ctx.db, job.org_id, &node, job.id, &steps)
+        .await
+        .map_err(db_failure)?;
+    // What the member can fix gets its message (D1050: as an import's run did).
     match out.failure {
-        Some(f) => Err((f.code.to_string(), f.args)),
+        Some(f) => Err((
+            match f.code {
+                "secret_required" => err_codes::IMPORT_KEY_REQUIRED,
+                "contact_required" => err_codes::IMPORT_CONTACT_REQUIRED,
+                "schema_changed" => err_codes::IMPORT_SCHEMA_CHANGED,
+                "entry_missing" => err_codes::INGEST_ENTRY_MISSING,
+                code => code,
+            }
+            .to_string(),
+            f.args,
+        )),
         None => Ok(()),
     }
 }

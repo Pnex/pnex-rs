@@ -64,18 +64,16 @@ impl Api<'_> {
         )
     }
 
-    /// Runs the pack import `name` on `csv` and applies it.
+    /// Runs the mapping of the pack import `name` on `csv` and applies it.
     async fn import(&self, name: &str, csv: &str) -> Value {
-        let (_, list) = self
-            .call("GET", "/api/v1/ontology/imports?limit=100", None)
+        let (st, import) = self
+            .call(
+                "POST",
+                "/api/v1/ontology/imports",
+                Some(common::pack_import_body(name)),
+            )
             .await;
-        let import = list["results"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .find(|i| i["name"] == name)
-            .unwrap_or_else(|| panic!("{name}: {list}"))
-            .clone();
+        assert_eq!(st, 201, "{import}");
         let id = import["id"].as_str().unwrap().to_string();
         let res = self
             .server

@@ -270,7 +270,7 @@ sequenceDiagram
   S->>S: dataset.committed sur pnex:ds:v1:{org}
 ```
 
-Le serveur prend les exécutions des pipelines d'org dans `pipeline_jobs` et joue leurs étapes, comme celles d'un pipeline de pack. Au début de l'exécution, il relit les droits de qui l'a lancée : chaque cible d'écriture demande le droit de sa route (`ontology:write` pour des objets). Un pipeline d'org n'écrit jamais la table d'un import (`table_reserved`). Une étape `browse` joue dans l'agent navigateur de qui a lancé l'exécution (D782) et demande `browse:use`. À la reprise de la ligne, le serveur relit ses droits. S'il en a perdu un, la ligne échoue (`access-denied`). Un pipeline d'org ne peut ni partager vers une autre org (`share`), ni porter son propre horaire (`schedule`, `after`) : la route de planification et les exécutions enchaînées s'en chargent. Il peut attendre les réglages d'un pack (`requires`), comme la copie d'un import de pack (D1050). Les réponses de ses tests sont écrites dans le document (`given:`, `tables:` en CSV), 64 Ko au plus.
+Le serveur prend les exécutions des pipelines d'org dans `pipeline_jobs` et joue leurs étapes, comme celles d'un pipeline de pack. Au début de l'exécution, il relit les droits de qui l'a lancée : chaque cible d'écriture demande le droit de sa route (`ontology:write` pour des objets). Un pipeline d'org n'écrit jamais la table d'un import (`table_reserved`). Une étape `browse` joue dans l'agent navigateur de qui a lancé l'exécution (D782) et demande `browse:use`. À la reprise de la ligne, le serveur relit ses droits. S'il en a perdu un, la ligne échoue (`access-denied`). Un pipeline d'org ne peut ni partager vers une autre org (`share`), ni porter son propre horaire (`schedule`) : la route de planification s'en charge. Il peut attendre les réglages d'un pack (`requires`). Il peut nommer dans `after` d'autres pipelines de son org : une exécution enchaînée les lance d'abord, dans cet ordre (D1050). Les réponses de ses tests sont écrites dans le document (`given:`, `tables:` en CSV), 64 Ko au plus.
 
 Le SQL d'une étape `sql` est une entrée hostile (D572). Une session par exécution n'enregistre que les tables déclarées en entrée. Le moteur refuse DDL, DML et instructions de session sur le plan logique. Les fonctions sont en liste blanche, conversions D301 comprises. La mémoire est bornée, avec débordement disque, délai et plafond d'octets.
 
@@ -592,7 +592,7 @@ Seul le S3 de PneX. Aucun identifiant de compartiment tiers.
 Écriture retour, tables virtuelles, réplication logique, Elasticsearch, SFTP, OAuth2 avec consentement.
 
 ### D934 — Un seul document : le pipeline
-Toute ingestion est un pipeline YAML. Bornée par D998 : pas de lien déduit dans un pipeline sans ligne d'écart. Choix de Shan (2026-11-21) : une seule sorte. `/api/v1/pipelines` sert le pipeline d'org : versionné, `tests:` facultatifs mais joués avant l'enregistrement, réponses écrites dans le document. Il lit tout hôte public derrière la garde R8, la cadence D938 et le quota de l'org. `share`, `schedule` et `after` lui sont refusés. Son horaire reste la route D575. Choix de Shan (2026-11-22, Q-PE2) : il peut naviguer (`browse`) aux conditions de D782, avec le droit `browse:use`. Son `call` nomme une fonction Starlark de l'org (`<nom>`, version courante, `def handle(rows)`) ou d'un pack (`<pack>/<nom>`).
+Toute ingestion est un pipeline YAML. Bornée par D998 : pas de lien déduit dans un pipeline sans ligne d'écart. Choix de Shan (2026-11-21) : une seule sorte. `/api/v1/pipelines` sert le pipeline d'org : versionné, `tests:` facultatifs mais joués avant l'enregistrement, réponses écrites dans le document. Il lit tout hôte public derrière la garde R8, la cadence D938 et le quota de l'org. `share` et `schedule` lui sont refusés. Son `after` nomme des pipelines de l'org. Son horaire reste la route D575. Choix de Shan (2026-11-22, Q-PE2) : il peut naviguer (`browse`) aux conditions de D782, avec le droit `browse:use`. Son `call` nomme une fonction Starlark de l'org (`<nom>`, version courante, `def handle(rows)`) ou d'un pack (`<pack>/<nom>`).
 
 ### D935 — Tout intermédiaire est une table de travail
 Une table de travail vit le temps du run, en mémoire ou dans un fichier temporaire.
@@ -692,7 +692,9 @@ La migration réécrit la provenance `import:<id>` en provenance du pipeline d'o
 Un pack copie chaque import en pipeline d'org (choix de Shan, 2026-11-24) :
 - La copie reprend les étapes du pipeline de pack. Elle garde son `write table`, car d'autres pipelines lisent cette Table. Puis un `write objects` écrit le mapping de l'import depuis les mêmes lignes.
 - Un import de fichier devient un pipeline qui lit la Table au nom de l'import. Le membre envoie son fichier dans cette Table.
-- La copie ne garde ni les `tests:` du pack (ils lisent les fixtures du pack), ni `schedule`, ni `after`. Elle prend la récurrence de l'import.
+- La copie ne garde ni les `tests:` du pack (ils lisent les fixtures du pack), ni son `schedule`. Elle prend la récurrence de l'import. Son `after` nomme les copies des imports que l'import attendait (choix de Shan, 2026-11-24).
+- Un `call` de la copie nomme la fonction du pack en entier (`<pack>/<nom>`).
+- Une exécution d'un pipeline d'org garde le journal de ses étapes, comme une exécution d'import (D944).
 - `pipelines.pack` nomme le pack qui a écrit la copie. Une version sans auteur écrite par le pack écrit avec le rôle Member, à la main comme à l'horaire. Dès qu'un membre l'édite, elle écrit avec le rôle de ce membre.
 - À la mise à jour du pack, une copie que l'org n'a pas éditée prend le nouveau document. Une copie éditée reste, sauf si l'org la reprend (D424). `pack_written` garde le dernier document écrit par le pack.
 - Un `write objects` peut n'écrire que des `observations:` sur des objets déjà présents.
@@ -798,7 +800,8 @@ tests:
   1. `write objects` : delta et éditions protégées, `snapshot`, `close_missing`, `observations`, droits de l'auteur. Fait (2026-11-24), sans test des `observations`.
   2. Packs : un import de pack devient un pipeline d'org à l'installation, éditions gardées à la mise à jour.
      - 2a. Fait (2026-11-24) : `pack_copy` et `install_copies`, colonnes `pipelines.pack` et `pack_written`. L'installation crée encore des imports.
-     - 2b. L'installation appelle `install_copies` au lieu de créer des imports. Les suites qui lancent un import de pack (`markets`, `partner_watch`, `crm`, `maintenance_parts`, `data_builds`, `dataset_sync`) passent aux pipelines d'org. `kept` liste aussi les copies éditées.
+     - 2b. Fait (2026-11-24) : l'installation crée les copies, plus les imports. Une org installée avant garde ses imports jusqu'à l'étape 3. Les tests qui envoient un fichier à un import de pack créent un import d'org avec le mapping du pack, jusqu'à l'étape 4.
+     - Limites de 2b : une exécution de pipeline ne montre pas les compteurs de l'import (créés, mis à jour, fermés, avertissements). À l'étape 5, choisir avec Shan s'il les faut. Le message « reprendre la version du pack » d'une copie parle encore du mode et des pages d'un import.
   3. Migration : imports → pipelines d'org, provenance réécrite, Tables libérées, historique des runs.
   4. Retrait : table, routes, service, page, CLI, contrat (`exposure.rs`, `iam.rs`), fiche de l'assistant. `stop.rs` reste, déplacé.
   5. Front : l'écran d'import enchaîne l'envoi dans une Table et le pipeline. E2E.

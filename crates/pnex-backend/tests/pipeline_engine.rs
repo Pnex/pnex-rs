@@ -456,6 +456,7 @@ async fn a_table_write_spares_import_tables_erasures_and_cells() {
             None,
             Vec::new(),
             &net,
+            None,
         )
         .await
         .unwrap();

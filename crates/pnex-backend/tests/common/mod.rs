@@ -540,3 +540,21 @@ pub fn sql_pipeline(output: &str, inputs: &[(&str, &str)], sql: &str) -> String 
         q(output)
     )
 }
+
+/// The body of an org import holding the mapping of the pack import `name`
+/// (any shipped pack): its file preview checks the mapping, which a pack now
+/// copies into an org pipeline (pipelines.md D1050).
+#[allow(dead_code)]
+pub fn pack_import_body(name: &str) -> serde_json::Value {
+    let p = pnex_backend::services::ontology::packs::shipped()
+        .into_iter()
+        .flat_map(|p| p.imports)
+        .find(|i| i.name == name)
+        .unwrap_or_else(|| panic!("no pack import {name}"));
+    serde_json::json!({
+        "name": name,
+        "mapping": serde_saphyr::to_string(&p.mapping).unwrap(),
+        "source": p.source,
+        "mode": p.mode,
+    })
+}

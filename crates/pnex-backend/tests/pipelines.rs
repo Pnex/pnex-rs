@@ -863,7 +863,7 @@ async fn an_org_pipeline_writes_objects_against_its_kept_base() {
     .await;
 }
 
-/// D1050: a pack copies its file import into an org pipeline that reads the
+/// D1050: the install of a pack copies its file import into an org pipeline that reads the
 /// Table named after it and writes objects on a pack's role; an upgrade
 /// replaces the copy the org left as is, never the one it edited (D424).
 #[tokio::test]
@@ -887,7 +887,6 @@ async fn a_pack_copies_its_imports_into_org_pipelines() {
         let (s, e) = call(&server, "POST", path, &env.alice, org, None).await;
         assert_eq!(s, 200, "{e}");
         let pack = shipped().into_iter().find(|p| p.key == "prospecting_b2b").unwrap();
-        install_copies(&ctx.db, org, &pack, &[]).await.unwrap();
         let name = "Trade show or association list (file)";
         let row = sql(
             &ctx,
@@ -900,23 +899,24 @@ async fn a_pack_copies_its_imports_into_org_pipelines() {
         assert_eq!(row[0][2], Value::Null, "written by the pack");
         let id = row[0][0].as_str().unwrap().to_string();
 
-        // Its `sql` step reads the Table through the worker binary, absent
-        // here: the version the pack wrote reads the same rows from the source.
-        let doc = sql(&ctx, "SELECT document FROM pipelines WHERE id = $1::uuid", vec![id.clone().into()]).await;
-        let mut doc: Value = serde_json::from_str(doc[0][0].as_str().unwrap()).unwrap();
-        doc["hosts"] = json!(["data.example.io"]);
-        let steps = doc["steps"].as_array_mut().unwrap();
-        steps[0] = json!({ "fetch": { "as": "page", "url": "https://data.example.io/list.csv" } });
-        steps.insert(1, json!({ "read": { "as": "rows", "from": "page", "format": "csv" } }));
-        let doc = doc.to_string();
-        sql(&ctx, "UPDATE pipelines SET document = $2 WHERE id = $1::uuid", vec![id.clone().into(), doc.clone().into()]).await;
-        sql(&ctx, "UPDATE pipeline_versions SET document = $2 WHERE pipeline_id = $1::uuid", vec![id.clone().into(), doc.into()]).await;
-        let runs = format!("/api/v1/pipelines/{id}/runs");
-        let (s, r) = call(&server, "POST", &runs, &env.alice, org, None).await;
-        assert_eq!(s, 202, "{r}");
-        assert!(pnex_backend::services::pipelines::run_next(&ctx).await.unwrap());
-        let done = call(&server, "GET", &format!("{runs}/{}", r["id"].as_str().unwrap()), &env.alice, org, None).await.1;
-        assert_eq!(done["state"], "done", "{done}");
+        // The member sends the file into the Table named after the import;
+        // the copy reads it through the worker.
+        let worker = common::spawn_pipeline_worker();
+        let feed = format!(
+            "key: feed\nhosts: [data.example.io]\nsteps:\n  - fetch: {{as: page, url: \"https://data.example.io/list.csv\"}}\n  - read: {{as: rows, from: page, format: csv}}\n  - write: {{from: rows, table: {{name: \"{name}\", replace: true}}}}\n"
+        );
+        let (s, f) = call(&server, "POST", "/api/v1/pipelines", &env.alice, org,
+            Some(json!({ "name": "feed", "document": feed }))).await;
+        assert_eq!(s, 201, "{f}");
+        for p in [f["id"].as_str().unwrap(), &id] {
+            let runs = format!("/api/v1/pipelines/{p}/runs");
+            let (s, r) = call(&server, "POST", &runs, &env.alice, org, None).await;
+            assert_eq!(s, 202, "{r}");
+            assert!(pnex_backend::services::pipelines::run_next(&ctx).await.unwrap());
+            let done = call(&server, "GET", &format!("{runs}/{}", r["id"].as_str().unwrap()), &env.alice, org, None).await.1;
+            assert_eq!(done["state"], "done", "{done}");
+        }
+        worker.abort();
         let n = sql(&ctx, "SELECT count(*)::text FROM objects WHERE org_id = $1 AND type_key = 'list_contact'",
             vec![org.into()]).await;
         assert_eq!(n[0][0], "2");

@@ -451,7 +451,8 @@ pub async fn run(
     find_row(db, org_id, id).await?;
     let row = load_row(db, id, run_id).await?;
     let diff = load_diff(db, run_id, Some(PREVIEW_SAMPLE)).await?;
-    let steps = crate::services::ingest::run_steps(db, org_id, id, run_id).await?;
+    let steps =
+        crate::services::ingest::run_steps(db, org_id, &format!("import:{id}"), run_id).await?;
     Ok(ImportPreview {
         run: row.view(),
         diff: diff.unwrap_or_default(),
@@ -1447,7 +1448,14 @@ async fn pipeline_then_sync(
         Some(&mut steps),
     )
     .await?;
-    engine::journal(db, imp.org_id, imp.id, run.id, &steps).await?;
+    engine::journal(
+        db,
+        imp.org_id,
+        &format!("import:{}", imp.id),
+        run.id,
+        &steps,
+    )
+    .await?;
     let failed = out
         .failure
         .as_ref()
@@ -2143,7 +2151,7 @@ pub async fn kept(
     org_id: i64,
     pack: &pnex_core::ontology::api::Pack,
 ) -> Result<Vec<(String, Vec<String>)>> {
-    Ok(pack_rows(db, org_id, pack)
+    let mut out: Vec<_> = pack_rows(db, org_id, pack)
         .await?
         .into_iter()
         .filter_map(|(i, row, shipped)| {
@@ -2154,12 +2162,42 @@ pub async fn kept(
             (current != shipped && written.is_some() && written != Some(&current))
                 .then(|| (pack.imports[i].name.clone(), differs(&current, &shipped)))
         })
-        .collect())
+        .collect();
+    // Its copies (D1050): the top-level fields of the document the org changed.
+    let copies = db
+        .query_all_raw(stmt(
+            "SELECT name, document, pack_written ->> 'written' AS written FROM pipelines \
+             WHERE org_id = $1 AND pack = $2 AND document <> (pack_written ->> 'written') \
+             ORDER BY name",
+            vec![org_id.into(), pack.key.clone().into()],
+        ))
+        .await?;
+    for r in copies {
+        let json = |c: &str| -> Value {
+            r.try_get::<String>("", c)
+                .ok()
+                .and_then(|t| serde_saphyr::from_str(&t).ok())
+                .unwrap_or(Value::Null)
+        };
+        let (a, b) = (json("document"), json("written"));
+        let mut keys: Vec<String> = a
+            .as_object()
+            .into_iter()
+            .chain(b.as_object())
+            .flat_map(|o| o.keys().cloned())
+            .filter(|k| a.get(k) != b.get(k))
+            .collect();
+        keys.sort();
+        keys.dedup();
+        out.push((r.try_get("", "name")?, keys));
+    }
+    Ok(out)
 }
 
-/// Imports a pack ships (D301, D424): created at install; at an upgrade,
-/// one the org left as is (or named in `take`) gets the pack's mapping,
-/// source and URL, its mode, schedule and pages kept; one it edited stays.
+/// Imports a pack ships (D301, D424): copied into org pipelines (D1050).
+/// One an org still holds as an import: at an upgrade, if the org left it
+/// as is (or named it in `take`), it gets the pack's mapping, source and
+/// URL, its mode, schedule and pages kept; one it edited stays.
 pub async fn install_from_pack(
     db: &DatabaseConnection,
     org_id: i64,
@@ -2180,25 +2218,8 @@ pub async fn install_from_pack(
         let mapping = serde_saphyr::to_string(&p.mapping)
             .map_err(|_| invalid(format!("imports.{i}.mapping"), FIELD_INVALID))?;
         let (id, replaced) = match row {
-            None => {
-                let input = ObjectImportInput {
-                    name: p.name.clone(),
-                    mapping,
-                    source: p.source,
-                    source_url: Some(p.source_url.clone()),
-                    mode: p.mode,
-                    recurrence: Some(p.recurrence.clone()),
-                    max_pages: Some(p.max_pages),
-                    expected_version: None,
-                };
-                let v = create(db, org_id, user_id, &input, Some(&pack.key))
-                    .await
-                    .map_err(at(i))?;
-                (
-                    v.id.parse::<Uuid>().map_err(|_| OntologyError::NotFound)?,
-                    Value::Null,
-                )
-            }
+            // Copied into an org pipeline instead (D1050).
+            None => continue,
             Some(row) => {
                 let current = current_content(&row);
                 let written = row.pack_written.as_ref().map(|w| &w["written"]);
@@ -2237,7 +2258,7 @@ pub async fn install_from_pack(
         };
         set_written(db, id, &shipped, &replaced).await?;
     }
-    Ok(())
+    install_copies(db, org_id, pack, take).await
 }
 
 async fn set_written(
@@ -2261,10 +2282,14 @@ async fn set_written(
 /// of its pack pipeline, the table it writes kept (other pipelines read
 /// it), then the import's mapping written as objects from the same rows. A
 /// file import reads the Table named after it, where a member sends the
-/// file. Left out: the pack pipeline's `tests:` (they read the pack's
+/// file. It runs after the copies of the imports its mapping names in
+/// `after`. Left out: the pack pipeline's `tests:` (they read the pack's
 /// fixture files), `schedule` and `after` (an org pipeline runs on its
 /// recurrence). `None`: the pack pipeline is gone or writes no table.
-pub fn pack_copy(p: &imp::PackImport) -> Option<pnex_core::pipeline::doc::Document> {
+pub fn pack_copy(
+    pack: &pnex_core::ontology::api::Pack,
+    p: &imp::PackImport,
+) -> Option<pnex_core::pipeline::doc::Document> {
     use pnex_core::pipeline::doc::{Document, ObjectsTarget, Sql, Step, Write};
     let m = &p.mapping;
     let objects = |from: String| {
@@ -2300,6 +2325,14 @@ pub fn pack_copy(p: &imp::PackImport) -> Option<pnex_core::pipeline::doc::Docume
             };
             let from = w.from.clone();
             doc.steps.insert(at + 1, objects(from));
+            // In an org's document a bare name is the org's function.
+            for s in &mut doc.steps {
+                if let Step::Call(c) = s {
+                    if !c.function.contains('/') {
+                        c.function = format!("{}/{}", sp.pack, c.function);
+                    }
+                }
+            }
             doc.tests.clear();
             doc.schedule = None;
             doc.after.clear();
@@ -2327,6 +2360,12 @@ pub fn pack_copy(p: &imp::PackImport) -> Option<pnex_core::pipeline::doc::Docume
         },
     };
     doc.name = p.name.clone();
+    doc.after = m
+        .after
+        .iter()
+        .filter_map(|k| pack.imports.iter().find(|i| i.mapping.key == *k))
+        .map(|i| i.name.clone())
+        .collect();
     Some(doc)
 }
 
@@ -2342,7 +2381,15 @@ pub async fn install_copies(
     take: &[String],
 ) -> Result<()> {
     for p in &pack.imports {
-        let Some(doc) = pack_copy(p) else {
+        // An org installed before D1050 holds it as an import until its migration.
+        let held = db
+            .query_one_raw(stmt(
+                "SELECT 1 AS one FROM object_imports WHERE org_id = $1 AND pack_key = $2 AND name = $3",
+                vec![org_id.into(), pack.key.clone().into(), p.name.clone().into()],
+            ))
+            .await?
+            .is_some();
+        let Some(doc) = pack_copy(pack, p).filter(|_| !held) else {
             continue;
         };
         let document =
@@ -2425,7 +2472,14 @@ mod tests {
         let mut n = 0;
         for pack in crate::services::ontology::packs::shipped() {
             for p in &pack.imports {
-                let doc = pack_copy(p).unwrap_or_else(|| panic!("{}: {}", pack.key, p.name));
+                let doc = pack_copy(&pack, p).unwrap_or_else(|| panic!("{}: {}", pack.key, p.name));
+                assert_eq!(
+                    doc.after.len(),
+                    p.mapping.after.len(),
+                    "{}: {}",
+                    pack.key,
+                    p.name
+                );
                 let yaml = serde_json::to_string_pretty(&doc).unwrap();
                 crate::services::pipelines::checked(&yaml)
                     .unwrap_or_else(|e| panic!("{}: {}: {e:?}", pack.key, p.name));
@@ -2433,6 +2487,10 @@ mod tests {
                     .steps
                     .iter()
                     .any(|s| matches!(s, Step::Write(w) if w.objects.is_some())));
+                assert!(doc
+                    .steps
+                    .iter()
+                    .all(|s| !matches!(s, Step::Call(c) if !c.function.contains('/'))));
                 n += 1;
             }
         }
