@@ -465,11 +465,6 @@ Décisions des lots : D791–D806 (OP2, OP3), D825–D832 (OP5), D833–D840 (OP
 | OP1 | En grande partie livré | `pipelines.md` | voir le PRD |
 | OP2 | Livré (CN1–CN5) | `pipelines.md` §3.10 | aucun : secret des webhooks généré ou collé, décidé le 2026-11-20 |
 | OP3 | Livré (G1–G7) | `governance.md` §7 | SAML à la première demande client, I4 général |
-| OP5 | Livré (AN1–AN3) + agrégats | `analysis.md` §2, `viz.md` | AN4 (analyse sans code), règle → proposition (D829) |
+| OP5 | Livré (AN1–AN4, D829) + agrégats | `analysis.md` §2, `viz.md` | voir le PRD |
 | OP9 | Livré (VG1–VG3) | `agents.md` §3.12 | voir le PRD |
 | OP4, OP6–OP8, OP10–OP15 | Non commencés | — | OP10 dépend aussi de P0.1 et P0.3 |
-
-## Reste à faire
-
-- **D976** (gardé le 2026-11-20) : la capture des relations d'un contact passe dans un pipeline
-  du pack `prospecting_b2b`. Ce lot (PE5.4, `pipelines.md`) est en cours.

@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Statut** | Vue de pilotage, revue le 2026-11-20. Les docs de domaine font foi pour le détail. |
+| **Statut** | Vue de pilotage, revue le 2026-11-24. Les docs de domaine font foi pour le détail. |
 | **Numérotation** | Entrées **P0.1…P2.39** (§2), registre des décisions produit **#1…#27** (§4). Le code et les docs citent ces numéros. |
 
 ## Résumé
@@ -63,9 +63,7 @@ config:
 ---
 flowchart LR
     subgraph data[Données]
-        pe54[PE5.4 relations d'un contact, en cours] --> pe55[PE5.5 retrait des recettes]
-        pe55 --> pe79[PE8, PE9]
-        d801[D801 habilitation des pipelines]
+        pe8[PE8 mesure autour d'événements]
     end
     subgraph acc[Accès]
         i4[I4 lectures filtrées] --> i5[I5 ontologie fine]
@@ -78,11 +76,11 @@ flowchart LR
         e2e[E2E devices sur deux pods] --> op10
     end
     subgraph gmao[Pièces]
-        pd1d[PD1d hors ligne] --> pd2[PD2 visualiseur]
+        pd2[PD2 visualiseur] --> pd3[PD3 → PD5]
     end
 ```
 
-PE5.4 est le seul lot en cours au 2026-11-20 (`pipelines.md`). D801 et les gardes de gouvernance sont décidés et restent à coder. OP10 dépend aussi d'OP9, livré.
+PE8 est le dernier lot du moteur de pipelines (`pipelines.md` §7). OP10 dépend aussi d'OP9, livré.
 
 ## Exigences
 
@@ -97,13 +95,13 @@ PE5.4 est le seul lot en cours au 2026-11-20 (`pipelines.md`). D801 et les garde
 
 | Domaine | État | Doc | Prochains lots | P |
 |---|---|---|---|---|
-| Plateforme opérationnelle | OP1 en grande partie livré. OP2, OP3, OP5, OP9 livrés. | `operational-platform.md` §11 | OP4, OP6–OP8, OP10–OP15 selon la demande client | P2.36 |
+| Plateforme opérationnelle | OP1 en grande partie livré. OP2, OP3, OP5 (AN1–AN4), OP9 livrés. | `operational-platform.md` §11 | OP4, OP6–OP8, OP10–OP15 selon la demande client | P2.36 |
 | Ontologie | Noyau 0.2.0 livré (D176–D191), actions D183, D367, D368. | `ontology.md` | Éditeur d'actions, mesures 100 k objets, D369, calendrier GMAO (compteurs, équipes, `.ics`), annexe C | P2.14, P2.20 |
-| Pipelines, Tables, connecteurs | Moteur codé (D934–D953), connecteurs OP2 livrés. | `pipelines.md` | PE5.5, PE8, PE9, D941, D944 | — |
-| Gouvernance | G1–G7 livrés (D798–D806). | `governance.md` | D801, détection et unicité des marquages (à coder), SAML à la demande | — |
+| Pipelines, Tables, connecteurs | Moteur codé (D934–D953), lots PE0–PE7 et PE9 livrés, connecteurs OP2 livrés. | `pipelines.md` §7 | PE8, écarts connus du moteur | — |
+| Gouvernance | G1–G7 livrés (D798–D806), D801 et marquages livrés. | `governance.md` §7 | SAML à la demande | — |
 | IAM | I0–I3 livrés, I6 en lecture seule, I7 partiel. | `iam.md` §16 | I4, I5, I2, simulateur d'accès (I7) | P2.25 |
 | Sécurité | Coffre (D110–D119), profil V1 (D153–D158), audit du 2026-11-06 corrigé. | `security.md` §11 | Clé APK release (SEC-10), V2 profil `industrial` | P0.2, P2.37 |
-| API, SDK, MCP, CLI | Contrat OpenAPI, MCP, CLI `pnex`, SDK d'applications livrés. | `api.md`, `external-apps.md` | Ensembles fermés en enum, filtrage MCP par tag, flux SSE des changements, D440 | — |
+| API, SDK, MCP, CLI | Contrat OpenAPI, MCP, CLI `pnex`, SDK d'applications livrés. | `api.md`, `external-apps.md` | Flux SSE des changements, D440 | — |
 | Runtime, cluster | Cluster D106–D108 validé sur dev.pnex.io, PostgreSQL seul (#19), S3 seul (#25). | `runtime.md` | Digests d'images, purge O2 durable, histoire du graphe, PG 19 (M0–M5) | P0.3 |
 | Moteur de flows | Codé, palette par catégories (D109). | `flow-engine.md` §7 | Mise en sommeil des flows, `LAST_VALUES` en Valkey, groupes de nœuds | P1.7, P2.11, P2.21 |
 | Edge, agent, M2M | Agent edge livré (D95–D99), TLS et OTA signée. | `edge.md` §7 | F3 `regulator`, agent Windows et macOS, POC M2M zenoh-pico | P1.3, P3 |
@@ -121,7 +119,7 @@ PE5.4 est le seul lot en cours au 2026-11-20 (`pipelines.md`). D801 et les garde
 | Assistant IA | Registre fermé d'outils (`ai-assistant.md` §4), D142–D145. | `ai-assistant.md` | Suit chaque fonctionnalité (D142) | — |
 | Agents, environnements | D700–D720, U1–U5, porte OP9 livrés. | `agents.md` §7 | U4b, forge GitLab et Forgejo | P1.6, P2.7, P2.29 |
 | Agents navigateur | v2 codée (L0–L5, D254–D284). | `browser-agents.md` §7 | Campagne de test réelle, publication, D268 | P2.1 |
-| Analyse | AN1–AN3 livrés (D825–D832). | `analysis.md` | AN4, règle qui propose (D829) | P2.36 |
+| Analyse | AN1–AN4 et la règle qui propose (D829) livrés. | `analysis.md` §7 | D827 (choix de Shan) | P2.36 |
 | Propositions | P0–P4 codés. | `proposals.md` | Acceptation automatique (D377) | — |
 | CRM, comptes | Packs `crm`, `prospecting_b2b`, CRM1–CRM7, D341. | `crm.md` §7 | Registres étrangers, prospection | P2.27, P2.28, P2.31 |
 | Présence web | W0–W4 codés (D359–D366). | `web-presence.md` | `address_proof`, captures en Vision Lab | — |
@@ -129,7 +127,7 @@ PE5.4 est le seul lot en cours au 2026-11-20 (`pipelines.md`). D801 et les garde
 | Partenaires | Veille et preuves codées (D300–D316, D402–D431). | `partners.md` §7 | D300 écriture bornée, règles V2 | P2.26 |
 | Marchés | Packs `markets` et suivants codés (D523–D546 et suivantes). | `markets-research.md` §7 | MK0 (OpenFIGI, FIRDS), MK3c, ingestion de contenus L2–L8 | P2.35 |
 | Marché du travail | LM0 et pack `labor_market_fr` (BMO, tension). Aucune source d'offres. | `labor-market.md` §7 | LM1, LM3 → LM5. LM2 bloqué. | — |
-| Pièces et documentation | PD0, PD1a–PD1c codés (D960–D971). | `parts-docs.md` §7 | PD1d → PD5 | P2.39 |
+| Pièces et documentation | PD0, PD1a–PD1d codés (D960–D971). | `parts-docs.md` §7 | PD2 → PD5 | P2.39 |
 | Chaîne de livraison | PRD proposé (D850–D866), rien de codé. | `software-delivery.md` §7 | SD0 → SD1 → SD3 → SD4 après Q-SD1 | P2.23, P2.24, P2.38 |
 | Due diligence | PRD proposé (D468–D483), rien de codé. | `due-diligence.md` §7 | DD0 → DD2 | P2.32 |
 | Recherche juridique | PRD proposé (D485–D505), rien de codé. | `legal-research.md` §7 | LR0, puis LR1 → LR5 | P2.33 |
@@ -191,7 +189,7 @@ PE5.4 est le seul lot en cours au 2026-11-20 (`pipelines.md`). D801 et les garde
 | P2.36 | Plateforme opérationnelle (OP1–OP15) | Voir §1. | `operational-platform.md` §11 |
 | P2.37 | Audit du 2026-11-06 | Constats corrigés le 2026-11-07 (SEC-67 à SEC-79). | `docs/journal/audit-2026-11-06.md` |
 | P2.38 | Chaîne de livraison logicielle | PRD proposé. | `software-delivery.md` §7 |
-| P2.39 | Pièces et documentation | PD0–PD1c codés. | `parts-docs.md` §7 |
+| P2.39 | Pièces et documentation | PD0–PD1d codés. | `parts-docs.md` §7 |
 
 **P3 — Horizons.** Rien n'y est engagé. Chaque entrée demande une décision explicite :
 
