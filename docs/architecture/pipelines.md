@@ -753,7 +753,7 @@ tests:
 
 **Lots du moteur non finis :**
 
-- PE8 : mesure autour d'événements et chaînes candidates dans `/analysis`, note de séance en règle.
+- PE8 (choix de Shan, 2026-11-24) : la mesure autour d'événements et les chaînes candidates deviennent des routes génériques de `/analysis`, sur toute série et tout ensemble d'événements. `/markets/instruments/{id}/event-study` et `/markets/chains` sont retirées (`feat(api)!`) : market-advisor passe à `/analysis`. La synthèse quotidienne (D814) devient l'action d'une règle d'org (D829). `move_notify_channels` disparaît.
 
 **Écarts connus du moteur :**
 
@@ -775,18 +775,18 @@ tests:
 - Pas de transaction `delete`. Quota de 20 Go en constante, pas par tier.
 - Un client arrêté recommence son envoi depuis le début.
 - Une étape à la fois par exécution enchaînée.
-- `object_imports` : retrait de la table une fois les origines migrées (choix de Shan).
+- `object_imports` : retrait de la table (choix de Shan). Ce lot passe avant PE8 (choix de Shan, 2026-11-24).
 - `fc_rs_xml` : vérifier qu'il passe par la table et protège les éditions depuis son portage en pipeline.
 - Chart `pipelineWorker`, `NetworkPolicy` et `images.yml` jamais essayés sur un cluster.
 - Retirer à la main les anciens horaires des imports France Compétences de l'org 4 sur dev.pnex.io.
 - Jointure réelle 44,5 M × 38 M à mesurer sur dev.
 
-**Effacement (à trancher par Shan avant de promettre un effacement complet) :**
+**Effacement (choix de Shan, 2026-11-24) :** fermer les trous 2 et 3 : les empreintes vivent au niveau de l'org, et une conversion propage la déclaration. Les trous 1 et 4 restent des limites, écrites dans l'UI d'effacement.
 
-- Un fichier sans déclaration ni lignage garde la personne.
-- Une table supprimée perd ses empreintes : recréée et rechargée, la personne revient.
-- Une colonne convertie (`digits`, `left`, `concat`) n'est pas déclarée.
-- Un titre déclaré retire les homonymes.
+1. Un fichier sans déclaration ni lignage garde la personne.
+2. Une table supprimée perd ses empreintes : recréée et rechargée, la personne revient.
+3. Une colonne convertie (`digits`, `left`, `concat`) n'est pas déclarée.
+4. Un titre déclaré retire les homonymes.
 
 **Connecteurs :**
 

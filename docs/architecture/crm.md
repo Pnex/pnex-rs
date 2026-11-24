@@ -220,6 +220,8 @@ PneX ne surveille aucun profil et ne parcourt aucun graphe social (D254). Chaque
   - **Activer** : PneX trouve la personne qui utilise l'adresse mail du membre comme identifiant. Sinon, PneX crée une personne au nom du membre. La table `connection_shares` garde l'interrupteur et cette personne.
   - **Pendant le partage** : chaque ligne du run du membre arrive aussi dans l'org d'équipe, avec la même clé, et un lien `knows` part de la personne du membre. Une personne déjà là garde ses valeurs. Le serveur relit à chaque écriture que le membre a `ontology:write` dans l'org (R2). Ces liens nourrissent les chemins d'introduction.
   - **Couper** : les liens `knows` du partage se ferment, historique gardé. Une personne amenée par un partage reçoit une proposition d'effacement si trois conditions sont vraies : aucun lien ouvert, aucun lien fermé hors partage, aucune modification depuis sa création (version 1).
+  - **Départ du membre** (choix de Shan, 2026-11-24) : PneX fait comme si le membre coupait l'interrupteur. À coder.
+  - **Org personnelle** (choix de Shan, 2026-11-24) : l'interrupteur n'apparaît pas, car personne ne reçoit le partage. À coder.
 - **Recherche d'une personne** (D788, `agents.md`) : action `find_profile` sur la fiche, ou flow horaire pour les comptes cibles et prospects.
 
 Le texte capturé est purgé après 30 jours. Une personne opposée n'est ni capturée ni lue (`prospecting-opposed`).
