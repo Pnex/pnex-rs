@@ -50,6 +50,8 @@ test.describe('websites studio', { tag: '@sites' }, () => {
     await confirmDialog(page, app.t('web-sites-delete-recipe'))
       .getByRole('button', { name: app.t('web-sites-delete-recipe') })
       .click();
+    // Wait for the delete to land: navigating away aborts the request and the server rolls it back.
+    await expect(page.getByRole('button', { name: app.t('web-sites-delete-recipe') })).toHaveCount(0);
     await app.goto('/web-sites');
     await expect(page.locator('main tr').filter({ hasText: host })).toHaveCount(0);
   });
