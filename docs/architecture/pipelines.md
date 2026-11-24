@@ -678,6 +678,15 @@ Nœuds `ontology_trigger` et `pipeline_ask`. Le pipeline collecte, trois flows d
 ### D1000 — Lire une fois, ou relire tous les N jours
 `again_days: N` sur une énumération suivie, 1 au moins.
 
+### D1050 — Un import devient un pipeline d'org
+Choix de Shan (2026-11-24). La table `object_imports` et les routes `/ontology/imports` disparaissent (`feat(api)!`). L'étape `write objects` reprend ce que faisait l'import :
+- delta entre transactions de Table : une édition faite à la main tient tant que la source ne change pas la valeur. L'aperçu est la sonde (D944).
+- `snapshot` et `close_missing`, avec la garde `max_closures_pct`.
+- `observations:`, attachées à l'objet écrit (D941 reste vrai).
+- droits de l'auteur, relus à chaque run (D303).
+
+La migration réécrit la provenance `import:<id>` en provenance du pipeline d'org. Un pack copie ses imports en pipelines d'org et garde les éditions de l'org à la mise à jour (D424). Un fichier envoyé va dans une Table, puis un pipeline d'org la lit.
+
 ## 6. Interfaces
 
 ### 6.1 Document d'un pipeline du moteur
@@ -775,7 +784,12 @@ tests:
 - Pas de transaction `delete`. Quota de 20 Go en constante, pas par tier.
 - Un client arrêté recommence son envoi depuis le début.
 - Une étape à la fois par exécution enchaînée.
-- `object_imports` : retrait de la table (choix de Shan). Ce lot passe avant PE8 (choix de Shan, 2026-11-24).
+- Retrait des imports (D1050), avant PE8. Plan :
+  1. `write objects` : delta et éditions protégées, `snapshot`, `close_missing`, `observations`, droits de l'auteur. Tests portés des imports.
+  2. Packs : un import de pack devient un pipeline d'org à l'installation, éditions gardées à la mise à jour.
+  3. Migration : imports → pipelines d'org, provenance réécrite, Tables libérées, historique des runs.
+  4. Retrait : table, routes, service, page, CLI, contrat (`exposure.rs`, `iam.rs`), fiche de l'assistant. `stop.rs` reste, déplacé.
+  5. Front : l'écran d'import enchaîne l'envoi dans une Table et le pipeline. E2E.
 - `fc_rs_xml` : vérifier qu'il passe par la table et protège les éditions depuis son portage en pipeline.
 - Chart `pipelineWorker`, `NetworkPolicy` et `images.yml` jamais essayés sur un cluster.
 - Retirer à la main les anciens horaires des imports France Compétences de l'org 4 sur dev.pnex.io.
