@@ -177,7 +177,7 @@ pub fn group_title(s: &SignalItem, count: usize) -> String {
 /// Like signals close in time gathered: same kind and action, each within
 /// a minute of the group's first. Order kept; each with its count.
 pub fn group_signals(items: &[SignalItem]) -> Vec<(SignalItem, usize)> {
-    let key = |s: &SignalItem| (s.kind.clone(), s.change.as_ref().map(|c| c.action.clone()));
+    let key = |s: &SignalItem| (s.kind, s.change.as_ref().map(|c| c.action.clone()));
     let mut out: Vec<(SignalItem, usize, i64)> = Vec::new();
     for s in items {
         let t = ms(&s.at).unwrap_or_default();
