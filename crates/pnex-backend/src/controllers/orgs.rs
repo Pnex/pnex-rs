@@ -709,6 +709,10 @@ async fn remove_membership(
     crate::services::iam::store::forget_member(&txn, org_id, user_id)
         .await
         .map_err(|_| Error::InternalServerError)?;
+    // Their connection shares stop as if switched off (crm.md D999).
+    crate::services::connection_shares::forget_member(&txn, org_id, user_id)
+        .await
+        .map_err(|_| Error::InternalServerError)?;
     txn.commit().await.map_err(|_| Error::InternalServerError)
 }
 
@@ -719,7 +723,7 @@ async fn remove_membership(
     tag = "orgs",
     operation_id = "orgs_members_remove",
     summary = "Remove a member",
-    description = "Needs `orgs.members:delete` (owner or admin); removing an owner also needs `orgs.owners:write` (owner) and never the last owner. Also deletes the member assistant conversations in this org. `X-Org-Id` must be the path org; leaving is `POST /api/v1/orgs/{id}/leave`.",
+    description = "Needs `orgs.members:delete` (owner or admin); removing an owner also needs `orgs.owners:write` (owner) and never the last owner. Also deletes the member assistant conversations in this org and stops their connection shares there, as if turned off (D999). `X-Org-Id` must be the path org; leaving is `POST /api/v1/orgs/{id}/leave`.",
     params(("id" = i64, Path, description = "Org id"), ("user_id" = i64, Path, description = "User id of the member")),
     responses(
         (status = 204, description = "Removed"),
@@ -758,7 +762,7 @@ async fn remove_member(
     tag = "orgs",
     operation_id = "orgs_leave",
     summary = "Leave an organisation",
-    description = "The caller leaves the org, whatever their role, except its last owner. Deletes the caller's assistant conversations in this org. Not scoped by X-Org-Id.",
+    description = "The caller leaves the org, whatever their role, except its last owner. Deletes the caller's assistant conversations in this org and stops their connection shares there, as if turned off (D999). Not scoped by X-Org-Id.",
     params(("id" = i64, Path, description = "Org id")),
     responses(
         (status = 204, description = "Left"),

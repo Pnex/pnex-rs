@@ -2324,6 +2324,27 @@ async fn a_member_shares_their_own_connections_with_a_team_org_and_stops() {
         assert!(erase[0].contains(&dan) && !erase[0].contains(&cleo) && !erase[0].contains(&ada), "{}", erase[0]);
         connection_shares::fan_out(&env.db, mine, alice, "linkedin", &target, &rows).await;
         assert_eq!(knows(true).await, 0, "nothing shared once off");
+
+        // Departure: removing Alice from the team does what switching off does.
+        let (s, _) = call(&server, "PUT", share, &env.alice, team, Some(json!({ "shared": true }))).await;
+        assert_eq!(s, 200);
+        let mut more = rows.clone();
+        more.push(json!({ "url": "https://www.linkedin.com/in/eve", "name": "Eve Sample", "position": "", "company": "", "place": "" })
+            .as_object().unwrap().clone());
+        connection_shares::fan_out(&env.db, mine, alice, "linkedin", &target, &more).await;
+        let eve = person_by_url("eve").await.expect("eve shared");
+        assert_eq!(knows(true).await, 1, "only Eve is new: closed links stay closed");
+        let (s, e) = call(&server, "DELETE", &format!("/api/v1/orgs/{team}/members/{alice}"), &env.bob, team, None).await;
+        assert_eq!(s, 204, "{e}");
+        assert_eq!((knows(true).await, knows(false).await), (0, 4), "the share's links closed, history kept");
+        let left: i64 = env.db.query_one_raw(q(&format!("SELECT count(*) AS n FROM connection_shares WHERE org_id = {team}")))
+            .await.unwrap().unwrap().try_get("", "n").unwrap();
+        assert_eq!(left, 0, "the share's row is gone");
+        let (_, inbox) = call(&server, "GET", "/api/v1/proposals?limit=50", &env.bob, team, None).await;
+        assert!(inbox["results"].as_array().unwrap().iter()
+            .any(|p| p["kind"] == "object_erase" && p["origin"] == "share:linkedin" && p.to_string().contains(&eve)), "{inbox}");
+        connection_shares::fan_out(&env.db, mine, alice, "linkedin", &target, &more).await;
+        assert_eq!(knows(true).await, 0, "nothing shared after departure");
     })
     .await;
 }

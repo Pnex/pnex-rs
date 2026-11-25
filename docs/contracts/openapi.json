@@ -88652,7 +88652,7 @@
     },
     "/api/v1/orgs/{id}/leave": {
       "post": {
-        "description": "The caller leaves the org, whatever their role, except its last owner. Deletes the caller's assistant conversations in this org. Not scoped by X-Org-Id.",
+        "description": "The caller leaves the org, whatever their role, except its last owner. Deletes the caller's assistant conversations in this org and stops their connection shares there, as if turned off (D999). Not scoped by X-Org-Id.",
         "operationId": "orgs_leave",
         "parameters": [
           {
@@ -88811,7 +88811,7 @@
     },
     "/api/v1/orgs/{id}/members/{user_id}": {
       "delete": {
-        "description": "Needs `orgs.members:delete` (owner or admin); removing an owner also needs `orgs.owners:write` (owner) and never the last owner. Also deletes the member assistant conversations in this org. `X-Org-Id` must be the path org; leaving is `POST /api/v1/orgs/{id}/leave`.",
+        "description": "Needs `orgs.members:delete` (owner or admin); removing an owner also needs `orgs.owners:write` (owner) and never the last owner. Also deletes the member assistant conversations in this org and stops their connection shares there, as if turned off (D999). `X-Org-Id` must be the path org; leaving is `POST /api/v1/orgs/{id}/leave`.",
         "operationId": "orgs_members_remove",
         "parameters": [
           {

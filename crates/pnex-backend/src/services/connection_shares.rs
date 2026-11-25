@@ -153,8 +153,8 @@ async fn member_person(
 /// person they reached when the share brought it and nothing else holds it:
 /// no open link of any kind, no closed link but a share's, never edited
 /// since its creation (version 1).
-async fn stop(
-    db: &DatabaseConnection,
+async fn stop<C: ConnectionTrait>(
+    db: &C,
     org_id: i64,
     actor: &Actor,
     network: &str,
@@ -212,6 +212,36 @@ async fn stop(
         if let Err(e) = ontology::proposals::propose(db, org_id, &p).await {
             tracing::warn!(org_id, %id, error = %e, "erasure not proposed");
         }
+    }
+    Ok(())
+}
+
+/// A member left the org (removed or gone): each share they had there stops
+/// as if they turned it off, then its row goes. Runs in the caller's
+/// transaction, under a system actor: the member has no right left.
+pub async fn forget_member<C: ConnectionTrait>(
+    db: &C,
+    org_id: i64,
+    user_id: i64,
+) -> ontology::Result<()> {
+    let rows = db
+        .query_all_raw(stmt(
+            "DELETE FROM connection_shares WHERE org_id = $1 AND user_id = $2
+             RETURNING network, person_id",
+            vec![org_id.into(), user_id.into()],
+        ))
+        .await?;
+    for row in rows {
+        let network: String = row.try_get("", "network")?;
+        let Some(person) = row.try_get::<Option<Uuid>>("", "person_id")? else {
+            continue;
+        };
+        let actor = Actor {
+            user_id: None,
+            role: crate::models::_entities::sea_orm_active_enums::OrgMemberRole::Admin,
+            source_ref: source_ref(&network),
+        };
+        stop(db, org_id, &actor, &network, person).await?;
     }
     Ok(())
 }
