@@ -196,7 +196,8 @@ pub async fn probe(
     });
     let objects = match (&last, target, preview.may_read) {
         (Some(t), Some((from, target)), true) => {
-            objects_preview(ctx, org_id, user, t, from, target, preview.pipeline).await?
+            let reads = preview.full.table_reads();
+            objects_preview(ctx, org_id, user, t, from, target, &reads, preview.pipeline).await?
         }
         _ => None,
     };
@@ -224,6 +225,7 @@ pub async fn probe(
 
 /// What `target` would write from the rows of `table`, against the base of
 /// `pipeline` when given: `None` when the step writes nothing the org has.
+#[allow(clippy::too_many_arguments)]
 async fn objects_preview(
     ctx: &AppContext,
     org_id: i64,
@@ -231,6 +233,7 @@ async fn objects_preview(
     table: &crate::services::pipeline_engine::Table,
     from: &str,
     target: &pnex_core::pipeline::doc::ObjectsTarget,
+    reads: &[&str],
     pipeline: Option<Uuid>,
 ) -> Result<Option<pnex_core::pipelines::ObjectsPreview>, PipelineError> {
     use crate::services::ontology::{imports, OntologyError};
@@ -252,6 +255,7 @@ async fn objects_preview(
         step: from,
         source_ref: &source,
         author: Some(user),
+        reads,
         snapshot: target.snapshot,
         dry: true,
     };

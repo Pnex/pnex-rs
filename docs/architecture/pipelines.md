@@ -685,7 +685,7 @@ Choix de Shan (2026-11-24). La table `object_imports` et les routes `/ontology/i
 - `observations:`, attachées à l'objet écrit (D941 reste vrai).
 - droits de l'auteur, relus à chaque run (D303).
 
-Chaque étape `write objects` garde une base : le dernier plan appliqué, dans `pipeline_object_bases` (org, pipeline, table d'entrée). Le run suivant compare ses lignes à cette base. Sans `snapshot`, la base garde aussi les objets absents du run : un run partiel ne perd rien. Sans base (premier run, mapping changé, base retirée par un effacement), le run compare ses lignes à l'ontologie : une édition faite à la main peut être écrasée une fois. Un pipeline de pack écrit avec le rôle Member.
+Chaque étape `write objects` garde une base : le dernier plan appliqué, dans `pipeline_object_bases` (org, pipeline, table d'entrée). Le run suivant compare ses lignes à cette base. Sans `snapshot`, la base garde aussi les objets absents du run : un run partiel ne perd rien. Sans base (premier run, mapping changé, base retirée par un effacement), le run compare ses lignes à l'ontologie : une édition faite à la main peut être écrasée une fois. Un pipeline de pack écrit avec le rôle Member. Le rôle d'une étape ne dépasse jamais le rôle du dernier membre qui a chargé une Table lue (SEC-93). Une Table chargée par un pack ou par un membre parti compte comme chargée par un Member.
 
 Un fichier envoyé va dans une Table, puis un pipeline d'org la lit.
 
@@ -806,9 +806,9 @@ tests:
 - Un client arrêté recommence son envoi depuis le début.
 - Une étape à la fois par exécution enchaînée.
 - Retrait des imports (D1050) : fait (2026-11-25). Suites :
-  - `dataset.synced` n'a plus d'émetteur : le nœud `dataset_trigger` avec `on: synced` ne part plus. Choix à faire : l'émettre après une étape `write objects`, ou retirer l'option.
-  - Une étape `write objects` ne déclare pas les colonnes d'identité de la Table qu'elle lit, comme le mapping d'un import le faisait (§3.11). Un effacement n'atteint pas ces lignes sans `PUT /datasets/{id}/identity`.
-  - Une étape `write objects` écrit avec le rôle de l'auteur de la version, même sur une Table que tout membre charge. Une synchronisation de Table écrivait avec le rôle Member (SEC-93).
+  - `dataset.synced` n'a plus d'émetteur : le nœud `dataset_trigger` avec `on: synced` ne part plus. Choix de Shan (2026-11-25) : une exécution dont une étape `write objects` lit une Table publie `synced` pour cette Table, avec les objets changés. À coder.
+  - Une étape `write objects` ne déclare pas les colonnes d'identité de la Table qu'elle lit, comme le mapping d'un import le faisait (§3.11). Choix de Shan (2026-11-25) : l'enregistrement du pipeline déclare ces colonnes sur la Table lue. À coder.
+  - Rôle d'écriture d'une étape `write objects` (SEC-93) : fait (2026-11-25). L'étape écrit avec le plus bas rôle entre l'auteur de la version et le dernier membre qui a chargé chaque Table lue.
   - Un pipeline d'org ne refuse pas à l'enregistrement un mapping qui nomme une propriété inconnue ou une valeur sensible.
   - La vérification (D431) d'un pipeline d'org porte l'id du pipeline, pas son nom.
   - Un release après le déploiement sur dev et en prod : supprimer `object_imports`, `object_import_runs`, `datasets.import_id`, la conversion au démarrage, la garde `table_reserved` et `ImportRow`.

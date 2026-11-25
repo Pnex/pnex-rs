@@ -372,6 +372,7 @@ async fn half_a_gigabyte_is_not_held_in_memory() {
             id,
             pnex_core::datasets::DatasetTransactionKind::Snapshot,
             None,
+            None,
             futures_util::stream::iter(chunks),
         )
         .await

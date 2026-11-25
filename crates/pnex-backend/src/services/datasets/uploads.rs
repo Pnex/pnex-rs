@@ -94,6 +94,7 @@ pub async fn start(
     dataset_id: Uuid,
     kind: DatasetTransactionKind,
     delimiter: Option<&str>,
+    by: i64,
 ) -> Result<DatasetUpload, DatasetError> {
     check_loadable(db, org_id, dataset_id).await?;
     let replaced = db
@@ -124,8 +125,8 @@ pub async fn start(
     }
     let row = db
         .query_one_raw(stmt(
-            "INSERT INTO dataset_uploads (org_id, dataset_id, kind, delimiter) \
-             VALUES ($1, $2, $3, $4) \
+            "INSERT INTO dataset_uploads (org_id, dataset_id, kind, delimiter, created_by) \
+             VALUES ($1, $2, $3, $4, $5) \
              ON CONFLICT (dataset_id) WHERE state IN ('open', 'ready', 'converting') DO NOTHING \
              RETURNING id",
             vec![
@@ -133,6 +134,7 @@ pub async fn start(
                 dataset_id.into(),
                 kind.as_str().into(),
                 delimiter.map(str::to_string).into(),
+                by.into(),
             ],
         ))
         .await?
@@ -266,7 +268,7 @@ pub async fn convert_next(db: &DatabaseConnection, store: &S3Store) -> Result<bo
                    WHERE state = 'ready' \
                    OR (state = 'converting' AND heartbeat_at < now() - interval '{LOST_AFTER_MINUTES} minutes') \
                    ORDER BY updated_at FOR UPDATE SKIP LOCKED LIMIT 1) \
-                 RETURNING id, org_id, dataset_id, kind, delimiter, attempts, \
+                 RETURNING id, org_id, dataset_id, kind, delimiter, attempts, created_by, \
                    (SELECT count(*) FROM jsonb_object_keys(parts))::int AS part_count"
             ),
             vec![],
@@ -316,6 +318,7 @@ pub async fn convert_next(db: &DatabaseConnection, store: &S3Store) -> Result<bo
     let delimiter: Option<String> = row.try_get("", "delimiter")?;
     let delimiter = delimiter.and_then(|d| d.bytes().next());
     let count: i32 = row.try_get("", "part_count")?;
+    let by: Option<i64> = row.try_get("", "created_by")?;
 
     let beat = {
         let db = db.clone();
@@ -350,6 +353,7 @@ pub async fn convert_next(db: &DatabaseConnection, store: &S3Store) -> Result<bo
             dataset_id,
             kind,
             delimiter,
+            by,
             Box::pin(parts),
         )
         .await

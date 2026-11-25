@@ -30,6 +30,7 @@ use uuid::Uuid;
 
 use super::{invalid, schema, Actor, OntologyError, Result};
 use crate::models::_entities::sea_orm_active_enums::OrgMemberRole;
+use crate::services::iam::level_of;
 
 /// Scheduled runs start at this hour (UTC) of their day.
 const RUN_HOUR: u32 = 3;
@@ -122,6 +123,9 @@ pub struct RowsWriter<'a> {
     /// Author of the version run, whose role is read again at each run (D303).
     /// `None`: a pack's pipeline, written as a member.
     pub author: Option<i64>,
+    /// Tables of the org the pipeline reads: it writes no higher than the
+    /// member who last loaded each one (SEC-93).
+    pub reads: &'a [&'a str],
     /// Closes what this step wrote and the rows no longer hold.
     pub snapshot: bool,
     /// A preview (D944): counts what it would write, writes and keeps nothing.
@@ -233,12 +237,18 @@ pub async fn write_rows(
     rows: &[Value],
 ) -> Result<Written> {
     use crate::services::db_lock::{ns, TenantLock};
-    let role = match w.author {
+    let mut role = match w.author {
         None => OrgMemberRole::Member,
         Some(user) => member_role(db, w.org_id, user)
             .await
             .ok_or(coded(err_codes::ONTOLOGY_WRITE_FORBIDDEN))?,
     };
+    for table in w.reads {
+        let loader = loader_role(db, w.org_id, table).await?;
+        if let Some(loader) = loader.filter(|l| level_of(l) < level_of(&role)) {
+            role = loader;
+        }
+    }
     let s = schema(db, w.org_id).await?;
     let types: Vec<_> = s.types.iter().map(|(t, _, _)| t.clone()).collect();
     let links: Vec<_> = s.links.iter().map(|(l, _, _)| l.clone()).collect();
@@ -585,6 +595,32 @@ async fn create_pin<C: ConnectionTrait>(
     )
     .await?;
     Ok(identity.id)
+}
+
+/// The role of who last loaded `table`: `None` when it has no version yet,
+/// Member when a pack, the system or a member gone loaded it (SEC-93).
+async fn loader_role(
+    db: &DatabaseConnection,
+    org_id: i64,
+    table: &str,
+) -> Result<Option<OrgMemberRole>> {
+    let Some(row) = db
+        .query_one_raw(stmt(
+            "SELECT t.created_by FROM dataset_transactions t \
+             JOIN datasets d ON d.id = t.dataset_id \
+             WHERE d.org_id = $1 AND d.name = $2 AND t.state = 'committed' \
+             ORDER BY t.seq DESC LIMIT 1",
+            vec![org_id.into(), table.into()],
+        ))
+        .await?
+    else {
+        return Ok(None);
+    };
+    let role = match row.try_get::<Option<i64>>("", "created_by")? {
+        Some(user) => member_role(db, org_id, user).await,
+        None => None,
+    };
+    Ok(Some(role.unwrap_or(OrgMemberRole::Member)))
 }
 
 /// The role of `user` in the org, when it may write objects.

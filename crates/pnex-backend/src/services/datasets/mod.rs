@@ -678,12 +678,14 @@ async fn room(db: &DatabaseConnection, org_id: i64) -> Result<u64, DatasetError>
         .ok_or(DatasetError::QuotaExceeded)
 }
 
-/// Opens a transaction, after retiring a dead one of this dataset.
+/// Opens a transaction, after retiring a dead one of this dataset. `by`:
+/// the member who writes it, `None` for a pack or the system (SEC-93).
 async fn begin(
     db: &DatabaseConnection,
     org_id: i64,
     id: Uuid,
     kind: DatasetTransactionKind,
+    by: Option<i64>,
 ) -> Result<Uuid, DatasetError> {
     db.execute_raw(stmt(
         &format!(
@@ -696,9 +698,10 @@ async fn begin(
     .await?;
     let row = db
         .query_one_raw(stmt(
-            "INSERT INTO dataset_transactions (org_id, dataset_id, kind) VALUES ($1, $2, $3) \
+            "INSERT INTO dataset_transactions (org_id, dataset_id, kind, created_by) \
+             VALUES ($1, $2, $3, $4) \
              ON CONFLICT (dataset_id) WHERE state = 'open' DO NOTHING RETURNING id",
-            vec![org_id.into(), id.into(), kind.as_str().into()],
+            vec![org_id.into(), id.into(), kind.as_str().into(), by.into()],
         ))
         .await?
         .ok_or(DatasetError::TransactionOpen)?;
@@ -954,7 +957,8 @@ pub async fn check_loadable(
 }
 
 /// Loads a CSV body as a new transaction: written in a stream, in memory bounded
-/// by the row group, and visible only once committed.
+/// by the row group, and visible only once committed. `by`: the member who loads it.
+#[allow(clippy::too_many_arguments)]
 pub async fn load_csv<S, E>(
     db: &DatabaseConnection,
     store: &S3Store,
@@ -962,6 +966,7 @@ pub async fn load_csv<S, E>(
     id: Uuid,
     kind: DatasetTransactionKind,
     delimiter: Option<u8>,
+    by: Option<i64>,
     body: S,
 ) -> Result<DatasetTransaction, DatasetError>
 where
@@ -971,7 +976,7 @@ where
     let room = room(db, org_id).await?;
     // In this order: an erasure queued after `begin` waits for this transaction,
     // one queued before is read here.
-    let transaction_id = begin(db, org_id, id, kind).await?;
+    let transaction_id = begin(db, org_id, id, kind, by).await?;
     let erased = erasure::targets_of(db, id).await?;
     let key = format!(
         "{}part-0.parquet",
@@ -1112,7 +1117,18 @@ pub async fn write_stream(
         });
     }
     let room = room(db, org_id).await?;
-    let transaction_id = begin(db, org_id, id, kind).await?;
+    // An org pipeline writes as its version's author; a pack's, as nobody.
+    let by = match read.pipeline {
+        Some((pipeline, version)) => db
+            .query_one_raw(stmt(
+                "SELECT author_id FROM pipeline_versions WHERE pipeline_id = $1 AND version = $2",
+                vec![pipeline.into(), version.into()],
+            ))
+            .await?
+            .and_then(|r| r.try_get::<Option<i64>>("", "author_id").ok().flatten()),
+        None => None,
+    };
+    let transaction_id = begin(db, org_id, id, kind, by).await?;
     let key = format!(
         "{}part-0.parquet",
         transaction_prefix(org_id, id, transaction_id)

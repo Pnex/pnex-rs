@@ -531,7 +531,18 @@ async fn load_csv(
         Err(e) => return dataset_error(e),
     };
     let stream = body.into_data_stream();
-    match datasets::load_csv(&ctx.db, &store, org.org.id, id, kind, delimiter, stream).await {
+    match datasets::load_csv(
+        &ctx.db,
+        &store,
+        org.org.id,
+        id,
+        kind,
+        delimiter,
+        Some(org.auth.user.id),
+        stream,
+    )
+    .await
+    {
         Ok(t) => Ok((StatusCode::CREATED, Json(t)).into_response()),
         Err(e) => dataset_error(e),
     }
@@ -584,6 +595,7 @@ async fn upload_start(
                 id,
                 kind,
                 input.delimiter.as_deref(),
+                org.auth.user.id,
             )
             .await
         }

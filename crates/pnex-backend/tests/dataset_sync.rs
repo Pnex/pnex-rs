@@ -521,6 +521,80 @@ async fn the_table_of_an_import_left_is_reserved() {
     .await;
 }
 
+/// SEC-93: a pipeline writes objects no higher than the member who last loaded
+/// each Table it reads. An owner's pipeline over a Table a member loaded cannot
+/// write a type locked to admins; once the owner loads it again, it can.
+#[tokio::test]
+#[serial]
+async fn a_member_loaded_table_writes_at_the_members_role() {
+    with_app(|server, alice, ctx| async move {
+        let org = server
+            .get("/api/v1/user-info")
+            .add_header("Authorization", format!("Bearer {alice}"))
+            .await
+            .json::<Value>()["orgs"][0]["id"]
+            .as_i64()
+            .unwrap();
+        let bob = common::valid_token(
+            &std::env::var("RAUTHY_URL").unwrap(),
+            "00000000-0000-0000-0000-00000000000b",
+            "bob",
+            "bob@example.com",
+        );
+        server
+            .get("/api/v1/user-info")
+            .add_header("Authorization", format!("Bearer {bob}"))
+            .await;
+        common::join_org(&server, &alice, &bob, org, "bob@example.com", "member").await;
+        let owner = Api {
+            server: &server,
+            token: &alice,
+            org,
+        };
+        let member = Api {
+            server: &server,
+            token: &bob,
+            org,
+        };
+        let (s, e) = owner
+            .call(
+                "POST",
+                "/api/v1/ontology/types",
+                Some(json!({ "def": {
+                    "key": "vault", "name": "Vault", "write_role": "admin",
+                    "properties": [{ "key": "code", "name": "Code", "kind": "text", "unique": true }]
+                } })),
+            )
+            .await;
+        assert_eq!(s, 201, "{e}");
+        let worker = common::spawn_pipeline_worker();
+        let dataset = owner.dataset("vaults").await;
+        member.load(&dataset, b"code\nA1\n").await;
+        let mapping = "objects:\n  - {as: v, type: vault, key: code, properties: {code: {from: code}}}\n";
+        let id = owner.pipeline("vaults", "vaults", mapping, false).await;
+        let vaults = || async {
+            sql(&ctx.db, &format!(
+                "SELECT 1 AS x FROM objects WHERE org_id = {org} AND type_key = 'vault' AND valid_to IS NULL"
+            ))
+            .await
+            .len()
+        };
+
+        let refused = owner.run(&ctx, &id).await;
+        assert_eq!(refused["state"], "failed", "{refused}");
+        assert_eq!(refused["code"], "objects_refused", "{refused}");
+        assert_eq!(vaults().await, 0);
+
+        // Another file: the same one again keeps the member's version.
+        owner.load(&dataset, b"code\nA2\n").await;
+        let done = owner.run(&ctx, &id).await;
+        assert_eq!(done["state"], "done", "{done}");
+        assert_eq!(vaults().await, 1);
+        worker.abort();
+    })
+    .await;
+}
+
 /// Worker in between: a column derived under another form loses the person too,
 /// its history included. Needs `PNEX_WORKER_BIN`.
 #[tokio::test]

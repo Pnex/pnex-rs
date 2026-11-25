@@ -255,6 +255,7 @@ async fn one(
             step: &step,
             source_ref: &to,
             author: None,
+            reads: &[],
             snapshot: row.mode() == ImportMode::Snapshot,
             dry: false,
         };

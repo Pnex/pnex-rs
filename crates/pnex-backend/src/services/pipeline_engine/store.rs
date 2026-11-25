@@ -966,13 +966,15 @@ impl Sink for DatasetSink<'_> {
             return Ok(0);
         };
         // An org's pipeline writes on the rights of its version's author (D303);
-        // a version its pack wrote, on a pack's (D1050).
+        // a version its pack wrote, on a pack's (D1050). The Tables it reads
+        // cap them at the role of who last loaded each (SEC-93).
+        let mut document = String::new();
         let author = match self.own {
             Some((id, version)) => {
                 let row = self
                     .db
                     .query_one_raw(stmt(
-                        "SELECT v.author_id, p.pack FROM pipeline_versions v \
+                        "SELECT v.author_id, v.document, p.pack FROM pipeline_versions v \
                          JOIN pipelines p ON p.id = v.pipeline_id \
                          WHERE v.pipeline_id = $1 AND v.version = $2",
                         vec![id.into(), version.into()],
@@ -986,6 +988,9 @@ impl Sink for DatasetSink<'_> {
                     .as_ref()
                     .and_then(|r| r.try_get::<Option<String>>("", "pack").ok().flatten())
                     .is_some();
+                if let Some(d) = row.as_ref().and_then(|r| r.try_get("", "document").ok()) {
+                    document = d;
+                }
                 match (author, packed) {
                     (Some(a), _) => Some(a),
                     (None, true) => None,
@@ -1006,12 +1011,15 @@ impl Sink for DatasetSink<'_> {
         };
         let rows: Vec<Value> = rows.into_iter().map(Value::Object).collect();
         let source_ref = format!("pipeline:{}", self.pipeline);
+        let doc = serde_saphyr::from_str::<Document>(&document).ok();
+        let reads = doc.as_ref().map(Document::table_reads).unwrap_or_default();
         let writer = crate::services::ontology::imports::RowsWriter {
             org_id: self.org,
             pipeline: self.pipeline,
             step,
             source_ref: &source_ref,
             author,
+            reads: &reads,
             snapshot: target.snapshot,
             dry: false,
         };

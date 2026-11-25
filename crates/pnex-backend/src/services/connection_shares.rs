@@ -341,6 +341,7 @@ async fn write_share(
         step: "share",
         source_ref: &source,
         author: None,
+        reads: &[],
         snapshot: false,
         dry: false,
     };

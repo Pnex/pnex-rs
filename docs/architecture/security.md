@@ -346,7 +346,7 @@ Détail et correctifs dans `docs/journal/audit-2026-11-06.md` (référence entre
 | SEC-89 | LOW | **Hôtes des sources d'une org dans un pipeline** (`pipelines.md` D975) | R8, R9, R1 | borné 2026-11-14 : garde egress, secrets seulement vers les `hosts` du document, un appel par seconde et par hôte ; reste : nombre de sources non plafonné |
 | SEC-91 | MEDIUM | **Échec d'une étape `sql` du worker** (`pipelines.md` D934) | R4 | corrigé 2026-11-23 (bb3bc4b7) : l'erreur d'exécution citait la cellule fautive. Seule une erreur de plan, de SQL ou de schéma est citée. |
 | SEC-92 | MEDIUM | **Navigation lancée par l'assistant sans confirmation** (`try_site_recipe`, PE5.5) | D123, D782 | corrigé 2026-11-23 (9ce5d1b1) : un outil `browse:use` est retenu comme une écriture. |
-| SEC-93 | MEDIUM | **Rôle d'écriture d'une Table chargée par un membre** (`pipelines.md` D1050) : une étape `write objects` écrit avec le rôle de l'auteur de la version ; un membre qui charge la Table lue fait écrire un type réservé aux admins. La synchronisation d'un import de Table écrivait avec le rôle Member | R2 | ouvert 2026-11-25 (retrait des imports) : choix de Shan à faire |
+| SEC-93 | MEDIUM | **Rôle d'écriture d'une Table chargée par un membre** (`pipelines.md` D1050) : une étape `write objects` écrit avec le rôle de l'auteur de la version ; un membre qui charge la Table lue fait écrire un type réservé aux admins. La synchronisation d'un import de Table écrivait avec le rôle Member | R2 | corrigé 2026-11-25 : l'étape écrit avec le plus bas rôle entre l'auteur de la version et le dernier membre qui a chargé chaque Table lue (`dataset_transactions.created_by`). Un pack, le système ou un membre parti comptent comme Member. |
 
 ## 8. Profils de sécurité
 
