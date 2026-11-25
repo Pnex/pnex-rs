@@ -801,8 +801,8 @@ tests:
   1. `write objects` : delta et éditions protégées, `snapshot`, `close_missing`, `observations`, droits de l'auteur. Fait (2026-11-24), sans test des `observations`.
   2. Packs : un import de pack devient un pipeline d'org à l'installation, éditions gardées à la mise à jour.
      - 2a. Fait (2026-11-24) : `pack_copy` et `install_copies`, colonnes `pipelines.pack` et `pack_written`. L'installation crée encore des imports.
-     - 2b. Fait (2026-11-24) : l'installation crée les copies, plus les imports. Une org installée avant garde ses imports jusqu'à l'étape 3. Les tests qui envoient un fichier à un import de pack créent un import d'org avec le mapping du pack, jusqu'à l'étape 4.
-     - Limites de 2b : une exécution de pipeline ne montre pas les compteurs de l'import (créés, mis à jour, fermés, avertissements). À l'étape 5, choisir avec Shan s'il les faut. Le message « reprendre la version du pack » d'une copie parle encore du mode et des pages d'un import.
+     - 2b. Fait (2026-11-24) : l'installation crée les copies, plus les imports. Une org installée avant garde ses imports jusqu'à l'étape 3. Les tests qui envoient un fichier à un import de pack créent un import d'org avec le mapping du pack, jusqu'à l'étape 5.
+     - Limite de 2b : le message « reprendre la version du pack » d'une copie parle encore du mode et des pages d'un import, jusqu'à l'étape 5.
   3. Migration : imports → pipelines d'org. Fait (2026-11-24). Choix de Shan : au démarrage, une fois, historique supprimé, base semée.
      - Le serveur convertit chaque import restant dans sa transaction, ligne verrouillée : deux pods ne convertissent jamais le même import. Un import qui échoue reste pour le démarrage suivant.
      - Un import de pack devient la copie du pack. Si l'org l'a édité et que son mapping nomme un pipeline, la copie garde la version de l'org. Une édition de l'ancienne forme (URL lue par l'import) prend la version du pack, avec une ligne de journal.
@@ -810,8 +810,9 @@ tests:
      - La provenance `import:<id>@<n>` devient `pipeline:<id>` (objets, liens, versions de liens, observations). La Table est libérée. Les runs, leur journal et les builds de l'import sont supprimés.
      - Un import sur Table sème la base de son pipeline depuis les transactions de son dernier run appliqué, si le mapping n'a pas changé depuis.
      - Un nom déjà pris par un pipeline de l'org reçoit le suffixe « (import) ».
-  4. Retrait : table, routes, service, page, CLI, contrat (`exposure.rs`, `iam.rs`), fiche de l'assistant. `stop.rs` reste, déplacé.
-  5. Front : l'écran d'import enchaîne l'envoi dans une Table et le pipeline. E2E.
+  4. Front (choix de Shan, 2026-11-25 : avant le retrait, pour que l'envoi d'un fichier ne manque jamais) : l'écran d'un pipeline qui lit une Table propose d'y envoyer un fichier, puis de le sonder et de le lancer. La sonde d'une étape `write objects` montre ce qu'elle écrirait. La page d'une exécution montre ses étapes, avec les compteurs et les premiers avertissements de `write objects`. E2E.
+  5. Retrait : table, routes, service, page, CLI, contrat (`exposure.rs`, `iam.rs`), fiche de l'assistant. `stop.rs` reste, déplacé.
+- Compteurs (choix de Shan, 2026-11-25) : l'étape `write objects` écrit dans son journal ses compteurs (créés, mis à jour, fermés, liens, observations, avertissements) et ses 20 premiers avertissements (`manifest.written`). Un refus pour lignes en erreur donne ses 20 premières erreurs dans ses arguments.
 - `fc_rs_xml` : vérifier qu'il passe par la table et protège les éditions depuis son portage en pipeline.
 - Chart `pipelineWorker`, `NetworkPolicy` et `images.yml` jamais essayés sur un cluster.
 - Retirer à la main les anciens horaires des imports France Compétences de l'org 4 sur dev.pnex.io.

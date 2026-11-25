@@ -202,6 +202,12 @@ pub trait Sink {
         rows: Vec<Map<String, Value>>,
     ) -> Result<u64, Failure>;
 
+    /// What the last `objects` wrote, by kind, and its first warnings, for
+    /// the step's journal (D1050); taken once.
+    fn take_counts(&mut self) -> Option<Value> {
+        None
+    }
+
     /// Asks the org's AI provider for the extractor's fields in the `text`
     /// column of each row (D841); the rows of the items kept, by
     /// [`item_rows`].
@@ -352,6 +358,21 @@ pub fn sample(
         }
     }
     Ok(out)
+}
+
+/// The rows of a working table as records, as a `write` step reads them.
+pub async fn records(table: &Table) -> Result<Vec<Map<String, Value>>, Failure> {
+    let batches: Vec<Arc<blob::Batches>> = match table {
+        Table::Batches(b) => b.clone(),
+        Table::Rows(r) => {
+            let r = r.clone();
+            blocking(move || read::rows_batch(&r))
+                .await?
+                .into_iter()
+                .collect()
+        }
+    };
+    blocking(move || records_of(&batches)).await
 }
 
 fn records_of(files: &[Arc<blob::Batches>]) -> Result<Vec<Map<String, Value>>, Failure> {
@@ -627,6 +648,8 @@ pub struct StepRecord {
     pub bytes: u64,
     pub url: Option<String>,
     pub failure: Option<Failure>,
+    /// A `write: objects` step's counts and first warnings.
+    pub counts: Option<Value>,
 }
 
 impl StepRecord {
@@ -636,6 +659,7 @@ impl StepRecord {
             rows: written,
             bytes: 0,
             url: None,
+            counts: None,
             failure: None,
         };
         match result {
@@ -1563,8 +1587,11 @@ impl<T: Transport, S: Sink, Q: sql::SqlRunner> Exec<'_, T, S, Q> {
         for step in &doc.steps[from..] {
             let before = written;
             let result = self.step(step, &tables, &mut written).await;
+            let counts = self.sink.take_counts();
             if let Some(j) = self.journal.as_deref_mut() {
-                j.push(StepRecord::of(step, &result, written - before));
+                let mut r = StepRecord::of(step, &result, written - before);
+                r.counts = counts;
+                j.push(r);
             }
             let Some(out) = result? else { continue };
             let name = step.output().unwrap_or_default().to_string();

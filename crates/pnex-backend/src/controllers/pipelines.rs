@@ -261,7 +261,7 @@ async fn validate(
     tag = "pipelines",
     operation_id = "pipelines_probe",
     summary = "Probe a pipeline document",
-    description = "Reads a YAML document up to the step whose `as` is `step`, on one row, without saving it and without writes: its write steps are left out and nothing of the probe is kept. Answers what each step did and the first 20 rows of the last one as text. A document with an `asked` axis takes its rows in `rows`, as a run does. A navigation (`browse`) before the step is refused. Requires `pipelines:run`, the table rights of a run (`datasets:read`, `datasets:write`, `connectors:use` for a connector step) and a clearance for every marking of the tables it reads.",
+    description = "Reads a YAML document up to the step whose `as` is `step`, on one row, without saving it and without writes: its write steps are left out and nothing of the probe is kept. Answers what each step did and the first 20 rows of the last one as text. When a `write: objects` step reads that step and the caller holds `ontology:read`, `objects` counts what it would write, with the first warnings and errors, against the kept base of the saved pipeline `pipeline_id` when given. A document with an `asked` axis takes its rows in `rows`, as a run does. A navigation (`browse`) before the step is refused. Requires `pipelines:run`, the table rights of a run (`datasets:read`, `datasets:write`, `connectors:use` for a connector step) and a clearance for every marking of the tables it reads.",
     request_body = pnex_core::pipelines::PipelineProbe,
     responses(
         (status = 200, body = pnex_core::pipelines::PipelineProbeResult),
@@ -290,6 +290,15 @@ async fn probe(
         .into_iter()
         .map(|r| r.into_iter().map(|(k, v)| (k, v.into())).collect())
         .collect();
+    let full = match pipelines::checked(&input.document) {
+        Ok(d) => d,
+        Err(e) => return pipeline_error(e),
+    };
+    let preview = pipelines::Preview {
+        full: &full,
+        pipeline: input.pipeline_id.as_deref().and_then(|p| p.parse().ok()),
+        may_read: org.can("ontology:read"),
+    };
     match pipelines::probe(
         &ctx,
         org.org.id,
@@ -297,6 +306,7 @@ async fn probe(
         &input.document,
         &doc,
         rows,
+        preview,
     )
     .await
     {

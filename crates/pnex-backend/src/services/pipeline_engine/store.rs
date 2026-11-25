@@ -536,6 +536,8 @@ pub struct DatasetSink<'a> {
     pub asked: Vec<serde_json::Map<String, Value>>,
     /// Where each `connector` step's cursor moves once the run succeeds.
     pub cursors: Vec<(String, super::connector::Next)>,
+    /// What the last `write: objects` wrote, for the step's journal.
+    pub counts: Option<Value>,
 }
 
 /// Starts the rows a run asked again, apart: the run that asked them holds
@@ -580,6 +582,10 @@ async fn table_of(db: &DatabaseConnection, org: i64, name: &str) -> Result<Uuid,
 }
 
 impl Sink for DatasetSink<'_> {
+    fn take_counts(&mut self) -> Option<Value> {
+        self.counts.take()
+    }
+
     async fn has_table(&mut self, table: &str) -> Result<bool, Failure> {
         self.db
             .query_one_raw(stmt(
@@ -1007,10 +1013,14 @@ impl Sink for DatasetSink<'_> {
             source_ref: &source_ref,
             author,
             snapshot: target.snapshot,
+            dry: false,
         };
         let n = crate::services::ontology::imports::write_rows(self.db, &writer, &mapping, &rows)
             .await
-            .map(|n| n as u64)
+            .map(|w| {
+                self.counts = Some(json!({ "counts": w.counts, "warnings": w.warnings }));
+                w.total() as u64
+            })
             .map_err(|e| {
                 tracing::info!(org = self.org, pipeline = self.pipeline, error = %e, "pipeline objects not written");
                 match e {
@@ -1594,6 +1604,9 @@ pub async fn journal(
         if let Some(f) = &s.failure {
             manifest["args"] = f.args.clone();
         }
+        if let Some(c) = &s.counts {
+            manifest["written"] = c.clone();
+        }
         db.execute_raw(stmt(
             "INSERT INTO ingest_steps (id, org_id, flow_id, flow_version, node_id, run_id, step, \
                port, code, manifest, bytes) VALUES ($1, $2, 0, 0, $3, $4, $5, $6, $7, $8, $9)",
@@ -1710,6 +1723,7 @@ async fn run_core(
         user,
         asked: Vec::new(),
         cursors: Vec::new(),
+        counts: None,
     };
     let sql = super::sql::WorkerSql { db, store, org };
     let out = run(
@@ -1761,6 +1775,7 @@ pub async fn run_own(
         user,
         asked: Vec::new(),
         cursors: Vec::new(),
+        counts: None,
     };
     let sql = super::sql::WorkerSql {
         db: &ctx.db,
@@ -1804,6 +1819,7 @@ pub async fn probe_own(
         user,
         asked: Vec::new(),
         cursors: Vec::new(),
+        counts: None,
     };
     let sql = super::sql::WorkerSql {
         db: &ctx.db,
@@ -1834,6 +1850,7 @@ pub async fn probe_own(
             bytes: 0,
             url: None,
             failure: Some(f),
+            counts: None,
         });
     }
     let last = doc
@@ -1978,6 +1995,7 @@ async fn resume_locked(
         user,
         asked: Vec::new(),
         cursors: Vec::new(),
+        counts: None,
     };
     let sql = super::sql::WorkerSql {
         db: &ctx.db,

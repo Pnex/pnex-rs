@@ -2208,6 +2208,7 @@ async fn open_data_ingestion_chain() {
         assert_eq!(count(q(links("holds")).await.unwrap()), 2);
         assert_eq!(count(q(links("accredited_for")).await.unwrap()), 3, "two SIRET of one SIREN, one link");
         // A SIREN failing its check digit: the row is a warning, not an error.
+        assert_eq!(written(&rp)["warnings"], 1, "{rp}");
         let aftral = format!("SELECT count(*)::bigint AS n FROM objects WHERE org_id = {org} \
             AND type_key = 'organization' AND properties ->> 'siren' = '305405046'");
         assert_eq!(count(q(aftral).await.unwrap()), 0);
@@ -2228,13 +2229,16 @@ async fn open_data_ingestion_chain() {
             .replace("11111111800001", "11111111900001")
             .replace("11111111800019", "11111111900019"));
         let rk = run(partners).await;
-        assert_eq!(rk["state"], "done", "{rk}");
+        let c = written(&rk);
+        assert_eq!((rk["state"].clone(), c["warnings"].clone(), c["closed"].clone()),
+            (json!("done"), json!(3), json!(0)), "{rk}");
         assert_eq!(count(q(links("accredited_for")).await.unwrap()), 3);
 
         // A partner gone from the open data: its accreditation closes.
         // (AFTRAL out too: left out by its key, it would hold RS6765's links.)
         *zip.lock().unwrap() = fc_zip(&fc_partners(&["333", "305"]));
         let r3 = run(partners).await;
+        assert_eq!(written(&r3)["closed"], 1, "{r3}");
         assert_eq!(count(q(links("accredited_for")).await.unwrap()), 2);
 
         // Most of the network gone at once: refused, nothing closed.
@@ -2391,6 +2395,15 @@ async fn run_pipeline(
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     }
     panic!("{name} never settled");
+}
+
+/// What the run's `write: objects` step wrote, by kind (D1050).
+fn written(run: &Value) -> Value {
+    run["steps"]
+        .as_array()
+        .and_then(|s| s.iter().rev().find(|s| s["step"] == "write"))
+        .map(|s| s["manifest"]["written"]["counts"].clone())
+        .unwrap_or(Value::Null)
 }
 
 /// Rows its first step of `step` gave, from the run's journal: for `write`,

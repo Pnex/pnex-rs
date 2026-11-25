@@ -241,6 +241,7 @@ async fn one(
             source_ref: &to,
             author: None,
             snapshot: row.mode() == ImportMode::Snapshot,
+            dry: false,
         };
         keep_base(db, &w, &mapping, &base, skipped).await?;
     }

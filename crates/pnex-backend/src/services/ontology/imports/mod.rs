@@ -836,6 +836,8 @@ pub struct RowsWriter<'a> {
     pub author: Option<i64>,
     /// Closes what this step wrote and the rows no longer hold.
     pub snapshot: bool,
+    /// A preview (D944): counts what it would write, writes and keeps nothing.
+    pub dry: bool,
 }
 
 /// The base a step kept and the mapping it was planned with.
@@ -917,12 +919,31 @@ async fn keep_base(
 /// mapping changed) the rows are compared to the ontology. With `snapshot`, what
 /// the step wrote and the rows no longer hold is closed, unless that is more than
 /// `max_closures_pct` % of what it holds. Returns what was written.
+/// Row issues a run keeps in its journal, at most (D1050).
+const ISSUES_KEPT: usize = 20;
+
+/// What [`write_rows`] wrote, and the first warnings of its rows.
+pub struct Written {
+    pub counts: imp::ImportCounts,
+    pub warnings: Vec<imp::RowIssue>,
+    /// A preview's rows refused; a run is refused instead.
+    pub errors: Vec<imp::RowIssue>,
+}
+
+impl Written {
+    /// Objects, links, closures and dated values written.
+    pub fn total(&self) -> usize {
+        let c = &self.counts;
+        c.created + c.updated + c.links_opened + c.links_updated + c.closed + c.observations
+    }
+}
+
 pub async fn write_rows(
     db: &DatabaseConnection,
     w: &RowsWriter<'_>,
     m: &Mapping,
     rows: &[Value],
-) -> Result<usize> {
+) -> Result<Written> {
     use crate::services::db_lock::{ns, TenantLock};
     let role = match w.author {
         None => OrgMemberRole::Member,
@@ -963,6 +984,16 @@ pub async fn write_rows(
     };
     let like = diff::source_exact(w.source_ref);
     let (mut d, left_out) = diff::against(db, w.org_id, &like, &s, m, planned, closing).await?;
+    if m.observations.is_some() {
+        d.observations = pnex_core::markets::observations(rows);
+    }
+    if w.dry {
+        return Ok(Written {
+            counts: d.counts(),
+            warnings: d.warnings.into_iter().take(ISSUES_KEPT).collect(),
+            errors: d.errors.into_iter().take(ISSUES_KEPT).collect(),
+        });
+    }
     if !d.errors.is_empty() {
         tracing::info!(
             org_id = w.org_id,
@@ -970,7 +1001,12 @@ pub async fn write_rows(
             errors = d.errors.len(),
             "pipeline rows refused"
         );
-        return Err(coded(err_codes::IMPORT_HAS_ERRORS));
+        // The first rows refused and why, for the run's message.
+        let first: Vec<_> = d.errors.iter().take(ISSUES_KEPT).collect();
+        return Err(OntologyError::Import {
+            code: err_codes::IMPORT_HAS_ERRORS,
+            args: Some(serde_json::json!({ "errors": first, "count": d.errors.len() })),
+        });
     }
     if w.snapshot {
         let holding = held_by(db, w.org_id, &like).await?;
@@ -985,9 +1021,6 @@ pub async fn write_rows(
                 })),
             });
         }
-    }
-    if m.observations.is_some() {
-        d.observations = pnex_core::markets::observations(rows);
     }
     let actor = Actor {
         user_id: w.author,
@@ -1014,8 +1047,14 @@ pub async fn write_rows(
         _ => current,
     };
     keep_base(db, w, &mapping, &next, left_out).await?;
-    let c = d.counts();
-    Ok(c.created - left + c.updated + c.links_opened + c.links_updated + c.closed + observed)
+    let mut counts = d.counts();
+    counts.created -= left;
+    counts.observations = observed;
+    Ok(Written {
+        counts,
+        warnings: d.warnings.into_iter().take(ISSUES_KEPT).collect(),
+        errors: Vec::new(),
+    })
 }
 
 async fn write_locked(

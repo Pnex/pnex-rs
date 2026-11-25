@@ -153,8 +153,18 @@ pub fn probed(yaml: &str, step: &str) -> Result<Document, PipelineError> {
     Ok(doc)
 }
 
+/// What a preview of objects compares to (D1050): the saved pipeline whose
+/// base it reads, and whether the caller may read the ontology.
+pub struct Preview<'a> {
+    /// The whole document, its `write: objects` steps included.
+    pub full: &'a Document,
+    pub pipeline: Option<Uuid>,
+    pub may_read: bool,
+}
+
 /// Plays a probe's document (from [`probed`]) under the caller's markings:
-/// its steps and the first rows of its last one. Nothing is kept.
+/// its steps and the first rows of its last one. Nothing is kept. A
+/// `write: objects` step reading the probed step counts what it would write.
 pub async fn probe(
     ctx: &AppContext,
     org_id: i64,
@@ -162,6 +172,7 @@ pub async fn probe(
     document: &str,
     doc: &Document,
     asked: Vec<serde_json::Map<String, Value>>,
+    preview: Preview<'_>,
 ) -> Result<pnex_core::pipelines::PipelineProbeResult, PipelineError> {
     use crate::services::pipeline_engine::{sample, store};
     use pnex_core::pipelines::{
@@ -176,6 +187,19 @@ pub async fn probe(
         store::probe_own(ctx, org_id, doc, Some(user), asked, &store::HttpTransport)
             .await
             .map_err(|e| storage(e.code()))?;
+    let probed = doc.steps.last().and_then(|s| s.output());
+    let target = preview.full.steps.iter().find_map(|s| match s {
+        pnex_core::pipeline::doc::Step::Write(w) if Some(w.from.as_str()) == probed => {
+            w.objects.as_ref().map(|o| (w.from.as_str(), o))
+        }
+        _ => None,
+    });
+    let objects = match (&last, target, preview.may_read) {
+        (Some(t), Some((from, target)), true) => {
+            objects_preview(ctx, org_id, user, t, from, target, preview.pipeline).await?
+        }
+        _ => None,
+    };
     let sample = match last {
         Some(t) => sample(&t, PROBE_ROWS_MAX, PROBE_FILE_BYTES).map_err(|f| storage(f.code))?,
         None => Vec::new(),
@@ -191,7 +215,57 @@ pub async fn probe(
             args: r.failure.map(|f| f.args).filter(|a| !a.is_null()),
         })
         .collect();
-    Ok(PipelineProbeResult { steps, sample })
+    Ok(PipelineProbeResult {
+        steps,
+        sample,
+        objects,
+    })
+}
+
+/// What `target` would write from the rows of `table`, against the base of
+/// `pipeline` when given: `None` when the step writes nothing the org has.
+async fn objects_preview(
+    ctx: &AppContext,
+    org_id: i64,
+    user: i64,
+    table: &crate::services::pipeline_engine::Table,
+    from: &str,
+    target: &pnex_core::pipeline::doc::ObjectsTarget,
+    pipeline: Option<Uuid>,
+) -> Result<Option<pnex_core::pipelines::ObjectsPreview>, PipelineError> {
+    use crate::services::ontology::{imports, OntologyError};
+    let failed = |e: String| PipelineError::Db(DbErr::Custom(e));
+    let rows = crate::services::pipeline_engine::records(table)
+        .await
+        .map_err(|f| failed(f.code.to_string()))?;
+    let schema = crate::services::ontology::schema(&ctx.db, org_id).await?;
+    let key = pipeline.map(|p| p.to_string()).unwrap_or_default();
+    let Some(mapping) =
+        crate::services::pipeline_engine::store::objects_mapping(&key, target, &schema)
+    else {
+        return Ok(None);
+    };
+    let source = format!("pipeline:{key}");
+    let w = imports::RowsWriter {
+        org_id,
+        pipeline: &key,
+        step: from,
+        source_ref: &source,
+        author: Some(user),
+        snapshot: target.snapshot,
+        dry: true,
+    };
+    let rows: Vec<Value> = rows.into_iter().map(Value::Object).collect();
+    match imports::write_rows(&ctx.db, &w, &mapping, &rows).await {
+        Ok(out) => Ok(Some(pnex_core::pipelines::ObjectsPreview {
+            counts: out.counts,
+            warnings: out.warnings,
+            errors: out.errors,
+        })),
+        Err(OntologyError::Db(e)) => Err(PipelineError::Db(e)),
+        // A refusal (the caller writes nothing, a mapping too large): no preview.
+        Err(_) => Ok(None),
+    }
 }
 
 /// What a document reads and writes once checked and tested: the answer

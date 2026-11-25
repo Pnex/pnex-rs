@@ -304,6 +304,23 @@ pub struct PipelineProbe {
     /// Rows of the `asked` axis, as for a run; one is read.
     #[serde(default)]
     pub rows: Vec<BTreeMap<String, String>>,
+    /// The saved pipeline of the org whose kept base a preview of objects
+    /// compares to (D1050); without it, the preview compares to the ontology.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
+    pub pipeline_id: Option<String>,
+}
+
+/// What a `write: objects` step fed by the probed step would write (D1050):
+/// nothing is written.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ObjectsPreview {
+    pub counts: crate::ontology::import::ImportCounts,
+    /// The first rows with a warning (20 at most).
+    pub warnings: Vec<crate::ontology::import::RowIssue>,
+    /// The first rows refused (20 at most): one refuses the run.
+    pub errors: Vec<crate::ontology::import::RowIssue>,
 }
 
 /// What one step of a probe did.
@@ -328,6 +345,10 @@ pub struct PipelineProbeStep {
 pub struct PipelineProbeResult {
     pub steps: Vec<PipelineProbeStep>,
     pub sample: Vec<BTreeMap<String, String>>,
+    /// Present when a `write: objects` step reads the probed step, and the
+    /// caller may read the ontology.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub objects: Option<ObjectsPreview>,
 }
 
 /// A dataset linked to another by a pipeline run.

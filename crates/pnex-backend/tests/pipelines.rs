@@ -823,6 +823,16 @@ async fn an_org_pipeline_writes_objects_against_its_kept_base() {
         assert_eq!(done["state"], "done", "{done}");
         assert_eq!(label("A2").await, json!(["two", "true"]));
 
+        // A probe counts what the step would write against the kept base, and writes nothing.
+        *csv.lock().unwrap() = "code,label\nA1,one\nA2,deux\nA3,three\nA4,four\nA5,five\nA6,six\n".into();
+        let (s, p) = call(&server, "POST", "/api/v1/pipelines/probe", &env.alice, org,
+            Some(json!({ "document": document, "step": "rows", "pipeline_id": id }))).await;
+        assert_eq!(s, 200, "{p}");
+        let c = &p["objects"]["counts"];
+        assert_eq!((c["created"].clone(), c["updated"].clone(), c["closed"].clone()), (json!(1), json!(1), json!(0)), "{p}");
+        assert_eq!(label("A2").await, json!(["two", "true"]), "nothing written");
+        assert!(label("A6").await.is_null(), "nothing written");
+
         // A1 edited by hand; the source changes A2 only and drops A5 (1 of 5).
         sql(
             &ctx,

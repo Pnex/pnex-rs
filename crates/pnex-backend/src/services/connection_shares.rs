@@ -342,8 +342,10 @@ async fn write_share(
         source_ref: &source,
         author: None,
         snapshot: false,
+        dry: false,
     };
     ontology::imports::write_rows(db, &writer, &mapping, &rows)
         .await
+        .map(|w| w.total())
         .map_err(|e| e.to_string())
 }

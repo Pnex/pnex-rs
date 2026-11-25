@@ -18805,6 +18805,34 @@
         ],
         "type": "object"
       },
+      "ObjectsPreview": {
+        "description": "What a `write: objects` step fed by the probed step would write (D1050):\nnothing is written.",
+        "properties": {
+          "counts": {
+            "$ref": "#/components/schemas/ImportCounts"
+          },
+          "errors": {
+            "description": "The first rows refused (20 at most): one refuses the run.",
+            "items": {
+              "$ref": "#/components/schemas/RowIssue"
+            },
+            "type": "array"
+          },
+          "warnings": {
+            "description": "The first rows with a warning (20 at most).",
+            "items": {
+              "$ref": "#/components/schemas/RowIssue"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "counts",
+          "warnings",
+          "errors"
+        ],
+        "type": "object"
+      },
       "ObjectsSource": {
         "additionalProperties": false,
         "description": "A widget reading an aggregate of objects (D583). `query` on a dashboard,\n`object_set` on a screen of an application: never both.",
@@ -25969,6 +25997,14 @@
           "document": {
             "type": "string"
           },
+          "pipeline_id": {
+            "description": "The saved pipeline of the org whose kept base a preview of objects\ncompares to (D1050); without it, the preview compares to the ontology.",
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "rows": {
             "description": "Rows of the `asked` axis, as for a run; one is read.",
             "items": {
@@ -25996,6 +26032,10 @@
       "PipelineProbeResult": {
         "description": "The answer of a probe: its steps, and the first rows of the last one as\ntext (`file`: the start of a fetched file).",
         "properties": {
+          "objects": {
+            "$ref": "#/components/schemas/ObjectsPreview",
+            "description": "Present when a `write: objects` step reads the probed step, and the\ncaller may read the ontology."
+          },
           "sample": {
             "items": {
               "additionalProperties": {
@@ -90658,7 +90698,7 @@
     },
     "/api/v1/pipelines/probe": {
       "post": {
-        "description": "Reads a YAML document up to the step whose `as` is `step`, on one row, without saving it and without writes: its write steps are left out and nothing of the probe is kept. Answers what each step did and the first 20 rows of the last one as text. A document with an `asked` axis takes its rows in `rows`, as a run does. A navigation (`browse`) before the step is refused. Requires `pipelines:run`, the table rights of a run (`datasets:read`, `datasets:write`, `connectors:use` for a connector step) and a clearance for every marking of the tables it reads.",
+        "description": "Reads a YAML document up to the step whose `as` is `step`, on one row, without saving it and without writes: its write steps are left out and nothing of the probe is kept. Answers what each step did and the first 20 rows of the last one as text. When a `write: objects` step reads that step and the caller holds `ontology:read`, `objects` counts what it would write, with the first warnings and errors, against the kept base of the saved pipeline `pipeline_id` when given. A document with an `asked` axis takes its rows in `rows`, as a run does. A navigation (`browse`) before the step is refused. Requires `pipelines:run`, the table rights of a run (`datasets:read`, `datasets:write`, `connectors:use` for a connector step) and a clearance for every marking of the tables it reads.",
         "operationId": "pipelines_probe",
         "parameters": [
           {
