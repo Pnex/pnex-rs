@@ -1172,13 +1172,13 @@ async fn a_branch_output_gives_its_write_token_to_the_push_sidecar_only() {
         )
         .await;
         assert_eq!(s, 201, "{secret}");
-        // V1 speaks GitHub only (D752).
+        // GitHub or GitLab (D752, D1051): a URL no forge reads is refused.
         let body = |url: &str| json!({
             "environment_id": environment, "timeout_secs": 60,
             "repos": [{ "url": url, "git_ref": "main", "path": "app", "push_secret_id": secret["id"] }]
         });
         let (s, refused) = call(&server, &env.alice, org, "POST", "/api/v1/agent-runs",
-            Some(body("https://gitlab.com/acme/app.git"))).await;
+            Some(body("https://git.acme.io/app.git"))).await;
         assert_eq!(s, 400, "{refused}");
         assert!(refused.to_string().contains("push_unsupported"), "{refused}");
         let (s, run) = call(&server, &env.alice, org, "POST", "/api/v1/agent-runs",
@@ -1855,7 +1855,10 @@ async fn an_agent_run_node_starts_runs_within_its_deployer_rights() {
             .unwrap()
             .try_get("", "id")
             .unwrap();
-        let flow = deployed_flow(&db, org, Some(alice_id), json!([node])).await;
+        // The same agent fed a text of the message, kept as its input file (D1052).
+        let text_node = json!({ "id": "t", "kind": "agent_run", "config": {
+            "agent_id": agent["id"], "texts": { "ticket": "payload.description" } } });
+        let flow = deployed_flow(&db, org, Some(alice_id), json!([node, text_node])).await;
         let server = &server;
         let call_node = |body: Value| async move {
             let res = server
@@ -1887,6 +1890,29 @@ async fn an_agent_run_node_starts_runs_within_its_deployer_rights() {
         // A missing input is refused, not guessed.
         let (_, b) = call_node(json!({ "node": me(flow, "a"), "inputs": {} })).await;
         assert_eq!(b["port"], 1, "{b}");
+
+        // A text becomes the run's input artifact, written by the deployer.
+        let (_, t) = call_node(json!({ "node": me(flow, "t"),
+            "texts": { "ticket": "Add a search on items" } })).await;
+        assert_eq!(t["port"], 0, "{t}");
+        let kept = db
+            .query_one_raw(sea_orm::Statement::from_string(
+                sea_orm::DatabaseBackend::Postgres,
+                format!(
+                    "SELECT count(*) AS n FROM agent_artifacts WHERE org_id = {org} AND name = 'ticket' \
+                     AND created_by = {alice_id} AND size = 21 AND run_id IS NULL"
+                ),
+            ))
+            .await
+            .unwrap()
+            .unwrap()
+            .try_get::<i64>("", "n")
+            .unwrap();
+        assert_eq!(kept, 1, "one text artifact of the exact size");
+        // Over the bound: refused on port 1, nothing started.
+        let big = "x".repeat(pnex_core::agent_chains::TEXT_INPUT_MAX + 1);
+        let (_, b) = call_node(json!({ "node": me(flow, "t"), "texts": { "ticket": big } })).await;
+        assert_eq!((b["port"].as_i64(), b["args"]["token"].as_str()), (Some(1), Some("too_large")), "{b}");
 
         // A worker that does not own the org starts nothing (fencing, SEC-76).
         let res = server

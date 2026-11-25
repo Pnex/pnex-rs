@@ -916,7 +916,7 @@ pub const ENVIRONMENT_BUILD_LOGS_UNAVAILABLE: &str = "environment-build-logs-una
 pub const AGENT_RUN_LOGS_UNAVAILABLE: &str = "agent-run-logs-unavailable";
 /// The run has used all its LLM calls.
 pub const AGENT_RUN_LLM_BUDGET: &str = "agent-run-llm-budget";
-/// A branch output needs a forge PneX speaks: GitHub in V1 (D388, D752).
+/// A branch output needs a forge PneX speaks: GitHub or GitLab (D388, D752).
 pub const AGENT_RUN_FORGE_UNSUPPORTED: &str = "agent-run-forge-unsupported";
 /// The egress rule refuses the forge's API.
 pub const AGENT_RUN_FORGE_REFUSED: &str = "agent-run-forge-refused";

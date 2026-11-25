@@ -987,7 +987,15 @@ async fn flow_agent_run(
         Ok(Some(reply)) => Ok(reply),
         Ok(None) => {
             let artifacts = crate::services::fabric_settings::artifacts(&ctx).await;
-            crate::services::agent_chains::run_node(&ctx.db, artifacts, &req).await
+            // Texts of the message become input artifacts: only then is the store needed.
+            let store = (!req.texts.is_empty())
+                .then(|| {
+                    crate::services::artifact_store::S3Config::from_config(&ctx.config)
+                        .store()
+                        .ok()
+                })
+                .flatten();
+            crate::services::agent_chains::run_node(&ctx.db, artifacts, store.as_ref(), &req).await
         }
         Err(e) => Err(e),
     };

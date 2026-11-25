@@ -354,6 +354,8 @@ Règles d'une chaîne :
 - Le sujet est une clé libre de 200 caractères, tenue par la chaîne active (index unique partiel). Un départ sur un sujet tenu ne lance rien : le nœud répond `joined`, la route HTTP rend 409 `agent-subject-taken` avec `args.chain_id`.
 - Un humain libère le sujet par `POST /agent-chains/{id}/close` (`agents:stop`).
 
+Entrées d'une exécution lancée par un flow : `inputs` lit un id d'artifact dans le message. `texts` lit un texte du message (64 Kio au plus), par exemple la description d'un ticket. Le serveur garde ce texte comme artifact d'entrée, écrit au nom de la personne qui a déployé le flow (D1052).
+
 Droits d'un flow (D768) : le déploiement retient `flows.deployed_by` et exige `agents:run` pour chaque nœud `agent_run`. À chaque message, le backend relit le graphe déployé et revérifie `agents:run` de cette personne. Si elle perd ce droit, le flow ne lance plus rien. La fin d'un run est publiée une fois (`agent_runs.finished_event_at`), après la projection `agent_ops`.
 
 ### 3.10 Sortie en branche (D388, D752, D775)
@@ -375,7 +377,7 @@ sequenceDiagram
 
 Un dépôt peut porter `push_secret_id`, un jeton d'écriture limité à ce dépôt. Seul le sidecar `push-<i>` le reçoit. Git ne tourne jamais dans le `.git` de l'agent : hooks, `credential.helper` ou `url.insteadOf` pourraient détourner le jeton. Les liens symboliques sont stockés comme liens, jamais suivis.
 
-La branche est toujours `pnex/run-<id>`, jamais la branche de base ni une branche choisie par l'agent. La fusion reste un geste humain. V1 couvre GitHub seul (`services/forge.rs`). Sur micro-VM, le runner lit l'arbre par `debugfs` et lance le même script côté hôte.
+La branche est toujours `pnex/run-<id>`, jamais la branche de base ni une branche choisie par l'agent. La fusion reste un geste humain. `services/forge.rs` parle à GitHub sur `github.com` et à GitLab sur tout autre hôte `https` (D1051). Le jeton va seulement à l'hôte du dépôt, sous la règle de sortie de l'org (R8). Sur micro-VM, le runner lit l'arbre par `debugfs` et lance le même script côté hôte.
 
 ### 3.11 Agent interne (D785)
 
@@ -674,7 +676,7 @@ Principes retenus par la proposition :
 | D385 | Passerelle unique, aucune clé de fournisseur dans un bac | ✅ |
 | D386 | Runner par cluster, aucun identifiant de cluster dans PneX | ✅ |
 | D387 | Isolation pod durci ou VM, jamais privilégié. Écarts propres au pod de build (D701) | ✅ |
-| D388 | Agent codeur : branche et demande de fusion, jamais de fusion | ✅ GitHub (D775) |
+| D388 | Agent codeur : branche et demande de fusion, jamais de fusion | ✅ GitHub (D775), GitLab (D1051) |
 | D389 | Provenance `agent_run_id`, TTL, purge par geste humain | ⬜ |
 | D390 | Délégation atténuante, équipes à budget partagé | ⬜ (D716 borne les chaînes) |
 | D391 | Frontière physique et gestes réservés inchangés, amendés par D563 et D564 | ✅ |
@@ -770,6 +772,8 @@ Décisions liées, définies ailleurs : D123, D144 (`ai-assistant.md`, `security
 
 ## 6. Interfaces
 
+| D1051 | Demande de fusion GitLab : tout hôte `https` autre que `github.com`, projet avec sous-groupes, jeton `PRIVATE-TOKEN` | ✅ |
+| D1052 | Nœud `agent_run` : `texts` donne un texte du message comme artifact d'entrée | ✅ |
 ### 6.1 Routes
 
 | Groupe | Routes | Droit |

@@ -172,6 +172,10 @@ pub struct AgentRunNodeConfig {
     /// e.g. `"ticket": "payload.ticket"` or `"patch": "run.outputs.patch"`.
     #[serde(default)]
     pub inputs: BTreeMap<String, String>,
+    /// Input name of the agent → dotted path in the message holding a text, e.g.
+    /// `"ticket": "payload.description"`: the server keeps the text as the input artifact.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub texts: BTreeMap<String, String>,
     /// Dotted path of the subject key in the message; empty = no subject (D718).
     #[serde(default)]
     pub subject_from: String,
@@ -213,10 +217,16 @@ impl AgentRunNodeConfig {
                 "at most 10 parameters of 500 characters",
             );
         }
-        for (name, path) in &self.inputs {
+        for (name, path) in self.inputs.iter().chain(&self.texts) {
             if !crate::agent_runs::artifact_name_is_valid(name) || !path_is_valid(path) {
                 return bad("agent_run_invalid", "invalid input name or message path");
             }
+        }
+        if self.texts.keys().any(|name| self.inputs.contains_key(name)) {
+            return bad(
+                "agent_run_invalid",
+                "an input is an artifact id or a text, not both",
+            );
         }
         if !self.subject_from.is_empty() && !path_is_valid(&self.subject_from) {
             return bad("agent_run_invalid", "invalid subject path");
@@ -317,6 +327,9 @@ pub struct AgentRunNodeRequest {
     /// Input name → artifact id.
     #[serde(default)]
     pub inputs: BTreeMap<String, String>,
+    /// Input name → text, kept as the input artifact by the server.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub texts: BTreeMap<String, String>,
     /// `msg.chain_id`: the run joins that chain.
     #[serde(default)]
     pub chain_id: Option<String>,
@@ -345,6 +358,9 @@ pub struct AgentRunNodeReply {
 }
 
 /// The value at a dotted path of a message, as a string.
+/// Bytes of one text input of an `agent_run` node (a ticket, a review comment).
+pub const TEXT_INPUT_MAX: usize = 64 * 1024;
+
 pub fn msg_string(msg: &Value, path: &str) -> Option<String> {
     let v = path.split('.').try_fold(msg, |v, k| v.get(k))?;
     match v {
@@ -374,6 +390,13 @@ mod tests {
         cfg.inputs.insert("bad/name".into(), "payload".into());
         assert_eq!(cfg.check().unwrap().0, "agent_run_invalid");
         cfg.inputs.remove("bad/name");
+        cfg.texts
+            .insert("spec".into(), "payload.description".into());
+        assert!(cfg.check_deployable().is_none());
+        cfg.texts
+            .insert("ticket".into(), "payload.description".into());
+        assert_eq!(cfg.check().unwrap().0, "agent_run_invalid");
+        cfg.texts.clear();
         cfg.limits.rounds_max = 0;
         assert_eq!(cfg.check().unwrap().0, "agent_run_invalid");
         let finished = AgentRunFinishedConfig {

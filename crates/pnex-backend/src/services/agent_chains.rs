@@ -291,6 +291,7 @@ pub async fn publish_event(
 pub async fn run_node(
     db: &DatabaseConnection,
     artifacts: crate::services::agent_artifacts::ArtifactSettings,
+    store: Option<&crate::services::artifact_store::S3Store>,
     req: &pnex_core::agent_chains::AgentRunNodeRequest,
 ) -> Result<
     pnex_core::agent_chains::AgentRunNodeReply,
@@ -337,7 +338,7 @@ pub async fn run_node(
     };
     crate::services::ontology::flow_nodes::spend(org_id)?;
     // Only the inputs the deployed node maps; the run checks they are ready artifacts.
-    let inputs = config
+    let mut inputs: Vec<pnex_core::agent_runs::ArtifactInput> = config
         .inputs
         .keys()
         .filter_map(|name| {
@@ -349,6 +350,46 @@ pub async fn run_node(
                 })
         })
         .collect();
+    // A text the deployed node maps becomes an input artifact, written by the deployer.
+    for name in config.texts.keys() {
+        let Some(text) = req.texts.get(name) else {
+            continue;
+        };
+        if text.len() > pnex_core::agent_chains::TEXT_INPUT_MAX {
+            return Ok(refused(
+                err_codes::FIELD_INVALID_BODY,
+                serde_json::json!({ "field": format!("texts.{name}"), "token": "too_large" }),
+            ));
+        }
+        let Some(store) = store else {
+            return Ok(refused(err_codes::FLOW_RUNTIME, serde_json::json!({})));
+        };
+        let body = futures_util::stream::iter([Ok::<_, std::io::Error>(bytes::Bytes::from(
+            text.clone().into_bytes(),
+        ))]);
+        let artifact = match crate::services::agent_artifacts::upload(
+            db,
+            store,
+            artifacts,
+            org_id,
+            user,
+            name,
+            pnex_core::agent_runs::ArtifactForm::File,
+            body,
+        )
+        .await
+        {
+            Ok(a) => a,
+            Err(e) => {
+                tracing::warn!(org_id, error = ?e, "agent_run node text not kept");
+                return Ok(refused(err_codes::FLOW_RUNTIME, serde_json::json!({})));
+            }
+        };
+        inputs.push(pnex_core::agent_runs::ArtifactInput {
+            name: name.clone(),
+            artifact_id: artifact.id.to_string(),
+        });
+    }
     let joins = req.chain_id.is_some();
     let start = pnex_core::agents::AgentRunStart {
         inputs,
@@ -366,7 +407,7 @@ pub async fn run_node(
                 run_id: Some(run.id),
                 chain_id: run.chain_id,
                 ..Default::default()
-            })
+            });
         }
         Err(AgentError::Run(AgentRunError::SubjectTaken { chain_id })) => {
             return Ok(AgentRunNodeReply {
@@ -374,7 +415,7 @@ pub async fn run_node(
                 chain_id: Some(chain_id.to_string()),
                 joined: true,
                 ..Default::default()
-            })
+            });
         }
         Err(AgentError::Invalid { field, token }) => (
             err_codes::FIELD_INVALID_BODY,

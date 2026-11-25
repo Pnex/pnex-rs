@@ -28421,7 +28421,7 @@
             "type": "string"
           },
           "push_secret_id": {
-            "description": "Write token of the vault, limited to this repository and to creating branches: the\nagent's changes go out as branch `pnex/run-<run id>` and a merge request onto\n`git_ref` (D388). Only a push sidecar gets it, never the agent. GitHub in V1.",
+            "description": "Write token of the vault, limited to this repository and to creating branches: the\nagent's changes go out as branch `pnex/run-<run id>` and a merge request onto\n`git_ref` (D388). Only a push sidecar gets it, never the agent. GitHub or GitLab.",
             "format": "uuid",
             "type": [
               "string",

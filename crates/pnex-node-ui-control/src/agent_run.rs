@@ -1,5 +1,5 @@
 //! Agent run node (agents.md D713): `pnex-agent-run`. Each message reads the
-//! artifact ids, the chain id and the subject at the paths of the deployed config, then
+//! artifact ids, the texts, the chain id and the subject at the paths of the deployed config, then
 //! calls `POST /internal/flow/agent-run`; the backend reads the agent and the chain bounds
 //! from the deployed graph and answers the run id at once. The flow never waits for the
 //! run: `agent-run-finished` emits its end. Port 0 started or joined, port 1 refused.
@@ -35,6 +35,8 @@ struct Paths {
     #[serde(default)]
     inputs: BTreeMap<String, String>,
     #[serde(default)]
+    texts: BTreeMap<String, String>,
+    #[serde(default)]
     subject_from: String,
 }
 
@@ -55,6 +57,11 @@ fn request_of(
         node: proxy_node.clone(),
         inputs: paths
             .inputs
+            .iter()
+            .filter_map(|(name, path)| Some((name.clone(), msg_string(msg, path)?)))
+            .collect(),
+        texts: paths
+            .texts
             .iter()
             .filter_map(|(name, path)| Some((name.clone(), msg_string(msg, path)?)))
             .collect(),
@@ -141,6 +148,7 @@ mod tests {
                 ("ticket".into(), "payload.ticket".into()),
                 ("patch".into(), "run.outputs.patch".into()),
             ]),
+            texts: BTreeMap::from([("spec".into(), "payload.description".into())]),
             subject_from: "payload.key".into(),
         };
         let node = pnex_core::ontology::flow::FlowNodeRef {
@@ -150,13 +158,14 @@ mod tests {
             node_id: "n".into(),
         };
         let msg = serde_json::json!({
-            "payload": { "ticket": "a1", "key": "repo#7" },
+            "payload": { "ticket": "a1", "key": "repo#7", "description": "Add a search" },
             "chain_id": "c1",
             "params": { "code": "RS0101", "n": 3 },
         });
         let req = request_of(&paths, &msg, &node);
         assert_eq!(req.inputs.len(), 1);
         assert_eq!(req.inputs["ticket"], "a1");
+        assert_eq!(req.texts["spec"], "Add a search");
         assert_eq!(req.chain_id.as_deref(), Some("c1"));
         assert_eq!(req.subject.as_deref(), Some("repo#7"));
         assert_eq!(req.params.len(), 1);

@@ -129,27 +129,70 @@ pub struct RunRepo {
     pub secret_id: Option<String>,
     /// Write token of the vault, limited to this repository and to creating branches: the
     /// agent's changes go out as branch `pnex/run-<run id>` and a merge request onto
-    /// `git_ref` (D388). Only a push sidecar gets it, never the agent. GitHub in V1.
+    /// `git_ref` (D388). Only a push sidecar gets it, never the agent. GitHub or GitLab.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
     pub push_secret_id: Option<String>,
 }
 
-/// `(owner, repository)` of an `https://github.com/<owner>/<repo>[.git]` URL: the only
-/// forge a branch output speaks in V1 (D752).
+/// A path segment of a forge URL: nothing that walks up or reads as a route.
+fn segment_ok(s: &str) -> bool {
+    !s.is_empty()
+        && s != "."
+        && s != ".."
+        && s.chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
+}
+
+/// `(owner, repository)` of an `https://github.com/<owner>/<repo>[.git]` URL.
 pub fn github_repo(url: &str) -> Option<(String, String)> {
     let rest = url.strip_prefix("https://github.com/")?;
     let rest = rest.trim_end_matches('/');
     let rest = rest.strip_suffix(".git").unwrap_or(rest);
     let (owner, repo) = rest.split_once('/')?;
-    let ok = |s: &str| {
-        !s.is_empty()
-            && s != "."
-            && s != ".."
-            && s.chars()
-                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
-    };
-    (ok(owner) && ok(repo)).then(|| (owner.to_string(), repo.to_string()))
+    (segment_ok(owner) && segment_ok(repo)).then(|| (owner.to_string(), repo.to_string()))
+}
+
+/// The forge a branch output opens its merge request on (D752).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Forge {
+    GitHub {
+        owner: String,
+        repo: String,
+    },
+    /// `project`: the full path, subgroups included.
+    GitLab {
+        host: String,
+        project: String,
+    },
+}
+
+/// GitHub at `github.com`, GitLab at any other `https` host (gitlab.com or self-hosted).
+/// The write token only ever goes to the repository's own host.
+pub fn forge_repo(url: &str) -> Option<Forge> {
+    if let Some((owner, repo)) = github_repo(url) {
+        return Some(Forge::GitHub { owner, repo });
+    }
+    let (host, path) = url.strip_prefix("https://")?.split_once('/')?;
+    let host = host.to_ascii_lowercase();
+    if host.is_empty()
+        || host == "github.com"
+        || !host
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '.'))
+    {
+        return None;
+    }
+    let path = path.trim_end_matches('/');
+    let path = path.strip_suffix(".git").unwrap_or(path);
+    let segments: Vec<&str> = path.split('/').collect();
+    // `-` starts GitLab's own routes (`/-/merge_requests`), never a project.
+    let ok =
+        (2..=20).contains(&segments.len()) && segments.iter().all(|s| segment_ok(s) && *s != "-");
+    ok.then(|| Forge::GitLab {
+        host,
+        project: path.to_string(),
+    })
 }
 
 fn default_ref() -> String {
@@ -511,7 +554,7 @@ pub fn create_error(body: &AgentRunCreate) -> Option<(&'static str, &'static str
     if body.repos.iter().any(|r| {
         r.push_secret_id
             .as_deref()
-            .is_some_and(|id| uuid::Uuid::parse_str(id).is_err() || github_repo(&r.url).is_none())
+            .is_some_and(|id| uuid::Uuid::parse_str(id).is_err() || forge_repo(&r.url).is_none())
     }) {
         return Some(("repos", "push_unsupported"));
     }
@@ -614,6 +657,47 @@ mod tests {
     }
 
     #[test]
+    fn forge_of_a_repository_url() {
+        let gh = |o: &str, r: &str| {
+            Some(Forge::GitHub {
+                owner: o.into(),
+                repo: r.into(),
+            })
+        };
+        let gl = |h: &str, p: &str| {
+            Some(Forge::GitLab {
+                host: h.into(),
+                project: p.into(),
+            })
+        };
+        assert_eq!(
+            forge_repo("https://github.com/acme/demo.git"),
+            gh("acme", "demo")
+        );
+        assert_eq!(
+            forge_repo("https://gitlab.com/acme/demo.git"),
+            gl("gitlab.com", "acme/demo")
+        );
+        assert_eq!(
+            forge_repo("https://GitLab-Dev.pnex.io/demo/team/items-api/"),
+            gl("gitlab-dev.pnex.io", "demo/team/items-api")
+        );
+        for bad in [
+            "http://gitlab.com/acme/demo",
+            "https://gitlab.com/acme",
+            "https://github.com/acme/demo/extra",
+            "https://gitlab.com/acme/-/demo",
+            "https://gitlab.com/acme/../demo",
+            "https://gitlab.com/acme//demo",
+            "https://user@gitlab.com/acme/demo",
+            "https://gitlab.com:8443/acme/demo",
+            "https://gitlab.com/acme/de?mo",
+        ] {
+            assert_eq!(forge_repo(bad), None, "{bad}");
+        }
+    }
+
+    #[test]
     fn repos_and_services_are_checked_before_any_pod() {
         let mut body = AgentRunCreate {
             environment_id: "x".into(),
@@ -647,14 +731,22 @@ mod tests {
             repo("https://github.com/a/c.git", "app"),
         ];
         assert_eq!(create_error(&body), Some(("repos", "duplicate")));
-        // A branch output: a GitHub repository and a vault id only (D388, D752).
+        // A branch output: a GitHub or GitLab repository and a vault id only (D388, D752).
         let uuid = "6f9619ff-8b86-d011-b42d-00cf4fc964ff";
         let mut push = repo("https://github.com/acme/app.git", "app");
         push.push_secret_id = Some(uuid.into());
-        body.repos = vec![push.clone()];
-        assert_eq!(create_error(&body), None);
+        for url in [
+            "https://github.com/acme/app.git",
+            "https://gitlab.com/acme/app.git",
+            "https://git.acme.io/team/sub/app",
+        ] {
+            push.url = url.into();
+            body.repos = vec![push.clone()];
+            assert_eq!(create_error(&body), None, "{url}");
+        }
         for (url, id) in [
-            ("https://gitlab.com/acme/app.git", uuid),
+            ("https://github.com/acme/app/extra", uuid),
+            ("https://git.acme.io/app", uuid),
             ("https://github.com/acme/app.git", "x"),
         ] {
             let mut bad = push.clone();

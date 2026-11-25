@@ -501,6 +501,7 @@ pub const NODE_DOCS: &[NodeDoc] = &[
             ("recipe_id", "or the uuid of a saved website rule of the organization (never both); the latest saved version plays, on the server browser or on a browser agent when the rule needs a session"),
             ("params", "values of the rule's parameters, e.g. {code: RS0101}; msg.params (an object of strings) overrides them"),
             ("inputs", "object: input name declared by the agent → dotted path in the message holding an artifact id, e.g. {\"ticket\": \"payload.ticket\"} or {\"patch\": \"run.outputs.patch\"} after agent_run_finished"),
+            ("texts", "object: input name declared by the agent → dotted path in the message holding a text (at most 64 KiB), e.g. {\"ticket\": \"payload.description\"}: the server keeps the text as that input's file. An input is in inputs or in texts, never both"),
             ("subject_from", "dotted path of a subject key (repository and ticket, object id) in the message; empty = no subject. One active chain per subject"),
             ("limits", "{runs_max (default 10), llm_calls_max (default 500, all runs together), rounds_max (default 3, runs of the same agent)} of the chain this node opens"),
         ],

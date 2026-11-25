@@ -29,12 +29,15 @@ pub(super) fn AgentRunForm(
     let mut rule = use_signal(|| !initial.recipe_id.is_empty());
     let mut agent_id = use_signal(|| initial.agent_id.clone());
     let mut inputs = use_signal(|| initial.inputs.clone());
+    // Inputs read as a text of the message instead of an artifact id.
+    let mut texts = use_signal(|| initial.texts.clone());
     let mut subject = use_signal(|| initial.subject_from.clone());
     let mut limits = use_signal(|| initial.limits);
     let mut save = move || {
         let next = AgentRunNodeConfig {
             agent_id: agent_id(),
             inputs: inputs(),
+            texts: texts(),
             subject_from: subject(),
             limits: limits(),
             ..Default::default()
@@ -46,8 +49,9 @@ pub(super) fn AgentRunForm(
         });
     };
     let list = agents.read().clone().unwrap_or_default();
-    // The declared inputs of the picked agent, each with its path (default `payload.<name>`).
-    let declared: Vec<(String, String)> = list
+    // The declared inputs of the picked agent, each with its path (default `payload.<name>`)
+    // and whether the path holds a text rather than an artifact id.
+    let declared: Vec<(String, String, bool)> = list
         .iter()
         .find(|a| a.id == agent_id())
         .map(|a| {
@@ -55,8 +59,12 @@ pub(super) fn AgentRunForm(
                 .inputs
                 .iter()
                 .map(|name| {
-                    let path = inputs.read().get(name).cloned().unwrap_or_default();
-                    (name.clone(), path)
+                    let text = texts.read().get(name).cloned();
+                    let path = text
+                        .clone()
+                        .or_else(|| inputs.read().get(name).cloned())
+                        .unwrap_or_default();
+                    (name.clone(), path, text.is_some())
                 })
                 .collect()
         })
@@ -77,6 +85,7 @@ pub(super) fn AgentRunForm(
             .collect();
         agent_id.set(id);
         inputs.set(map);
+        texts.set(BTreeMap::new());
         save();
     };
     // `which`: 0 runs, 1 model calls, 2 rounds.
@@ -109,6 +118,7 @@ pub(super) fn AgentRunForm(
         rule.set(e.value() == "rule");
         agent_id.set(String::new());
         inputs.set(BTreeMap::new());
+        texts.set(BTreeMap::new());
         save();
     };
 
@@ -145,16 +155,38 @@ pub(super) fn AgentRunForm(
                         }
                     }
                 }
-                for (name, path) in declared {
+                for (name, path, is_text) in declared {
                     label { key: "l-{name}", class: FIELD_LABEL, "{name}" }
                     input {
                         class: INPUT,
                         disabled: !can_write,
                         value: "{path}",
-                        onchange: move |e| {
-                            inputs.with_mut(|m| m.insert(name.clone(), e.value()));
-                            save();
+                        onchange: {
+                            let name = name.clone();
+                            move |e: Event<FormData>| {
+                                let mut target = if is_text { texts } else { inputs };
+                                target.with_mut(|m| m.insert(name.clone(), e.value()));
+                                save();
+                            }
                         },
+                    }
+                    label { class: "flex items-center gap-2 text-xs text-gray-600",
+                        input {
+                            r#type: "checkbox",
+                            disabled: !can_write,
+                            checked: is_text,
+                            onchange: move |e| {
+                                let (mut from, mut to) = if e.checked() {
+                                    (inputs, texts)
+                                } else {
+                                    (texts, inputs)
+                                };
+                                let path = from.with_mut(|m| m.remove(&name)).unwrap_or_default();
+                                to.with_mut(|m| m.insert(name.clone(), path));
+                                save();
+                            },
+                        }
+                        {t!("flows-agent-run-input-is-text")}
                     }
                 }
                 p { class: "text-xs text-gray-500", {t!("flows-agent-run-inputs-help")} }
