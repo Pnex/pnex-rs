@@ -60,8 +60,13 @@ pub async fn validate(document: &str) -> Result<PipelineCheck, ApiError> {
 
 /// 409 when saved in between.
 /// Reads `document` up to the step that outputs `step`, on one row, without writes (D944).
-pub async fn probe(document: &str, step: &str) -> Result<PipelineProbeResult, ApiError> {
-    let body = json!({ "document": document, "step": step });
+/// `pipeline_id`: the saved pipeline whose kept base a preview of objects compares to.
+pub async fn probe(
+    document: &str,
+    step: &str,
+    pipeline_id: Option<&str>,
+) -> Result<PipelineProbeResult, ApiError> {
+    let body = json!({ "document": document, "step": step, "pipeline_id": pipeline_id });
     client::request(Method::POST, "/api/v1/pipelines/probe", Some(body)).await
 }
 
@@ -76,6 +81,12 @@ pub async fn delete(id: &str) -> Result<(), ApiError> {
 
 pub async fn versions(id: &str) -> Result<Vec<PipelineVersion>, ApiError> {
     client::request_all(&format!("{}/versions", pipeline_path(id))).await
+}
+
+/// One run, with the steps it journaled (D944).
+pub async fn run(id: &str, run_id: &str) -> Result<PipelineRun, ApiError> {
+    let path = format!("{}/runs/{run_id}", pipeline_path(id));
+    client::request(Method::GET, &path, None).await
 }
 
 pub async fn runs(id: &str, limit: i64) -> Result<Paginated<PipelineRun>, ApiError> {

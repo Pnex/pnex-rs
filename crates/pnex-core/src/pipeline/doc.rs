@@ -1282,10 +1282,8 @@ impl Document {
                 token: token.into(),
             })
         };
-        for (path, set) in [("schedule", self.schedule.is_some())] {
-            if set {
-                bad(path.into(), "org_unsupported");
-            }
+        if self.schedule.is_some() {
+            bad("schedule".into(), "org_unsupported");
         }
         for (i, s) in self.steps.iter().enumerate() {
             match s {

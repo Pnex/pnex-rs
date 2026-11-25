@@ -239,7 +239,7 @@ pub fn PipelineStudio(id: String) -> Element {
         probing.set(true);
         let text = yaml();
         spawn(async move {
-            match api::pipelines::probe(&text, &step).await {
+            match api::pipelines::probe(&text, &step, Some(&id())).await {
                 Ok(r) => probe.set(Some((step, r))),
                 Err(e) => {
                     probe.set(None);
@@ -273,6 +273,7 @@ pub fn PipelineStudio(id: String) -> Element {
         .collect();
     let picked = selected();
     let picked_dataset = picked.as_deref().and_then(dataset_of);
+    let reads: Vec<String> = check().map(|c| c.reads).unwrap_or_default();
     let has_errors = !violations().is_empty();
     let running = build().is_some_and(|b| b.state == BuildState::Running);
     let name = match &*saved.read() {
@@ -389,6 +390,16 @@ pub fn PipelineStudio(id: String) -> Element {
                             }
                         }
                         if let Some(table) = picked_dataset.clone() {
+                            if can_run && reads.contains(&table.name) {
+                                Link {
+                                    class: "{BTN_SECONDARY_SM} self-start",
+                                    "data-testid": "pipe-table-load",
+                                    to: Route::PipelineTable {
+                                        id: table.id.clone(),
+                                    },
+                                    {t!("pipe-table-load")}
+                                }
+                            }
                             div { class: "max-h-72 overflow-auto rounded-lg border border-line bg-surface",
                                 SamplePanel {
                                     key: "{table.id}",
@@ -397,8 +408,31 @@ pub fn PipelineStudio(id: String) -> Element {
                                     generation: generation(),
                                 }
                             }
-                        } else if picked.is_some() {
-                            p { class: "text-sm text-slate", {t!("pipe-not-computed-help")} }
+                        } else if let Some(name) = picked.clone() {
+                            // A table the document reads and the org lacks: made here, then filled.
+                            if !reads.contains(&name) {
+                                p { class: "text-sm text-slate", {t!("pipe-not-computed-help")} }
+                            } else if can_run {
+                                div { class: "flex flex-wrap items-center gap-2",
+                                    p { class: FIELD_HELP, {t!("pipe-table-missing")} }
+                                    button {
+                                        class: BTN_SECONDARY_SM,
+                                        "data-testid": "pipe-table-create",
+                                        onclick: move |_| {
+                                            let name = name.clone();
+                                            spawn(async move {
+                                                match api::pipelines::create_table(&name).await {
+                                                    Ok(d) => {
+                                                        navigator.push(Route::PipelineTable { id: d.id });
+                                                    }
+                                                    Err(e) => message.set(Some(localize(&e))),
+                                                }
+                                            });
+                                        },
+                                        {t!("pipe-table-create")}
+                                    }
+                                }
+                            }
                         }
                         if let Some((step, r)) = probe() {
                             div {
@@ -416,6 +450,9 @@ pub fn PipelineStudio(id: String) -> Element {
                                 }
                                 ProbeSteps { steps: r.steps.clone() }
                                 ProbeSample { rows: r.sample.clone() }
+                                if let Some(o) = r.objects.clone() {
+                                    ObjectsPreviewView { preview: o }
+                                }
                             }
                         }
                     }
@@ -482,6 +519,7 @@ pub fn PipelineStudio(id: String) -> Element {
                                 }
                                 if tab() == Tab::Runs {
                                     RunList {
+                                        pipeline_id: id(),
                                         runs: match &*runs.read() {
                                             Some(Ok(p)) => p.results.clone(),
                                             _ => Vec::new(),
@@ -595,7 +633,7 @@ pub fn PipelineStudio(id: String) -> Element {
 }
 
 #[component]
-fn RunList(runs: Vec<pnex_core::pipelines::PipelineRun>) -> Element {
+fn RunList(pipeline_id: String, runs: Vec<pnex_core::pipelines::PipelineRun>) -> Element {
     if runs.is_empty() {
         return rsx! {
             p { class: FIELD_HELP, {t!("pipe-runs-empty")} }
@@ -604,24 +642,190 @@ fn RunList(runs: Vec<pnex_core::pipelines::PipelineRun>) -> Element {
     rsx! {
         ul { class: "divide-y divide-line", "data-testid": "pipe-runs",
             for r in runs {
-                li { key: "{r.id}", class: "space-y-1 py-2 text-sm",
-                    div { class: "flex flex-wrap items-center gap-2",
-                        span { class: "{BADGE} {tone(r.state == PipelineRunState::Done, r.state == PipelineRunState::Failed)}",
-                            {
-                                match r.state {
-                                    PipelineRunState::Queued => t!("pipe-run-queued"),
-                                    PipelineRunState::Running => t!("pipe-run-running"),
-                                    PipelineRunState::Done => t!("pipe-run-done"),
-                                    PipelineRunState::Failed => t!("pipe-run-failed"),
-                                }
-                            }
+                RunRow { key: "{r.id}", pipeline_id: pipeline_id.clone(), run: r }
+            }
+        }
+    }
+}
+
+/// A run of the history; its steps load when opened.
+#[component]
+fn RunRow(pipeline_id: String, run: pnex_core::pipelines::PipelineRun) -> Element {
+    let mut open = use_signal(|| false);
+    let mut detail = use_signal(|| None::<Vec<pnex_core::ingest::IngestStepView>>);
+    let r = run;
+    let run_id = r.id.clone();
+    rsx! {
+        li { class: "space-y-1 py-2 text-sm",
+            div { class: "flex flex-wrap items-center gap-2",
+                span { class: "{BADGE} {tone(r.state == PipelineRunState::Done, r.state == PipelineRunState::Failed)}",
+                    {
+                        match r.state {
+                            PipelineRunState::Queued => t!("pipe-run-queued"),
+                            PipelineRunState::Running => t!("pipe-run-running"),
+                            PipelineRunState::Done => t!("pipe-run-done"),
+                            PipelineRunState::Failed => t!("pipe-run-failed"),
                         }
-                        span { class: "text-ink", "v{r.version}" }
-                        span { class: "ml-auto text-xs text-slate", "{short_time(&r.created_at)}" }
                     }
-                    if let Some(code) = r.code.clone() {
-                        p { class: "text-xs text-alarm", "{code_label(&code, r.args.as_ref())}" }
+                }
+                span { class: "text-ink", "v{r.version}" }
+                button {
+                    class: "text-xs text-slate underline hover:text-ink",
+                    r#type: "button",
+                    "aria-expanded": "{open()}",
+                    "data-testid": "pipe-run-steps-toggle",
+                    onclick: move |_| {
+                        let opened = !open();
+                        open.set(opened);
+                        if opened && detail().is_none() {
+                            let (id, run_id) = (pipeline_id.clone(), run_id.clone());
+                            spawn(async move {
+                                // A run that cannot be read shows no steps rather than nothing.
+                                let d = api::pipelines::run(&id, &run_id).await;
+                                detail.set(Some(d.map(|d| d.steps).unwrap_or_default()));
+                            });
+                        }
+                    },
+                    if open() {
+                        {t!("pipe-run-steps-hide")}
+                    } else {
+                        {t!("pipe-run-steps-show")}
                     }
+                }
+                span { class: "ml-auto text-xs text-slate", "{short_time(&r.created_at)}" }
+            }
+            if let Some(code) = r.code.clone() {
+                p { class: "text-xs text-alarm", "{code_label(&code, r.args.as_ref())}" }
+            }
+            if open() {
+                if let Some(steps) = detail() {
+                    RunSteps { steps }
+                }
+            }
+        }
+    }
+}
+
+/// The steps a run journaled, with what each `write: objects` wrote.
+#[component]
+fn RunSteps(steps: Vec<pnex_core::ingest::IngestStepView>) -> Element {
+    if steps.is_empty() {
+        return rsx! {
+            p { class: FIELD_HELP, {t!("pipe-run-steps-none")} }
+        };
+    }
+    rsx! {
+        ol { class: "space-y-1 pl-1", "data-testid": "pipe-run-steps",
+            for (i, s) in steps.iter().enumerate() {
+                li { key: "{i}", class: "space-y-0.5 text-xs",
+                    div { class: "flex min-w-0 flex-wrap items-center gap-2",
+                        span { class: "text-slate", "{i + 1}." }
+                        span { class: "font-medium text-ink", "{s.step}" }
+                        if let Some(n) = s.manifest.get("rows").and_then(|v| v.as_u64()) {
+                            span { class: "text-slate", {t!("pipe-rows", n : n)} }
+                        }
+                        if s.port == 1 {
+                            span { class: "text-alarm", {t!("pipe-run-step-failed")} }
+                        }
+                    }
+                    if let Some(c) = s.manifest.get("written").and_then(|w| w.get("counts")) {
+                        WrittenCounts { counts: serde_json::from_value(c.clone()).unwrap_or_default() }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// The non-zero counts of a `write: objects` step, written or to write.
+#[component]
+fn WrittenCounts(counts: pnex_core::ontology::import::ImportCounts) -> Element {
+    let c = counts;
+    let parts: Vec<String> = [
+        (c.created, "pipe-objects-created"),
+        (c.updated, "pipe-objects-updated"),
+        (c.closed, "pipe-objects-closed"),
+        (c.links_opened + c.links_updated, "pipe-objects-links"),
+        (c.observations, "pipe-objects-observations"),
+        (c.warnings, "pipe-objects-warnings-count"),
+    ]
+    .into_iter()
+    .filter(|(n, _)| *n > 0)
+    .map(|(n, key)| match key {
+        "pipe-objects-created" => t!("pipe-objects-created", n : n).to_string(),
+        "pipe-objects-updated" => t!("pipe-objects-updated", n : n).to_string(),
+        "pipe-objects-closed" => t!("pipe-objects-closed", n : n).to_string(),
+        "pipe-objects-links" => t!("pipe-objects-links", n : n).to_string(),
+        "pipe-objects-observations" => t!("pipe-objects-observations", n : n).to_string(),
+        _ => t!("pipe-objects-warnings-count", n : n).to_string(),
+    })
+    .collect();
+    rsx! {
+        p { class: "text-xs text-slate", "data-testid": "pipe-objects-counts",
+            if parts.is_empty() {
+                {t!("pipe-objects-nothing")}
+            } else {
+                {parts.join(", ")}
+            }
+        }
+    }
+}
+
+/// What a `write: objects` step fed by the probed step would write (D1050).
+#[component]
+fn ObjectsPreviewView(preview: pnex_core::pipelines::ObjectsPreview) -> Element {
+    rsx! {
+        div {
+            class: "space-y-2 border-t border-line pt-3",
+            "data-testid": "pipe-objects-preview",
+            p { class: "text-sm font-medium text-ink", {t!("pipe-objects-title")} }
+            WrittenCounts { counts: preview.counts.clone() }
+            if !preview.errors.is_empty() {
+                Issues {
+                    title: t!("pipe-objects-errors").to_string(),
+                    issues: preview.errors.clone(),
+                    total: preview.counts.errors,
+                    tone: "text-alarm".to_string(),
+                }
+            }
+            if !preview.warnings.is_empty() {
+                Issues {
+                    title: t!("pipe-objects-warnings").to_string(),
+                    issues: preview.warnings.clone(),
+                    total: preview.counts.warnings,
+                    tone: "text-slate".to_string(),
+                }
+            }
+        }
+    }
+}
+
+#[component]
+fn Issues(
+    title: String,
+    issues: Vec<pnex_core::ontology::import::RowIssue>,
+    total: usize,
+    tone: String,
+) -> Element {
+    let shown = issues.len();
+    rsx! {
+        div { class: "space-y-0.5",
+            p { class: "text-xs font-medium {tone}", "{title}" }
+            ul { class: "space-y-0.5 text-xs {tone} [overflow-wrap:anywhere]",
+                for (i, e) in issues.iter().enumerate() {
+                    li { key: "{i}",
+                        {
+                            t!(
+                                "pipe-issue", row : e.row, column : e.column.clone(), message :
+                                localize_field(& e.column, & e.token)
+                            )
+                        }
+                    }
+                }
+            }
+            if total > shown {
+                p { class: "text-xs text-slate",
+                    {t!("pipe-objects-shown", shown : shown, total : total)}
                 }
             }
         }

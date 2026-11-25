@@ -7146,6 +7146,42 @@ pipe-probe-bytes = { $n } octets
 pipe-probe-close = Fermer
 pipe-probe-no-rows = La sonde n'a lu aucune ligne.
 
+pipe-run-steps-show = Voir les étapes
+pipe-run-steps-hide = Masquer les étapes
+pipe-run-steps-none = Cette exécution n'a gardé aucune étape.
+pipe-run-step-failed = arrêtée ici
+pipe-objects-title = Objets que cette étape écrirait
+pipe-objects-created = { $n ->
+    [one] { $n } créé
+   *[other] { $n } créés
+}
+pipe-objects-updated = { $n ->
+    [one] { $n } mis à jour
+   *[other] { $n } mis à jour
+}
+pipe-objects-closed = { $n ->
+    [one] { $n } fermé
+   *[other] { $n } fermés
+}
+pipe-objects-links = { $n ->
+    [one] { $n } lien
+   *[other] { $n } liens
+}
+pipe-objects-observations = { $n ->
+    [one] { $n } valeur datée
+   *[other] { $n } valeurs datées
+}
+pipe-objects-warnings-count = { $n ->
+    [one] { $n } avertissement
+   *[other] { $n } avertissements
+}
+pipe-objects-nothing = Rien à écrire.
+pipe-objects-errors = Lignes refusées : une exécution s'arrête sur elles
+pipe-objects-warnings = Lignes laissées de côté
+pipe-objects-shown = Les { $shown } premières sur { $total }.
+pipe-issue = Ligne { $row }, { $column } : { $message }
+pipe-table-missing = Ce pipeline lit cette table, qui n'existe pas encore. Créez-la, puis chargez-y votre CSV.
+pipe-table-create = Créer la table
 ## Hosted agents (agents.md D757, D761)
 nav-agents = Agents
 agents-title = Agents

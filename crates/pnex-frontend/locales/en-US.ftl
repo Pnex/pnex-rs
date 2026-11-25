@@ -7150,6 +7150,42 @@ pipe-probe-bytes = { $n } bytes
 pipe-probe-close = Close
 pipe-probe-no-rows = The probe read no rows.
 
+pipe-run-steps-show = Show steps
+pipe-run-steps-hide = Hide steps
+pipe-run-steps-none = This run kept no steps.
+pipe-run-step-failed = stopped here
+pipe-objects-title = Objects this step would write
+pipe-objects-created = { $n ->
+    [one] { $n } created
+   *[other] { $n } created
+}
+pipe-objects-updated = { $n ->
+    [one] { $n } updated
+   *[other] { $n } updated
+}
+pipe-objects-closed = { $n ->
+    [one] { $n } closed
+   *[other] { $n } closed
+}
+pipe-objects-links = { $n ->
+    [one] { $n } link
+   *[other] { $n } links
+}
+pipe-objects-observations = { $n ->
+    [one] { $n } dated value
+   *[other] { $n } dated values
+}
+pipe-objects-warnings-count = { $n ->
+    [one] { $n } warning
+   *[other] { $n } warnings
+}
+pipe-objects-nothing = Nothing to write.
+pipe-objects-errors = Rows refused: a run stops on them
+pipe-objects-warnings = Rows left out
+pipe-objects-shown = The first { $shown } of { $total }.
+pipe-issue = Row { $row }, { $column }: { $message }
+pipe-table-missing = This pipeline reads this table, which does not exist yet. Create it, then load your CSV into it.
+pipe-table-create = Create the table
 ## Hosted agents (agents.md D757, D761)
 nav-agents = Agents
 agents-title = Agents

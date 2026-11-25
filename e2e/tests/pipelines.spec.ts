@@ -404,6 +404,52 @@ test.describe('pipelines', { tag: '@pipelines' }, () => {
       await api.delete(`/datasets/${table.id}`);
     }
   });
+
+  // D1050: a file goes into the table a pipeline reads, the probe shows the objects
+  // it would write, the run writes them and its steps keep the counts.
+  test('a file into its table, previewed, then written as objects', async ({ app, page, api, prefix }) => {
+    test.setTimeout(240_000);
+    const slug = prefix.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
+    const list = `${slug}_fair`;
+    await api.post('/ontology/packs/prospecting_b2b/install', {});
+    const document =
+      `key: fair\nsteps:\n  - sql: {as: rows, tables: {s: ${JSON.stringify(list)}}, sql: SELECT * FROM s}\n` +
+      '  - write:\n      from: rows\n      objects:\n        objects:\n' +
+      '          - {as: c, type: list_contact, key: ref, title: name, properties: {ref: ref, list: list}}\n';
+    const made = await api.post<any>('/pipelines', { name: `${prefix} fair`, document });
+    const main = page.getByRole('main');
+
+    // The table it reads does not exist yet: made from here, then loaded.
+    await app.goto(`/pipelines/${made.id}`);
+    await page.getByTestId(`table-node-${list}`).click();
+    await expect(page.getByText(app.t('pipe-table-missing'))).toBeVisible();
+    await page.getByTestId('pipe-table-create').click();
+    await expect(page).toHaveURL(/\/pipelines\/tables\//);
+    await main.getByTestId('table-upload').setInputFiles({
+      name: 'fair.csv',
+      mimeType: 'text/csv',
+      buffer: Buffer.from(`ref,name,list\n${slug}-1,Ann Lee,Fair\n${slug}-2,Bo Kim,Fair\n`),
+    });
+    await expect(main.getByTestId('table-sample')).toContainText('Bo Kim');
+
+    if (WORKER) {
+      // The probe writes nothing and says what the run would write.
+      await app.goto(`/pipelines/${made.id}`);
+      await page.getByTestId('pipe-probe').click();
+      await expect(page.getByTestId('pipe-objects-preview')).toBeVisible({ timeout: 60_000 });
+      await expect(page.getByTestId('pipe-objects-counts')).toContainText(/\b2\b/);
+      await page.getByTestId('pipe-run').click();
+      await expect(page.getByTestId('build-steps')).toContainText(app.t('pipe-step-done'), { timeout: 60_000 });
+      await page.getByRole('button', { name: app.t('pipe-tab-runs') }).click();
+      await page.getByTestId('pipe-run-steps-toggle').first().click();
+      await expect(page.getByTestId('pipe-run-steps')).toContainText('write');
+      await expect(page.getByTestId('pipe-run-steps').getByTestId('pipe-objects-counts')).toContainText(/\b2\b/);
+    }
+    await api.delete(`/pipelines/${made.id}`);
+    const tables = await api.get<any>('/datasets?limit=200');
+    const table = tables.results.find((d: any) => d.name === list);
+    if (table) await api.delete(`/datasets/${table.id}`);
+  });
 });
 
 test.describe('pipelines in French', { tag: ['@pipelines', '@i18n'] }, () => {
@@ -427,4 +473,5 @@ test.describe('pipelines in French', { tag: ['@pipelines', '@i18n'] }, () => {
     await api.delete(`/pipelines/${made.id}`);
     await api.delete(`/datasets/${table.id}`);
   });
+
 });
