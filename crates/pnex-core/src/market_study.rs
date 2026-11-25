@@ -65,6 +65,18 @@ pub struct EventStudy {
     pub relative_volume: Option<f64>,
 }
 
+/// The study of one requested date; `study` is absent without a benchmark
+/// or enough values around it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct DatedEventStudy {
+    /// The date as requested.
+    #[cfg_attr(feature = "openapi", schema(format = "date"))]
+    pub date: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub study: Option<EventStudy>,
+}
+
 /// Slope of `y` on `x`; `None` when `x` does not move.
 fn slope(points: &[(f64, f64)]) -> Option<f64> {
     let n = points.len() as f64;

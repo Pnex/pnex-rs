@@ -582,9 +582,11 @@ async fn prices_with_a_vault_key_and_the_reaction_to_a_filing() {
         // The known jump and beta come back, the day after the jump's return.
         let date = price_day(300);
         let (st, study) = api
-            .call("GET", &format!("/api/v1/markets/instruments/{acme}/event-study?date={date}"), None)
+            .call("GET", &format!("/api/v1/analysis/event-study?object={acme}&date={date}"), None)
             .await;
         assert_eq!(st, 200, "{study}");
+        assert_eq!(study["results"][0]["date"], date.to_string(), "{study}");
+        let study = &study["results"][0]["study"];
         assert!((study["beta"].as_f64().unwrap() - 2.0).abs() < 1e-6, "{study}");
         let window = study["windows"].as_array().unwrap().iter().find(|w| w["from"] == -1).unwrap();
         assert!((window["abnormal"].as_f64().unwrap() - 0.05).abs() < 1e-6, "{window}");
@@ -3542,8 +3544,8 @@ async fn point_in_time_reads_never_show_a_canary() {
                 Some(json!({ "ids": [gold_id], "traverse": [{ "link_type": "exposed_to", "direction": "in" }], "as_of": at })),
             ),
             (
-                "markets_chains",
-                format!("/api/v1/markets/chains?instrument=XAUUSD&source=histdata&as_of={}", enc(&at)),
+                "analysis_chains",
+                format!("/api/v1/analysis/chains?table={ds}&key=XAUUSD&source=histdata&as_of={}", enc(&at)),
                 None,
             ),
             (
@@ -3744,7 +3746,7 @@ async fn price_moves_get_candidate_causal_chains() {
         .await;
         let chains = |as_of: &str| {
             let api = &api;
-            let path = format!("/api/v1/markets/chains?instrument=XAUUSD&source=histdata&as_of={as_of}&from=2026-01-05T00:00:00Z");
+            let path = format!("/api/v1/analysis/chains?table={hist_id}&key=XAUUSD&as_of={as_of}&from=2026-01-05T00:00:00Z");
             async move {
                 let (st, r) = api.call("GET", &path, None).await;
                 assert_eq!(st, 200, "{r}");
@@ -3840,9 +3842,14 @@ async fn price_moves_get_candidate_causal_chains() {
             .await;
         assert_eq!(st, 200, "{r}");
         assert_eq!(chains("2026-01-07T00:00:00Z").await["count"], 0, "a setting: the current threshold applies");
+        // The caller's threshold comes first.
+        let (_, r) = api
+            .call("GET", &format!("/api/v1/analysis/chains?table={hist_id}&key=XAUUSD&as_of=2026-01-07T00:00:00Z&from=2026-01-05T00:00:00Z&threshold_pct=1.5"), None)
+            .await;
+        assert!(r["count"].as_i64().unwrap() > 0, "{r}");
         let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
         let (_, r) = api
-            .call("GET", &format!("/api/v1/markets/chains?instrument=XAUUSD&source=histdata&as_of={now}"), None)
+            .call("GET", &format!("/api/v1/analysis/chains?table={hist_id}&key=XAUUSD&as_of={now}"), None)
             .await;
         assert_eq!(r["count"], 0, "no bars in the last 7 days");
 
@@ -3858,17 +3865,17 @@ async fn price_moves_get_candidate_causal_chains() {
         let exp = (chrono::Utc::now() + chrono::Duration::days(1)).to_rfc3339();
         let (_, key) = api.call("POST", &format!("/api/v1/iam/service-accounts/{}/keys", sa["id"].as_str().unwrap()), Some(json!({ "expires_at": exp }))).await;
         let res = server
-            .get("/api/v1/markets/chains?instrument=XAUUSD&source=histdata&as_of=2026-01-07T00:00:00Z&from=2026-01-05T00:00:00Z")
+            .get(&format!("/api/v1/analysis/chains?table={hist_id}&key=XAUUSD&as_of=2026-01-07T00:00:00Z&from=2026-01-05T00:00:00Z"))
             .add_header("Authorization", format!("Bearer {}", key["secret"].as_str().unwrap()))
             .await;
         assert_eq!(res.status_code().as_u16(), 403, "{}", res.text());
         assert!(res.text().contains("ontology:read"), "{}", res.text());
 
         // Unknown ticker, window too wide.
-        let (st, e) = api.call("GET", "/api/v1/markets/chains?instrument=NOPE&source=histdata&as_of=2026-01-07T00:00:00Z", None).await;
-        assert_eq!((st, e["errors"]["fields"]["instrument"].as_str()), (400, Some("unknown")), "{e}");
+        let (st, e) = api.call("GET", &format!("/api/v1/analysis/chains?table={hist_id}&key=NOPE&as_of=2026-01-07T00:00:00Z"), None).await;
+        assert_eq!((st, e["errors"]["fields"]["key"].as_str()), (400, Some("unknown")), "{e}");
         let (st, e) = api
-            .call("GET", "/api/v1/markets/chains?instrument=XAUUSD&source=histdata&as_of=2026-03-01T00:00:00Z&from=2026-01-01T00:00:00Z", None)
+            .call("GET", &format!("/api/v1/analysis/chains?table={hist_id}&key=XAUUSD&as_of=2026-03-01T00:00:00Z&from=2026-01-01T00:00:00Z"), None)
             .await;
         assert_eq!((st, e["errors"]["fields"]["from"].as_str()), (400, Some("range:31d")), "{e}");
     })

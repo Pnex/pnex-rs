@@ -20,7 +20,6 @@ use pnex_core::markets::moves::{MarketSession, SessionMove, SessionWorldEvent, W
 pub fn routes() -> Routes {
     Routes::new()
         .prefix("/api/v1/markets")
-        .add("/instruments/{id}/event-study", get(event_study))
         .add("/issuers/{id}/chart", get(issuer_chart))
         .add("/rule-test", get(rule_test))
         .add("/sessions/{date}", get(session))
@@ -31,14 +30,7 @@ pub fn routes() -> Routes {
 pub fn openapi() -> utoipa::openapi::OpenApi {
     #[derive(utoipa::OpenApi)]
     #[openapi(
-        paths(
-            event_study,
-            issuer_chart,
-            rule_test,
-            position_result,
-            session,
-            world_events
-        ),
+        paths(issuer_chart, rule_test, position_result, session, world_events),
         components(schemas(
             IssuerChart,
             ChartPoint,
@@ -61,57 +53,16 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
     <Doc as utoipa::OpenApi>::openapi()
 }
 
-fn day(field: &str, raw: Option<&str>) -> std::result::Result<Option<NaiveDate>, Response> {
+pub(super) fn day(
+    field: &str,
+    raw: Option<&str>,
+) -> std::result::Result<Option<NaiveDate>, Response> {
     match raw.filter(|s| !s.is_empty()) {
         None => Ok(None),
         Some(s) => NaiveDate::parse_from_str(s, "%Y-%m-%d")
             .map(Some)
             .map_err(|_| field_error(field, err_codes::FIELD_INVALID)),
     }
-}
-
-#[derive(Debug, Deserialize, utoipa::IntoParams)]
-#[into_params(parameter_in = Query)]
-struct StudyQuery {
-    /// Day of the event (`YYYY-MM-DD`).
-    #[param(format = Date)]
-    date: String,
-}
-
-#[utoipa::path(
-    get,
-    path = "/api/v1/markets/instruments/{id}/event-study",
-    tag = "markets",
-    operation_id = "markets_event_study",
-    summary = "Measure how an instrument moved around a date",
-    description = "Raw and abnormal return around the date, against the org's benchmark, with a market model estimated before the event, and the relative volume. `null` without a benchmark or enough prices. An aid to analysis, not investment advice. Any org member.",
-    params(
-        ("id" = String, Path, format = "uuid", description = "Instrument object id (UUID)"),
-        StudyQuery
-    ),
-    responses(
-        (status = 200, body = Option<EventStudy>),
-        (status = 400, description = "Invalid `date` (field → token)", body = crate::openapi::ErrorDetail),
-        (status = 404, description = "`ontology-not-found`", body = crate::openapi::ErrorDetail)
-    ),
-    security(("bearer" = [], "org" = []))
-)]
-async fn event_study(
-    State(ctx): State<AppContext>,
-    org: OrgContext,
-    Path(id): Path<String>,
-    Query(q): Query<StudyQuery>,
-) -> Result<Response> {
-    let id = super::ontology::parse_uuid(&id)?;
-    let date = match day("date", Some(&q.date)) {
-        Ok(Some(d)) => d,
-        Ok(None) => return Ok(field_error("date", err_codes::FIELD_REQUIRED)),
-        Err(r) => return Ok(r),
-    };
-    if let Err(e) = crate::services::ontology::objects::find(&ctx.db, org.org.id, id).await {
-        return super::ontology::onto_error(e);
-    }
-    format::json(study::one(&ctx.db, org.org.id, id, date).await?)
 }
 
 #[derive(Debug, Deserialize, utoipa::IntoParams)]
@@ -369,7 +320,7 @@ async fn position_result(
     let object = match crate::services::ontology::objects::find(&ctx.db, org.org.id, id).await {
         Ok(o) if o.type_key == "paper_position" => o,
         Ok(_) => {
-            return super::ontology::onto_error(crate::services::ontology::OntologyError::NotFound)
+            return super::ontology::onto_error(crate::services::ontology::OntologyError::NotFound);
         }
         Err(e) => return super::ontology::onto_error(e),
     };

@@ -214,6 +214,8 @@ flowchart LR
 
 L'étude d'événement est une fonction pure (`pnex_core::market_study`, D532). Elle calcule le rendement anormal (modèle de marché, β estimé sur [−250, −30] jours) sur les fenêtres [−1, +1], [0, +5] et [0, +20]. Une `macro_series` est mesurée sans modèle de marché : la variation brute.
 
+La route générique `GET /analysis/event-study` (PE8, `analysis.md` §5) applique ce calcul à une date ou à une liste de dates, sur toute série d'objet.
+
 Le test de règle (`GET /markets/rule-test`) n'a aucun paramètre à optimiser (D545). Il compare toujours à 20 dates tirées par instrument, avec un tirage reproductible. La mesure commence à la séance qui suit le jour de connaissance. Des `geo_event` proches comptent une fois (28 jours civils, D743). Les pistes non confirmées sont exclues sauf choix explicite. Limite affichée : seuls les instruments suivis aujourd'hui sont mesurés (biais du survivant).
 
 Le pack `investment_thesis` fait d'un dossier une thèse : instrument, sens, catalyseurs datés, critères d'invalidation (D533). Une `paper_position` se mesure sur les clôtures, jamais sur un prix saisi (D546, `GET /markets/positions/{id}/result`). La fiche d'un émetteur a un onglet **Cours** : clôtures, séances anormales, dépôts et décisions de modèle sur la même frise (D813, D897).
@@ -403,7 +405,7 @@ flowchart LR
   lift --> ch[Chaînes candidates, top 3]
 ```
 
-`GET /markets/chains?instrument=&source=&as_of=` sert au modèle externe une variable d'entrée, pas une proposition. Il réutilise `pnex_core::rca` (`cases.md` D904–D911). Un effet `price.move` est un rendement sur 1 h au-delà du seuil de l'instrument, sinon `price_move_threshold_pct` (1,5 %). Les causes sont :
+`GET /analysis/chains?table=&key=&as_of=` (PE8, `analysis.md` §5) sert au modèle externe une variable d'entrée, pas une proposition. Il réutilise `pnex_core::rca` (`cases.md` D904–D911). Un effet `price.move` est un rendement sur 1 h au-delà du seuil. Le seuil est `threshold_pct` de la requête, sinon celui de l'instrument, sinon `price_move_threshold_pct` (1,5 %). Les causes sont :
 
 - `world.event` : un `geo_event` posé sur le pays (type `nation`).
 - `macro.release` : une valeur macro connue dans la fenêtre.
@@ -856,11 +858,9 @@ Construite dans pnex-sales. PneX fournit les liens.
 | `GET /api/v1/markets/sessions/{date}` | `ontology:read` | exposé |
 | `GET /api/v1/markets/world-events` | `ontology:read` | exposé |
 | `GET /api/v1/markets/rule-test` | `ontology:read` | exposé |
-| `GET /api/v1/markets/instruments/{id}/event-study` | `ontology:read` | exposé |
 | `GET /api/v1/markets/issuers/{id}/chart` | `ontology:read` | exposé |
 | `GET /api/v1/markets/positions/{id}/result` | `ontology:read` | exposé |
 | `GET /api/v1/markets/bars` | `datasets:read` | exposé |
-| `GET /api/v1/markets/chains` | `datasets:read` + `ontology:read` | exposé |
 | `POST /api/v1/markets/decisions` | `market-decisions:write` | exclu (machine) |
 | `GET /api/v1/markets/decisions`, `…/scores`, `…/forecast-scores` | `market-decisions:read` | exposé |
 | `GET /api/v1/markets/prediction-features` | `ontology:read` | exposé |

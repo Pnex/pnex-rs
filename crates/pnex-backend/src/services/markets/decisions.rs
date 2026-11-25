@@ -180,7 +180,8 @@ async fn window(
             .and_then(|c| c.as_string_opt::<i32>());
         let scale = 10f64.powi(pnex_core::markets::history::SCALE as i32);
         for i in 0..batch.num_rows() {
-            if inst.value(i) != q.instrument || src.value(i) != q.source {
+            // An empty source reads every source of the table (analysis.md PE8).
+            if inst.value(i) != q.instrument || (!q.source.is_empty() && src.value(i) != q.source) {
                 continue;
             }
             if side.is_some_and(|s| s.value(i) != "bid") {
@@ -258,8 +259,7 @@ impl From<DbErr> for CreateError {
 
 const COLS: &str = "id, model, model_version, instrument, source, interval, horizon_bars, \
      as_of, probabilities, best, confidence, barriers, inputs, forecasts, created_at";
-const SELECT: &str =
-    "SELECT id, model, model_version, instrument, source, interval, horizon_bars, \
+const SELECT: &str = "SELECT id, model, model_version, instrument, source, interval, horizon_bars, \
      as_of, probabilities, best, confidence, barriers, inputs, forecasts, created_at FROM market_decisions";
 
 fn decision(r: &QueryResult) -> Result<Decision, DbErr> {

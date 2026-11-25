@@ -1,7 +1,8 @@
 //! Event studies (markets-research.md D532, D535).
 
-use pnex_core::market_study::{EventStudy, PositionResult, RuleResult};
+use pnex_core::market_study::{DatedEventStudy, EventStudy, PositionResult, RuleResult};
 use pnex_core::markets::moves::MarketSession;
+use pnex_core::Paginated;
 use reqwest::Method;
 
 use crate::api::client;
@@ -11,12 +12,13 @@ use crate::api::media::urlencode;
 const BASE: &str = "/api/v1/markets";
 
 pub async fn event_study(instrument: &str, date: &str) -> Result<Option<EventStudy>, ApiError> {
-    client::request(
+    let page: Paginated<DatedEventStudy> = client::request(
         Method::GET,
-        &format!("{BASE}/instruments/{instrument}/event-study?date={date}"),
+        &format!("/api/v1/analysis/event-study?object={instrument}&date={date}"),
         None,
     )
-    .await
+    .await?;
+    Ok(page.results.into_iter().next().and_then(|d| d.study))
 }
 
 pub async fn rule_test(form: &str, item: &str) -> Result<RuleResult, ApiError> {

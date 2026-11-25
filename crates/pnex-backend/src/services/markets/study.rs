@@ -35,13 +35,23 @@ pub async fn bars<C: ConnectionTrait>(
     org_id: i64,
     object: Uuid,
 ) -> Result<Vec<Bar>, DbErr> {
+    bars_of(db, org_id, object, "close").await
+}
+
+/// Like [`bars`], with `metric` as the value measured (analysis.md PE8).
+pub async fn bars_of<C: ConnectionTrait>(
+    db: &C,
+    org_id: i64,
+    object: Uuid,
+    metric: &str,
+) -> Result<Vec<Bar>, DbErr> {
     let rows = db
         .query_all_raw(stmt(
             "SELECT DISTINCT ON (metric, period_end) metric, period_end::text AS d, value \
              FROM market_observations WHERE org_id = $1 AND object_id = $2 \
-               AND metric IN ('close', 'volume', 'dividend', 'split') \
+               AND metric IN ($3, 'volume', 'dividend', 'split') \
              ORDER BY metric, period_end, known_at DESC",
-            vec![org_id.into(), object.into()],
+            vec![org_id.into(), object.into(), metric.into()],
         ))
         .await?;
     let mut days: HashMap<NaiveDate, Bar> = HashMap::new();
@@ -50,7 +60,7 @@ pub async fn bars<C: ConnectionTrait>(
         let Ok(date) = NaiveDate::parse_from_str(&d, "%Y-%m-%d") else {
             continue;
         };
-        let metric: String = r.try_get("", "metric")?;
+        let m: String = r.try_get("", "metric")?;
         let value: f64 = r.try_get("", "value")?;
         let bar = days.entry(date).or_insert(Bar {
             date,
@@ -59,8 +69,8 @@ pub async fn bars<C: ConnectionTrait>(
             dividend: 0.0,
             split: 1.0,
         });
-        match metric.as_str() {
-            "close" => bar.close = value,
+        match m.as_str() {
+            m if m == metric => bar.close = value,
             "volume" => bar.volume = value,
             "dividend" => bar.dividend = value,
             _ => bar.split = value,
@@ -87,21 +97,34 @@ async fn benchmark<C: ConnectionTrait>(db: &C, org_id: i64) -> Result<Option<Uui
     row.map(|r| r.try_get("", "id")).transpose()
 }
 
-/// One event of one instrument; `None` without a benchmark or enough prices.
-pub async fn one<C: ConnectionTrait>(
+/// The study of each date on the `metric` of `object`, against `benchmark`
+/// (the org's benchmark instrument when `None`), in the order given.
+pub async fn dated<C: ConnectionTrait>(
     db: &C,
     org_id: i64,
-    instrument: Uuid,
-    date: NaiveDate,
-) -> Result<Option<EventStudy>, DbErr> {
-    let Some(bench) = benchmark(db, org_id).await? else {
-        return Ok(None);
+    object: Uuid,
+    metric: &str,
+    benchmark_id: Option<Uuid>,
+    dates: &[NaiveDate],
+) -> Result<Vec<ms::DatedEventStudy>, DbErr> {
+    let bench = match benchmark_id {
+        Some(b) => Some(b),
+        None => benchmark(db, org_id).await?,
     };
-    let (stock, index) = (
-        bars(db, org_id, instrument).await?,
-        bars(db, org_id, bench).await?,
-    );
-    Ok(ms::event_study(&stock, &index, date))
+    let (stock, index) = match bench {
+        Some(b) => (
+            bars_of(db, org_id, object, metric).await?,
+            bars_of(db, org_id, b, metric).await?,
+        ),
+        None => (Vec::new(), Vec::new()),
+    };
+    Ok(dates
+        .iter()
+        .map(|d| ms::DatedEventStudy {
+            date: d.to_string(),
+            study: ms::event_study(&stock, &index, *d),
+        })
+        .collect())
 }
 
 /// A fictitious position's result; `None` without an instrument or prices.

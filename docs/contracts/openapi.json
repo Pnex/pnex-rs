@@ -8283,6 +8283,23 @@
         ],
         "type": "string"
       },
+      "DatedEventStudy": {
+        "description": "The study of one requested date; `study` is absent without a benchmark\nor enough values around it.",
+        "properties": {
+          "date": {
+            "description": "The date as requested.",
+            "format": "date",
+            "type": "string"
+          },
+          "study": {
+            "$ref": "#/components/schemas/EventStudy"
+          }
+        },
+        "required": [
+          "date"
+        ],
+        "type": "object"
+      },
       "Decision": {
         "description": "A stored decision; `best` and `confidence` are the server's.",
         "properties": {
@@ -20769,6 +20786,42 @@
             "description": "Items of this page.",
             "items": {
               "$ref": "#/components/schemas/DatasetTransaction"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "count",
+          "results"
+        ],
+        "type": "object"
+      },
+      "Paginated_DatedEventStudy": {
+        "description": "Envelope of a paginated list.",
+        "properties": {
+          "count": {
+            "description": "Total before slicing (filters apply to the count).",
+            "format": "int64",
+            "type": "integer"
+          },
+          "next": {
+            "description": "Link to the next page — `null` on the last page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "previous": {
+            "description": "Link to the previous page — `null` on the first page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "results": {
+            "description": "Items of this page.",
+            "items": {
+              "$ref": "#/components/schemas/DatedEventStudy"
             },
             "type": "array"
           }
@@ -39929,6 +39982,294 @@
         "summary": "Get the assistant status",
         "tags": [
           "ai"
+        ],
+        "x-pnex-as-of": "current_only"
+      }
+    },
+    "/api/v1/analysis/chains": {
+      "get": {
+        "description": "For each 1-hour move of the series beyond its threshold in [`from`, `as_of`], the 3 best candidate chains from a world event, a supply disruption or a macro release, through the links a member declared as propagating (`exposed_to`), scored by the pairs of the installed packs, each with its placebo and lift (never filtered: an input of an external model). Computed at reading time, never stored, never a cause (D742). Everything as known at `as_of`. Requires `datasets:read` and `ontology:read`.",
+        "operationId": "analysis_chains",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Bar Table read (UUID): minute bars with `ts`, `instrument`, `source` and the OHLCV columns.",
+            "in": "query",
+            "name": "table",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Value of the `instrument` column, and ticker of the `instrument` object the moves are on.",
+            "in": "query",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Value of the `source` column (`mt5:<broker>`…); every source of the Table by default.",
+            "in": "query",
+            "name": "source",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Instant of the read (RFC 3339), now by default: everything as known then.",
+            "in": "query",
+            "name": "as_of",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "description": "First instant of the moves explained (RFC 3339); 7 days before\n`as_of` by default, 31 days at most.",
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Smallest 1-hour change (percent) that is a move; the object's\n`move_threshold_pct`, then the org's setting, by default.",
+            "in": "query",
+            "name": "threshold_pct",
+            "required": false,
+            "schema": {
+              "format": "double",
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Paginated_Chain"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Invalid parameter (field → token: `key` `unknown` when no instrument object has this ticker, `from` `range:31d`) or `market-bars-too-many-files`"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` or `marking-required` · `access-denied` (`args.permission` = `datasets:read`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`dataset-not-found`"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`dataset-storage-unavailable`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Read the candidate causal chains of a series' moves as known at a date",
+        "tags": [
+          "analysis"
+        ],
+        "x-pnex-as-of": "point_in_time"
+      }
+    },
+    "/api/v1/analysis/event-study": {
+      "get": {
+        "description": "For each `date`, in the order given: the raw and abnormal change of the object's series around it, against the benchmark series, with a market model estimated before the date, and the relative volume. `study` is absent without a benchmark or enough values. An aid to analysis, never a cause. Requires `ontology:read`.",
+        "operationId": "analysis_event_study",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Object whose series is measured (UUID).",
+            "in": "query",
+            "name": "object",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Metric of the series (`market_observations`), `close` by default.",
+            "in": "query",
+            "name": "metric",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Object of the benchmark series (UUID), same metric; the org's benchmark instrument by default.",
+            "in": "query",
+            "name": "benchmark",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Day of an event (`YYYY-MM-DD`), repeated for each event, 100 at most.",
+            "in": "query",
+            "name": "date",
+            "required": true,
+            "schema": {
+              "items": {
+                "format": "date",
+                "type": "string"
+              },
+              "type": "array"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Paginated_DatedEventStudy"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Invalid parameter (field → token)"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `ontology:read`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`ontology-not-found`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Measure how a series moved around dates",
+        "tags": [
+          "analysis"
         ],
         "x-pnex-as-of": "current_only"
       }
@@ -73591,142 +73932,6 @@
         "x-pnex-as-of": "point_in_time"
       }
     },
-    "/api/v1/markets/chains": {
-      "get": {
-        "description": "For each 1-hour price move of the instrument beyond its threshold in [`from`, `as_of`], the 3 best candidate chains from a world event, a supply disruption or a macro release, through the links a member declared as propagating (`exposed_to`), scored by the pairs of the installed packs, each with its placebo and lift (never filtered: an input of an external model). Computed at reading time, never stored, never a cause (D742). Everything as known at `as_of`. Requires `datasets:read` and `ontology:read`.",
-        "operationId": "markets_chains",
-        "parameters": [
-          {
-            "description": "Id of the selected organisation; the caller must be a member.",
-            "in": "header",
-            "name": "X-Org-Id",
-            "required": true,
-            "schema": {
-              "format": "int64",
-              "type": "integer"
-            }
-          },
-          {
-            "description": "Ticker of the `instrument` object, as written in the price table.",
-            "in": "query",
-            "name": "instrument",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Price source (`source` column): `histdata`, `binance_public`, `dukascopy_public` (bid side) or `mt5:<broker>`.",
-            "in": "query",
-            "name": "source",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Instant of the read (RFC 3339), now by default: everything as known then.",
-            "in": "query",
-            "name": "as_of",
-            "required": false,
-            "schema": {
-              "format": "date-time",
-              "type": "string"
-            }
-          },
-          {
-            "description": "First instant of the price moves explained (RFC 3339); 7 days before\n`as_of` by default, 31 days at most.",
-            "in": "query",
-            "name": "from",
-            "required": false,
-            "schema": {
-              "format": "date-time",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "format": "int64",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "query",
-            "name": "offset",
-            "required": false,
-            "schema": {
-              "format": "int64",
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Paginated_Chain"
-                }
-              }
-            },
-            "description": "OK"
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorDetail"
-                }
-              }
-            },
-            "description": "Invalid parameter (field → token: `instrument` `unknown` when no instrument object has this ticker, `from` `range:31d`) or `market-bars-too-many-files`"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorDetail"
-                }
-              }
-            },
-            "description": "Missing, invalid or expired bearer token"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorDetail"
-                }
-              }
-            },
-            "description": "`access-denied` or `marking-required` · `access-denied` (`args.permission` = `datasets:read`): the caller's role does not grant it"
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorDetail"
-                }
-              }
-            },
-            "description": "`dataset-storage-unavailable`"
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Read the candidate causal chains of an instrument's price moves as known at a date",
-        "tags": [
-          "markets"
-        ],
-        "x-pnex-as-of": "point_in_time"
-      }
-    },
     "/api/v1/markets/decisions": {
       "get": {
         "description": "Decisions posted by the runners of the org, newest first, filtered by model, version or instrument. Advice only, not investment advice. Requires `market-decisions:read`. Paginated (`limit`/`offset`).",
@@ -74120,106 +74325,6 @@
           }
         ],
         "summary": "Measure the decisions of external models",
-        "tags": [
-          "markets"
-        ],
-        "x-pnex-as-of": "current_only"
-      }
-    },
-    "/api/v1/markets/instruments/{id}/event-study": {
-      "get": {
-        "description": "Raw and abnormal return around the date, against the org's benchmark, with a market model estimated before the event, and the relative volume. `null` without a benchmark or enough prices. An aid to analysis, not investment advice. Any org member.",
-        "operationId": "markets_event_study",
-        "parameters": [
-          {
-            "description": "Id of the selected organisation; the caller must be a member.",
-            "in": "header",
-            "name": "X-Org-Id",
-            "required": true,
-            "schema": {
-              "format": "int64",
-              "type": "integer"
-            }
-          },
-          {
-            "description": "Instrument object id (UUID)",
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          },
-          {
-            "description": "Day of the event (`YYYY-MM-DD`).",
-            "in": "query",
-            "name": "date",
-            "required": true,
-            "schema": {
-              "format": "date",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/EventStudy"
-                }
-              }
-            },
-            "description": "OK"
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorDetail"
-                }
-              }
-            },
-            "description": "Invalid `date` (field → token)"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorDetail"
-                }
-              }
-            },
-            "description": "Missing, invalid or expired bearer token"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorDetail"
-                }
-              }
-            },
-            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation · `access-denied` (`args.permission` = `ontology:read`): the caller's role does not grant it"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorDetail"
-                }
-              }
-            },
-            "description": "`ontology-not-found`"
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Measure how an instrument moved around a date",
         "tags": [
           "markets"
         ],

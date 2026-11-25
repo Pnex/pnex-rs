@@ -1,8 +1,10 @@
-//! Candidate causal chains of an instrument's price moves, as known at a
-//! date (markets-research.md §3.14): an input of an external model, computed
-//! at reading time and never stored as a cause (D742).
+//! Candidate causal chains of the moves of a bar series, as known at a date
+//! (markets-research.md §3.14, read by `GET /analysis/chains`, PE8): an input
+//! of an external model, computed at reading time and never stored as a
+//! cause (D742).
 //!
-//! Effects: 1-hour returns beyond the instrument's threshold (`price.move`).
+//! Effects: 1-hour returns of the series (rows of a bar Table whose
+//! `instrument` is the key) beyond the threshold (`price.move`).
 //! Causes: world events (`world.event`, or `supply.disruption` for a blockade
 //! or sanctions) on their country, macro releases on their series, and
 //! measured disruptions (a drop beyond a series' `disruption_drop_pct`). Paths:
@@ -26,8 +28,8 @@ pub const DEFAULT_THRESHOLD_PCT: f64 = 1.5;
 
 #[derive(Debug)]
 pub enum ChainsError {
-    /// No instrument object with this ticker.
-    UnknownInstrument,
+    /// No instrument object with the key as ticker.
+    UnknownKey,
     Bars(BarsError),
     Db(sea_orm::DbErr),
     Onto(crate::services::ontology::OntologyError),
@@ -52,11 +54,15 @@ impl From<crate::services::ontology::OntologyError> for ChainsError {
 }
 
 pub struct ChainsQuery<'a> {
-    pub instrument: &'a str,
+    /// Value of the Table's `instrument` column, and ticker of the effect object.
+    pub key: &'a str,
+    /// Value of the `source` column; empty reads every source.
     pub source: &'a str,
     pub table: Uuid,
     pub from: DateTime<Utc>,
     pub as_of: DateTime<Utc>,
+    /// Threshold of a move; the instrument's, then the org's, when `None`.
+    pub threshold_pct: Option<f64>,
 }
 
 fn stmt(sql: &str, values: Vec<sea_orm::Value>) -> Statement {
@@ -80,7 +86,7 @@ async fn instrument(
             vec![org.into(), ticker.into(), at.into()],
         ))
         .await?
-        .ok_or(ChainsError::UnknownInstrument)?;
+        .ok_or(ChainsError::UnknownKey)?;
     let threshold = row
         .try_get::<Option<String>>("", "t")?
         .and_then(|t| t.parse::<f64>().ok())
@@ -250,7 +256,7 @@ async fn measured_disruptions(
     Ok(out)
 }
 
-/// Candidate chains of the instrument's price moves in `[from, as_of]`, as
+/// Candidate chains of the series' moves in `[from, as_of]`, as
 /// known at `as_of`, every one with its lift (never filtered: the model
 /// weighs them, markets-research.md §3.14).
 pub async fn chains(
@@ -267,8 +273,8 @@ pub async fn chains(
     if pairs.is_empty() {
         return Ok(Vec::new());
     }
-    let (instrument_id, own) = instrument(db, org, q.instrument, q.as_of).await?;
-    let threshold = match own {
+    let (instrument_id, own) = instrument(db, org, q.key, q.as_of).await?;
+    let threshold = match q.threshold_pct.or(own) {
         Some(t) => t,
         None => crate::services::ontology::packs::setting_value(
             db,
@@ -286,7 +292,7 @@ pub async fn chains(
         org,
         q.table,
         &BarsQuery {
-            instrument: q.instrument,
+            instrument: q.key,
             source: q.source,
             interval_us: hour_us,
             from_us: Some(q.from.timestamp_micros() - 2 * hour_us),
@@ -296,11 +302,10 @@ pub async fn chains(
         },
     )
     .await?;
-    let effects: Vec<Signal> =
-        price_moves(&bars, &instrument_id.to_string(), q.instrument, threshold)
-            .into_iter()
-            .filter(|s| s.at >= q.from.timestamp() && s.at <= q.as_of.timestamp())
-            .collect();
+    let effects: Vec<Signal> = price_moves(&bars, &instrument_id.to_string(), q.key, threshold)
+        .into_iter()
+        .filter(|s| s.at >= q.from.timestamp() && s.at <= q.as_of.timestamp())
+        .collect();
     if effects.is_empty() {
         return Ok(Vec::new());
     }

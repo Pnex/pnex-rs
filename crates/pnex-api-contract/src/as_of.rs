@@ -49,6 +49,7 @@ use AsOf::*;
 use Instant::*;
 
 pub const SEMANTICS: &[(&str, AsOf)] = &[
+    ("analysis_chains", PointInTime(Query("as_of"))),
     ("datasets_files_get", PointInTime(Query("as_of"))),
     ("datasets_files_list", PointInTime(Query("as_of"))),
     ("datasets_get", Timeless),
@@ -56,7 +57,6 @@ pub const SEMANTICS: &[(&str, AsOf)] = &[
     ("datasets_sample", PointInTime(Query("as_of"))),
     ("markets_account_trades", PointInTime(Query("as_of"))),
     ("markets_bars", PointInTime(Query("as_of"))),
-    ("markets_chains", PointInTime(Query("as_of"))),
     ("markets_prediction_features", PointInTime(Query("as_of"))),
     ("ontology_link_types_list", Timeless),
     ("ontology_objects_get", PointInTime(Query("as_of"))),

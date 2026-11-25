@@ -221,6 +221,17 @@ L'export PDF recalcule chaque bloc et le date « au <date> ».
 | `POST /api/v1/rules`, `PUT …/{id}` | `rules_create`, `rules_update` | `rules:write` (Membre) |
 | `DELETE /api/v1/rules/{id}` | `rules_delete` | `rules:delete` (Membre) |
 | `POST /api/v1/rules/{id}/replay` | `rules_replay_preview` | `rules:read` |
+| `GET /api/v1/analysis/event-study` | `analysis_event_study` | `ontology:read` |
+| `GET /api/v1/analysis/chains` | `analysis_chains` | `datasets:read` + `ontology:read` |
+
+Deux lectures génériques (PE8, `pipelines.md`) mesurent une série autour d'événements :
+
+- **Étude d'événement** : `object`, `metric` (`close` par défaut), `benchmark` (le repère de l'org
+  par défaut) et `date`, répété 100 fois au plus. La série est lue dans `market_observations`. La
+  réponse donne une étude par date, `null` sans repère ou sans assez de valeurs (D532).
+- **Chaînes candidates** : `table` (une Table de bougies d'une minute), `key` (valeur de la colonne
+  `instrument`), `source` (facultatif), `as_of`, `from` et `threshold_pct`. La lecture est
+  point-in-time. Les causes viennent des paires des packs (`markets-research.md` §3.14, D742).
 
 - **MCP** : requêtes, lecture et rejeu des règles exposés. Écriture et suppression des règles exclues
   (une règle envoie des messages).
