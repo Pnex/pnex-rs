@@ -9,6 +9,9 @@ pub fn ConfirmDialog(
     title: String,
     message: String,
     confirm_label: String,
+    /// Short facts the reader should know before confirming (limits).
+    #[props(default)]
+    notes: Vec<String>,
     on_confirm: Callback<()>,
     on_cancel: Callback<()>,
 ) -> Element {
@@ -32,6 +35,13 @@ pub fn ConfirmDialog(
                 div { class: "space-y-3 p-6",
                     h3 { class: "text-xl font-semibold text-ink", "{title}" }
                     p { class: "text-sm text-slate", {message} }
+                    if !notes.is_empty() {
+                        ul { class: "list-disc space-y-1 pl-4 text-xs text-slate",
+                            for note in notes {
+                                li { {note} }
+                            }
+                        }
+                    }
                 }
                 div { class: "flex justify-end gap-2 border-t border-line bg-gray-50 px-6 py-4",
                     button {

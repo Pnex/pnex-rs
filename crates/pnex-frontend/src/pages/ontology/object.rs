@@ -408,6 +408,10 @@ pub fn OntologyObject(id: String) -> Element {
                     title: t!("onto-erase").to_string(),
                     message: t!("onto-erase-confirm", title : o.title.clone()).to_string(),
                     confirm_label: t!("onto-erase").to_string(),
+                    notes: vec![
+                        t!("onto-erase-limit-undeclared").to_string(),
+                        t!("onto-erase-limit-namesakes").to_string(),
+                    ],
                     on_confirm: move |_| {
                         let id = erase_id.clone();
                         let done = t!("onto-erased-toast").to_string();
