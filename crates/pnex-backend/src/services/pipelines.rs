@@ -1021,6 +1021,7 @@ async fn run_job(ctx: &AppContext, job: &Job) -> Result<(), (String, serde_json:
     }
     use crate::services::pipeline_engine::store;
     let mut steps = Vec::new();
+    let started = chrono::Utc::now();
     let out = store::run_own(
         ctx,
         job.org_id,
@@ -1059,6 +1060,11 @@ async fn run_job(ctx: &AppContext, job: &Job) -> Result<(), (String, serde_json:
                 crate::services::governance::propagate_sync(&ctx.db, job.org_id, &source, dataset)
                     .await
                     .map_err(db_failure)?;
+                if out.failure.is_none() {
+                    synced(&ctx.db, job, &node, dataset, started, &steps)
+                        .await
+                        .map_err(db_failure)?;
+                }
             }
         }
     }
@@ -1077,6 +1083,50 @@ async fn run_job(ctx: &AppContext, job: &Job) -> Result<(), (String, serde_json:
         )),
         None => Ok(()),
     }
+}
+
+/// Queues `dataset.synced` for a Table the run read (D578, D1050): the
+/// counts of its `write: objects` step and the objects it changed.
+async fn synced(
+    db: &DatabaseConnection,
+    job: &Job,
+    source: &str,
+    dataset: Uuid,
+    started: chrono::DateTime<chrono::Utc>,
+    steps: &[crate::services::pipeline_engine::StepRecord],
+) -> Result<(), DbErr> {
+    let counts = steps
+        .iter()
+        .find_map(|s| s.counts.as_ref().map(|c| c["counts"].clone()))
+        .unwrap_or(Value::Null);
+    let changed: Vec<Value> = db
+        .query_all_raw(stmt(
+            "SELECT id::text AS id FROM objects \
+             WHERE org_id = $1 AND source_ref = $2 AND updated_at >= $3 LIMIT $4",
+            vec![
+                job.org_id.into(),
+                source.into(),
+                started.into(),
+                pnex_core::pipelines::CHANGED_IDS_MAX.into(),
+            ],
+        ))
+        .await?
+        .iter()
+        .filter_map(|r| r.try_get::<String>("", "id").ok().map(Value::String))
+        .collect();
+    db.execute_raw(stmt(
+        "INSERT INTO dataset_syncs (org_id, dataset_id, reference, counts, changed) \
+         VALUES ($1, $2, $3, $4, $5)",
+        vec![
+            job.org_id.into(),
+            dataset.into(),
+            format!("{}@{}", job.pipeline_id, job.id).into(),
+            counts.into(),
+            Value::Array(changed).into(),
+        ],
+    ))
+    .await?;
+    Ok(())
 }
 
 /// Takes and runs the next queued run. `false` when there is none.

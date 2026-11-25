@@ -864,7 +864,7 @@ async fn a_table_without_a_new_version_warns_once() {
 
 #[tokio::test]
 #[serial]
-async fn commits_reach_the_channel_of_their_org_once() {
+async fn commits_and_syncs_reach_the_channel_of_their_org_once() {
     with_app(|server, env, ctx| async move {
         let org = personal_org(&server, &env.alice).await;
         let api = Api {
@@ -884,7 +884,16 @@ async fn commits_reach_the_channel_of_their_org_once() {
             .await
             .expect("valkey is configured for tests");
 
+        let (s, e) = api
+            .call("POST", "/api/v1/ontology/packs/quali_watch/install", None)
+            .await;
+        assert_eq!(s, 200, "{e}");
         api.table("certs_table", CERTS_CSV).await;
+        let certs = api.objects("certs", "certs_table", CERTS, &[]).await;
+        let worker = common::spawn_pipeline_worker();
+        let run = common::run_org_pipeline(&server, &ctx, &env.alice, org, &certs).await;
+        worker.abort();
+        assert_eq!(run["state"], "done", "{run}");
         // An old commit is not announced late.
         let old = api.table("old_table", b"a\n1\n").await;
         sql(
@@ -908,6 +917,16 @@ async fn commits_reach_the_channel_of_their_org_once() {
         assert_eq!(commit["event"], "dataset.committed", "{commit}");
         assert_eq!(commit["dataset"], "certs_table", "{commit}");
         assert_eq!(commit["counts"]["rows"], 1, "{commit}");
+        let synced = next().await;
+        assert_eq!(synced["event"], "dataset.synced", "{synced}");
+        assert_eq!(synced["dataset"], "certs_table", "{synced}");
+        assert_eq!(
+            synced["reference"],
+            format!("{certs}@{}", run["id"].as_str().unwrap()),
+            "{synced}"
+        );
+        assert_eq!(synced["counts"]["created"], 1, "{synced}");
+        assert_eq!(synced["changed"].as_array().unwrap().len(), 1, "{synced}");
 
         // Already sent: nothing more comes.
         data_builds::publish_events(db, &mut conn).await.unwrap();

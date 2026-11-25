@@ -166,6 +166,7 @@ mod m20261124_000171_pipeline_object_bases;
 mod m20261124_000172_pipeline_pack_copies;
 mod m20261125_000173_imports_dropped;
 mod m20261125_000174_dataset_loaders;
+mod m20261125_000175_dataset_syncs;
 
 pub struct Migrator;
 
@@ -328,6 +329,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20261124_000172_pipeline_pack_copies::Migration),
             Box::new(m20261125_000173_imports_dropped::Migration),
             Box::new(m20261125_000174_dataset_loaders::Migration),
+            Box::new(m20261125_000175_dataset_syncs::Migration),
         ]
     }
 }

@@ -467,9 +467,9 @@ pub const NODE_DOCS: &[NodeDoc] = &[
         summary: "Event source fed by the new versions of one table of the organization, whether a pipeline computed it or a file was loaded into it, or by the syncs from that table into the ontology. One output port.",
         config: &[
             ("dataset", "name of the table — must exist at deploy"),
-            ("on", "\"committed\" (default): each new version; \"synced\": each sync applied from this table"),
+            ("on", "\"committed\" (default): each new version; \"synced\": each run of an org pipeline whose write objects step read this table"),
         ],
-        notes: "Message: payload = {dataset_id, dataset, reference, counts, changed, ts_ms}, topic = dataset.committed or dataset.synced. reference is the version (committed) or the import and run (synced). counts holds rows and bytes (committed) or created, updated and closed (synced). changed holds up to 10,000 ids of objects a sync wrote; empty on committed. A message never carries rows, and a flow never writes a table; it may ask a pack pipeline for rows with pipeline_ask. Events missed while the flow is stopped are not replayed; they can arrive up to a few tens of seconds after the commit.",
+        notes: "Message: payload = {dataset_id, dataset, reference, counts, changed, ts_ms}, topic = dataset.committed or dataset.synced. reference is the version (committed) or <pipeline id>@<run id> (synced). counts holds rows and bytes (committed) or created, updated and closed (synced). changed holds up to 10,000 ids of objects the run changed; empty on committed. A run that failed sends no synced. A message never carries rows, and a flow never writes a table; it may ask a pack pipeline for rows with pipeline_ask. Events missed while the flow is stopped are not replayed; they can arrive up to a few tens of seconds after the commit.",
     },
     NodeDoc {
         kind: "ontology_trigger",

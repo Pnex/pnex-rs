@@ -12,7 +12,7 @@ use pnex_core::err_codes;
 use pnex_core::pipeline::doc::Document;
 use pnex_core::pipelines::{
     dataset_channel, find_cycle, next_step, plan, Build, BuildState, BuildStep, BuildStepState,
-    BuildTargetKind, DatasetEvent, GraphNode, PlanError, DATASET_COMMITTED,
+    BuildTargetKind, DatasetEvent, GraphNode, PlanError, DATASET_COMMITTED, DATASET_SYNCED,
 };
 use sea_orm::{
     ConnectionTrait, DatabaseBackend, DatabaseConnection, DbErr, QueryResult, Statement,
@@ -753,7 +753,8 @@ async fn send(conn: &mut redis::aio::ConnectionManager, org_id: i64, event: &Dat
     }
 }
 
-/// Announces new versions to flows (D578). Kept in place until
+/// Announces new versions and the objects a run wrote from them to flows
+/// (D578, D1050). Kept in place until
 /// sent, so a pod lost between commit and publication loses no event, and a commit
 /// from the worker, which has no Valkey, gets one too.
 pub async fn publish_events(
@@ -797,6 +798,39 @@ pub async fn publish_events(
         }
         db.execute_raw(stmt(
             "UPDATE dataset_transactions SET published_at = now() WHERE id = $1",
+            vec![id.into()],
+        ))
+        .await?;
+    }
+    db.execute_raw(stmt(
+        &format!("DELETE FROM dataset_syncs WHERE created_at < {late}"),
+        vec![],
+    ))
+    .await?;
+    let syncs = db
+        .query_all_raw(stmt(
+            "SELECT s.id, s.org_id, s.dataset_id, s.reference, s.counts, s.changed, d.name \
+             FROM dataset_syncs s JOIN datasets d ON d.id = s.dataset_id \
+             ORDER BY s.created_at LIMIT $1",
+            vec![PUBLISH_BATCH.into()],
+        ))
+        .await?;
+    for r in &syncs {
+        let id: Uuid = r.try_get("", "id")?;
+        let event = DatasetEvent {
+            event: DATASET_SYNCED.into(),
+            dataset_id: r.try_get::<Uuid>("", "dataset_id")?.to_string(),
+            dataset: r.try_get("", "name")?,
+            reference: r.try_get("", "reference")?,
+            counts: r.try_get("", "counts")?,
+            changed: serde_json::from_value(r.try_get("", "changed")?).unwrap_or_default(),
+            ts_ms: now_ms,
+        };
+        if !send(conn, r.try_get("", "org_id")?, &event).await {
+            return Ok(());
+        }
+        db.execute_raw(stmt(
+            "DELETE FROM dataset_syncs WHERE id = $1",
             vec![id.into()],
         ))
         .await?;

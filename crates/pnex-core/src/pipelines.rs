@@ -636,10 +636,10 @@ pub struct DatasetEvent {
     pub event: String,
     pub dataset_id: String,
     pub dataset: String,
-    /// Committed version, or `<import id>@<run number>` for a sync.
+    /// Committed version, or `<pipeline id>@<run id>` for a sync.
     pub reference: String,
     pub counts: serde_json::Value,
-    /// Ids of the objects a sync wrote, `CHANGED_IDS_MAX` at most.
+    /// Ids of the objects a sync changed, `CHANGED_IDS_MAX` at most.
     #[serde(default)]
     pub changed: Vec<String>,
     pub ts_ms: i64,

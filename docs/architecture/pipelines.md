@@ -315,7 +315,7 @@ Les droits sont revérifiés à chaque déclenchement, sur le rôle géré de la
 
 Les pipelines des packs ne passent pas par ces exécutions enchaînées. Un balayage par minute lance chaque pipeline d'un pack installé quand son `schedule` est échu (`pipeline_engine::store::sweep`). Un pipeline attend ses pipelines amont du même pack : ceux que nomme son `after`, et ceux qui écrivent une table qu'il lit. Il attend tant qu'un amont planifié est échu ou a échoué à son dernier run. Un run demandé par un membre (sans `schedule`) qui échoue ne bloque rien. Un seul run de pipeline à la fois par org (verrou `PIPELINE_RUN`).
 
-Les flows reçoivent `dataset.committed` par le nœud `dataset_trigger` (D578). Depuis le retrait des imports, le serveur n'émet plus `dataset.synced` (voir « Reste à faire »). Le serveur les publie depuis une marque en base (`published_at`). Un flow ne lance ni n'écrit jamais une table.
+Les flows reçoivent `dataset.committed` et `dataset.synced` par le nœud `dataset_trigger` (D578). Une exécution réussie d'un pipeline d'org dont une étape `write objects` lit une Table publie `dataset.synced` pour cette Table. L'événement donne les comptes de l'étape et les objets que l'exécution a changés. Le serveur publie `committed` depuis une marque en base (`published_at`), et `synced` depuis la file `dataset_syncs`. Un événement de plus d'une heure n'est jamais publié. Un flow ne lance ni n'écrit jamais une table.
 
 ### 3.10 Connecteurs
 
@@ -806,7 +806,7 @@ tests:
 - Un client arrêté recommence son envoi depuis le début.
 - Une étape à la fois par exécution enchaînée.
 - Retrait des imports (D1050) : fait (2026-11-25). Suites :
-  - `dataset.synced` n'a plus d'émetteur : le nœud `dataset_trigger` avec `on: synced` ne part plus. Choix de Shan (2026-11-25) : une exécution dont une étape `write objects` lit une Table publie `synced` pour cette Table, avec les objets changés. À coder.
+  - `dataset.synced` après une étape `write objects` (D578) : fait (2026-11-25).
   - Colonnes d'identité d'une Table lue par une étape `write objects` (§3.11) : fait (2026-11-25). L'enregistrement du pipeline les déclare.
   - Rôle d'écriture d'une étape `write objects` (SEC-93) : fait (2026-11-25). L'étape écrit avec le plus bas rôle entre l'auteur de la version et le dernier membre qui a chargé chaque Table lue.
   - Un pipeline d'org ne refuse pas à l'enregistrement un mapping qui nomme une propriété inconnue ou une valeur sensible.
