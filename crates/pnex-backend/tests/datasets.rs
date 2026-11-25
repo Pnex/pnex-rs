@@ -662,7 +662,30 @@ async fn erasing_an_object_removes_its_rows_from_every_version() {
         let (_, d) = get(&server, &format!("/api/v1/datasets/{id}"), &env.alice, org).await;
         assert_eq!(d["rows"], 1, "{d}");
 
-        for dataset in [id, derived, other, gone, wide] {
+        // The hashes belong to the org: a Table deleted, then made again with the
+        // same declaration, still leaves the person out when loaded.
+        datasets::delete(&ctx.db, &store, org, id.parse().unwrap()).await.unwrap();
+        let (_, again) = create(&server, &env.alice, org, "people").await;
+        let again = again["id"].as_str().unwrap().to_string();
+        load(&server, &env.alice, org, &again, "", "name;city\nAnn Smith;Lyon\nEve Ray;Brest\n").await;
+        let identity = |dataset: &str| format!("/api/v1/datasets/{dataset}/identity");
+        let (s, d) = send(&server, "PUT", &identity(&again), &env.alice, org, declare("name", "person", "$title")).await;
+        assert_eq!(s, 200, "{d}");
+        assert_eq!(datasets::erasure::erase_pass(&ctx.db, &store).await.unwrap(), 1);
+        let again_sample = format!("/api/v1/datasets/{again}/sample");
+        let (_, v) = get(&server, &again_sample, &env.alice, org).await;
+        assert_eq!(v["rows"], json!([["Eve Ray", "Brest"]]));
+        load(&server, &env.alice, org, &again, "", "name;city\nBob Jones;Nice\nEve Ray;Brest\n").await;
+        let (_, v) = get(&server, &again_sample, &env.alice, org).await;
+        assert_eq!(v["rows"], json!([["Eve Ray", "Brest"]]));
+        // A Table that declares the column after its load: the rows already there go.
+        let (s, d) = send(&server, "PUT", &identity(&other), &env.alice, org, declare("name", "person", "$title")).await;
+        assert_eq!(s, 200, "{d}");
+        assert_eq!(datasets::erasure::erase_pass(&ctx.db, &store).await.unwrap(), 1);
+        let (_, v) = get(&server, &format!("/api/v1/datasets/{other}/sample"), &env.alice, org).await;
+        assert_eq!(v["rows"], json!([]));
+
+        for dataset in [again, derived, other, gone, wide] {
             let dataset = dataset.parse().unwrap();
             datasets::delete(&ctx.db, &store, org, dataset).await.unwrap();
         }

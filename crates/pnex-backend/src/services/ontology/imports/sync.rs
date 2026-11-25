@@ -20,16 +20,31 @@ use crate::services::datasets::{parquet, ViewFile};
 // source needs more (see §9.6 for what was measured).
 const PLANNED_MAX: usize = 5_000_000;
 
-/// The column read as is, up to what erasure ignores anyway: another conversion
-/// leaves a stored value the column does not hold, so it cannot identify a row.
-fn identity_column(f: &FieldSpec) -> Option<&str> {
-    let plain = f.convert.iter().all(|c| {
+/// The column a field reads, with the field itself when it converts the cell
+/// (`digits`, `left`, `concat`): erasure converts the cell the same way. A
+/// conversion that can map many people to one value declares nothing.
+fn identity_column(f: &FieldSpec) -> Option<(String, Option<&FieldSpec>)> {
+    let plain = |c: &Convert| {
         matches!(
             c,
             Convert::Trim | Convert::Upper | Convert::Lower | Convert::Email
         )
-    });
-    f.from.as_deref().filter(|_| plain && f.concat.is_empty())
+    };
+    if f.value.is_some()
+        || !f
+            .convert
+            .iter()
+            .all(|c| plain(c) || matches!(c, Convert::Digits | Convert::Left(_)))
+    {
+        return None;
+    }
+    let converted = !f.concat.is_empty() || !f.convert.iter().all(plain);
+    let column = match &f.from {
+        Some(c) => c.clone(),
+        None if !f.concat.is_empty() => f.concat.join("+"),
+        None => return None,
+    };
+    Some((column, converted.then_some(f)))
 }
 
 /// Erasing an object must reach its rows (§3.11): the mapping says which
@@ -66,29 +81,47 @@ pub async fn declare_identity<C: ConnectionTrait>(
             .title
             .as_ref()
             .filter(|_| def.title_classification.is_personal())
-            .and_then(identity_column)
-            .map(|c| (c, IDENTITY_TITLE));
-        let properties = o.properties.iter().filter_map(|(k, f)| {
+            .map(|f| (f, IDENTITY_TITLE));
+        let properties = o.properties.iter().filter(|(k, _)| {
             def.properties
                 .iter()
-                .any(|p| p.key == *k && p.classification.is_personal())
-                .then(|| identity_column(f).map(|c| (c, k.as_str())))
-                .flatten()
+                .any(|p| p.key == **k && p.classification.is_personal())
         });
-        for (column, property) in title.into_iter().chain(properties) {
-            if !has(column) {
+        let fields = title
+            .into_iter()
+            .chain(properties.map(|(k, f)| (f, k.as_str())));
+        for (field, property) in fields {
+            let Some((column, spec)) = identity_column(field) else {
+                continue;
+            };
+            let reads = field.from.iter().chain(&field.concat);
+            if !reads.clone().all(|c| has(c)) {
                 continue;
             }
+            let spec = spec.and_then(|f| serde_json::to_value(f).ok());
+            // A mapping that changed its conversion changes how erasure reads the column.
             db.execute_raw(super::stmt(
-                "INSERT INTO dataset_identity_columns (dataset_id, column_name, type_key, property) \
-                 VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING",
+                "INSERT INTO dataset_identity_columns (dataset_id, column_name, type_key, property, spec) \
+                 VALUES ($1, $2, $3, $4, $5) ON CONFLICT (dataset_id, column_name, type_key) \
+                 DO UPDATE SET spec = EXCLUDED.spec \
+                 WHERE dataset_identity_columns.property = EXCLUDED.property",
                 vec![
                     id.into(),
-                    column.into(),
+                    column.clone().into(),
                     o.type_key.clone().into(),
                     property.into(),
+                    spec.into(),
                 ],
             ))
+            .await?;
+            crate::services::datasets::erasure::inherit(
+                db,
+                org_id,
+                id,
+                &column,
+                &o.type_key,
+                property,
+            )
             .await?;
         }
     }

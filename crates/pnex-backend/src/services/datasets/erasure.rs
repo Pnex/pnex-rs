@@ -5,7 +5,9 @@
 //! The object is erased at once and the files later: the queue row is written in
 //! the transaction of the object, so neither can happen without the other. The row
 //! stays afterwards, holding a hash and not the value: each later load of the dataset
-//! leaves the person out, even from a source that still holds them.
+//! leaves the person out, even from a source that still holds them. The hashes belong
+//! to the org: a deleted dataset leaves them, and a dataset that declares the same
+//! property later gets them (`inherit`).
 
 use std::collections::{BTreeMap, HashSet};
 use std::time::Duration;
@@ -16,7 +18,7 @@ use pnex_core::datasets::{
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbErr, QueryResult, TransactionTrait};
 use uuid::Uuid;
 
-use super::parquet::{self, Targets};
+use super::parquet::{self, Reader, Targets};
 use super::{
     get, remove_prefix, stmt, storage, transaction_prefix, DatasetError, DEAD_AFTER_MINUTES,
 };
@@ -34,17 +36,29 @@ const PASS_LOCK: i64 = 0x7064_6572;
 pub async fn targets_of(db: &DatabaseConnection, dataset_id: Uuid) -> Result<Targets, DbErr> {
     let rows = db
         .query_all_raw(stmt(
-            "SELECT column_name, value FROM dataset_erasures WHERE dataset_id = $1",
+            &format!("SELECT e.column_name, e.value, {SPEC} WHERE e.dataset_id = $1"),
             vec![dataset_id.into()],
         ))
         .await?;
     let mut out = Targets::new();
     for r in &rows {
-        out.entry(r.try_get("", "column_name")?)
+        out.entry(reader_of(r)?)
             .or_default()
             .insert(r.try_get("", "value")?);
     }
     Ok(out)
+}
+
+/// Selects the conversion of each erasure row's column: `FROM` clause included.
+const SPEC: &str = "i.spec::text AS spec FROM dataset_erasures e \
+    LEFT JOIN dataset_identity_columns i ON i.dataset_id = e.dataset_id \
+    AND i.column_name = e.column_name AND i.type_key = e.type_key";
+
+fn reader_of(row: &QueryResult) -> Result<Reader, DbErr> {
+    Ok(Reader {
+        column: row.try_get("", "column_name")?,
+        spec: row.try_get("", "spec")?,
+    })
 }
 
 /// Declares which columns of a dataset identify which objects. Replaces the list.
@@ -99,9 +113,39 @@ pub async fn set_identity(
             ],
         ))
         .await?;
+        inherit(&tx, org_id, id, &c.column, &c.type_key, &c.property).await?;
     }
     tx.commit().await?;
     get(db, org_id, id).await
+}
+
+/// A dataset that declares a column leaves out the people the org erased under
+/// that property, wherever their hash came from: queued, so that rows already
+/// loaded go too. Called with each declaration.
+pub async fn inherit<C: ConnectionTrait>(
+    db: &C,
+    org_id: i64,
+    dataset_id: Uuid,
+    column: &str,
+    type_key: &str,
+    property: &str,
+) -> Result<(), DbErr> {
+    db.execute_raw(stmt(
+        "INSERT INTO dataset_erasures (org_id, dataset_id, column_name, value, type_key, property) \
+         SELECT DISTINCT $1::bigint, $2::uuid, $3, e.value, $4, $5 FROM dataset_erasures e \
+         WHERE e.org_id = $1 AND e.type_key = $4 AND e.property = $5 AND NOT EXISTS ( \
+           SELECT 1 FROM dataset_erasures x WHERE x.dataset_id = $2 AND x.column_name = $3 \
+           AND x.type_key = $4 AND x.value = e.value)",
+        vec![
+            org_id.into(),
+            dataset_id.into(),
+            column.into(),
+            type_key.into(),
+            property.into(),
+        ],
+    ))
+    .await?;
+    Ok(())
 }
 
 /// Queues the rows of an object in the datasets that declare its type. Called in
@@ -134,14 +178,15 @@ pub async fn enqueue<C: ConnectionTrait>(
             continue;
         };
         db.execute_raw(stmt(
-            "INSERT INTO dataset_erasures (org_id, dataset_id, column_name, value, type_key) \
-             VALUES ($1, $2, $3, $4, $5)",
+            "INSERT INTO dataset_erasures (org_id, dataset_id, column_name, value, type_key, property) \
+             VALUES ($1, $2, $3, $4, $5, $6)",
             vec![
                 org_id.into(),
                 row.try_get::<Uuid>("", "dataset_id")?.into(),
                 row.try_get::<String>("", "column_name")?.into(),
                 value.into(),
                 type_key.into(),
+                property.into(),
             ],
         ))
         .await?;
@@ -164,7 +209,7 @@ fn pending_of(rows: &[QueryResult]) -> Result<BTreeMap<Uuid, Pending>, sea_orm::
         p.org_id = row.try_get("", "org_id")?;
         p.ids.push(row.try_get("", "id")?);
         p.targets
-            .entry(row.try_get("", "column_name")?)
+            .entry(reader_of(row)?)
             .or_default()
             .insert(row.try_get("", "value")?);
     }
@@ -191,8 +236,9 @@ pub async fn erase_pass(db: &DatabaseConnection, store: &S3Store) -> Result<usiz
     let rows = db
         .query_all_raw(stmt(
             &format!(
-                "SELECT e.id, e.org_id, e.dataset_id, e.column_name, e.value \
-                 FROM dataset_erasures e WHERE e.done_at IS NULL AND NOT EXISTS ( \
+                "SELECT e.id, e.org_id, e.dataset_id, e.column_name, e.value, {SPEC} \
+                 WHERE e.done_at IS NULL AND e.dataset_id IS NOT NULL \
+                 AND NOT EXISTS ( \
                    SELECT 1 FROM pipeline_jobs j WHERE j.org_id = e.org_id AND j.state = 'running' \
                    AND j.heartbeat_at > now() - interval '{DEAD_AFTER_MINUTES} minutes') \
                  AND NOT EXISTS ( \

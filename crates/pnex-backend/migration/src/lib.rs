@@ -169,6 +169,8 @@ mod m20261125_000174_dataset_loaders;
 mod m20261125_000175_dataset_syncs;
 mod m20261125_000176_session_summary_rules;
 mod m20261125_000177_personal_orgs;
+mod m20261125_000178_org_erasure_fingerprints;
+mod m20261125_000179_identity_column_spec;
 
 pub struct Migrator;
 
@@ -334,6 +336,8 @@ impl MigratorTrait for Migrator {
             Box::new(m20261125_000175_dataset_syncs::Migration),
             Box::new(m20261125_000176_session_summary_rules::Migration),
             Box::new(m20261125_000177_personal_orgs::Migration),
+            Box::new(m20261125_000178_org_erasure_fingerprints::Migration),
+            Box::new(m20261125_000179_identity_column_spec::Migration),
         ]
     }
 }

@@ -622,7 +622,8 @@ async fn saving_a_pipeline_declares_its_tables_identity() {
                     "key": "contact", "name": "Contact",
                     "properties": [
                         { "key": "code", "name": "Code", "kind": "text", "unique": true },
-                        { "key": "email", "name": "Email", "kind": "text", "classification": "personal" }
+                        { "key": "email", "name": "Email", "kind": "text", "classification": "personal" },
+                        { "key": "phone", "name": "Phone", "kind": "text", "classification": "personal" }
                     ]
                 } })),
             )
@@ -630,23 +631,28 @@ async fn saving_a_pipeline_declares_its_tables_identity() {
         assert_eq!(s, 201, "{e}");
         let worker = common::spawn_pipeline_worker();
         let dataset = api.dataset("contacts").await;
-        api.load(&dataset, b"code;email;city\nC1;ann@example.com;Lyon\n")
+        api.load(&dataset, b"code;email;tel;city\nC1;ann@example.com;06 12-34;Lyon\nC2;bob@example.com;07 99;Nice\n")
             .await;
-        let mapping = "objects:\n  - {as: c, type: contact, key: code, properties: {code: {from: code}, email: {from: email, convert: [trim]}}}\n";
+        // A converted column is declared too: erasure reads it through `digits`.
+        let mapping = "objects:\n  - {as: c, type: contact, key: code, properties: {code: {from: code}, email: {from: email, convert: [trim]}, phone: {from: tel, convert: [digits]}}}\n";
         let id = api.pipeline("contacts", "contacts", mapping, false).await;
         let (_, d) = api
             .call("GET", &format!("/api/v1/datasets/{dataset}"), None)
             .await;
         assert_eq!(
             d["identity"],
-            json!([{ "column": "email", "type_key": "contact", "property": "email" }]),
+            json!([
+                { "column": "email", "type_key": "contact", "property": "email" },
+                { "column": "tel", "type_key": "contact", "property": "phone" }
+            ]),
             "{d}"
         );
 
         let done = api.run(&ctx, &id).await;
         assert_eq!(done["state"], "done", "{done}");
         let contact = sql(&ctx.db, &format!(
-            "SELECT id::text AS id FROM objects WHERE org_id = {org} AND type_key = 'contact'"
+            "SELECT id::text AS id FROM objects WHERE org_id = {org} AND type_key = 'contact' \
+             AND properties->>'code' = 'C1'"
         ))
         .await[0]
             .try_get::<String>("", "id")
@@ -660,11 +666,40 @@ async fn saving_a_pipeline_declares_its_tables_identity() {
             .await;
         assert_eq!(s, 200, "{e}");
         let queued = sql(&ctx.db, &format!(
-            "SELECT 1 AS x FROM dataset_erasures WHERE dataset_id = '{dataset}' AND column_name = 'email'"
+            "SELECT 1 AS x FROM dataset_erasures WHERE dataset_id = '{dataset}' AND column_name IN ('email', 'tel')"
         ))
         .await;
-        assert_eq!(queued.len(), 1);
+        assert_eq!(queued.len(), 2);
+
+        // Only through the stored form: a Table keeping the raw phone loses the row.
+        let store = pnex_backend::services::datasets::store_of(&ctx.config).unwrap();
+        let tel_only = api.dataset("phones").await;
+        api.load(&tel_only, b"tel\n06 12-34\n07 99\n").await;
+        sql(&ctx.db, &format!(
+            "INSERT INTO dataset_identity_columns (dataset_id, column_name, type_key, property, spec) \
+             SELECT '{tel_only}', column_name, type_key, property, spec FROM dataset_identity_columns \
+             WHERE dataset_id = '{dataset}' AND column_name = 'tel'"
+        ))
+        .await;
+        pnex_backend::services::datasets::erasure::inherit(
+            &ctx.db, org, tel_only.parse().unwrap(), "tel", "contact", "phone",
+        )
+        .await
+        .unwrap();
         worker.abort();
+        while pnex_backend::services::datasets::erasure::erase_pass(&ctx.db, &store)
+            .await
+            .unwrap()
+            > 0
+        {}
+        let (_, v) = api
+            .call("GET", &format!("/api/v1/datasets/{tel_only}/sample"), None)
+            .await;
+        assert_eq!(v["rows"], json!([["07 99"]]), "{v}");
+        let (_, v) = api
+            .call("GET", &format!("/api/v1/datasets/{dataset}/sample"), None)
+            .await;
+        assert_eq!(v["rows"].as_array().unwrap().len(), 1, "{v}");
     })
     .await;
 }

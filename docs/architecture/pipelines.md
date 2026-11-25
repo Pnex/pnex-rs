@@ -378,6 +378,13 @@ flowchart LR
 
 Une ligne de table n'a aucun lien avec un objet sans déclaration. `PUT /datasets/{id}/identity` dit quelle colonne identifie quel type d'objet. L'enregistrement d'un pipeline fait aussi cette déclaration. Une étape `write objects` qui lit les lignes d'une étape `sql` déclare, sur chaque Table que cette étape lit, les colonnes des valeurs personnelles de son mapping. Seules les colonnes que la Table a déjà sont déclarées. L'enregistrement ajoute des colonnes, il n'en retire jamais. La file garde seulement l'empreinte de la valeur (sha256 de la forme pliée), et la garde après la passe. Tout chargement ultérieur écarte donc la personne. Une table aval recalculée répond 410 jusqu'au recalcul. Le worker ne prend aucun run d'une org qui a un effacement en attente.
 
+Les empreintes appartiennent à l'org. Une Table supprimée les laisse. Une Table qui déclare plus tard la même propriété les reçoit en file : la passe retire ses lignes déjà chargées, et chaque chargement écarte ensuite la personne. Une colonne lue par une conversion `digits`, `left` ou `concat` est déclarée avec le champ du mapping. L'effacement convertit alors la cellule de la même façon avant la comparaison. Une autre conversion ne déclare rien.
+
+Deux limites restent, écrites dans le dialogue d'effacement :
+
+- Une Table sans déclaration ni lignage garde la personne.
+- Un titre déclaré retire aussi les lignes des homonymes.
+
 ### 3.12 Envoi par parties
 
 ```mermaid
@@ -820,13 +827,6 @@ tests:
 - Chart `pipelineWorker`, `NetworkPolicy` et `images.yml` jamais essayés sur un cluster.
 - Retirer à la main les anciens horaires des imports France Compétences de l'org 4 sur dev.pnex.io.
 - Jointure réelle 44,5 M × 38 M à mesurer sur dev.
-
-**Effacement (choix de Shan, 2026-11-24) :** fermer les trous 2 et 3 : les empreintes vivent au niveau de l'org, et une conversion propage la déclaration. Les trous 1 et 4 restent des limites, écrites dans l'UI d'effacement.
-
-1. Un fichier sans déclaration ni lignage garde la personne.
-2. Une table supprimée perd ses empreintes : recréée et rechargée, la personne revient.
-3. Une colonne convertie (`digits`, `left`, `concat`) n'est pas déclarée.
-4. Un titre déclaré retire les homonymes.
 
 **Connecteurs :**
 

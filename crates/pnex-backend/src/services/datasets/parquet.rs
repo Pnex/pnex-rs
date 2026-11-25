@@ -261,8 +261,47 @@ pub async fn sample(
     Ok((names, rows))
 }
 
-/// Column name → fingerprints of the values to remove (`erasure::fingerprint`).
-pub type Targets = HashMap<String, HashSet<String>>;
+/// How a row is read → fingerprints of the values to remove (`erasure::fingerprint`).
+pub type Targets = HashMap<Reader, HashSet<String>>;
+
+/// A column read as is, or through the mapping field (JSON of a `FieldSpec`) that
+/// converted it on import (`digits`, `left`, `concat`): the stored value is
+/// what was fingerprinted, so the cell goes through the same conversion.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct Reader {
+    pub column: String,
+    pub spec: Option<String>,
+}
+
+impl Reader {
+    /// The columns a row needs.
+    fn columns(&self) -> ParquetResult<Vec<String>> {
+        Ok(match self.field()? {
+            None => vec![self.column.clone()],
+            Some(f) => f.from.into_iter().chain(f.concat).collect(),
+        })
+    }
+
+    fn field(&self) -> ParquetResult<Option<pnex_core::ontology::import::FieldSpec>> {
+        self.spec
+            .as_deref()
+            .map(serde_json::from_str)
+            .transpose()
+            .map_err(|e| ParquetError::General(e.to_string()))
+    }
+}
+
+/// A column as text, when it has one that casts.
+fn text_column(batch: &RecordBatch, column: &str) -> ParquetResult<Option<arrow_array::ArrayRef>> {
+    // Absent from an older version whose columns differed.
+    let Some(array) = batch.column_by_name(column) else {
+        return Ok(None);
+    };
+    if !can_cast_types(array.data_type(), &DataType::Utf8) {
+        return Ok(None);
+    }
+    Ok(Some(cast(array, &DataType::Utf8)?))
+}
 
 /// What a rewrite left.
 pub struct Rewritten {
@@ -275,17 +314,38 @@ pub struct Rewritten {
 /// For each row, whether a target column holds a target value.
 pub fn matches(batch: &RecordBatch, targets: &Targets) -> ParquetResult<Vec<bool>> {
     let mut hit = vec![false; batch.num_rows()];
-    for (column, values) in targets {
-        // Absent from an older version whose columns differed.
-        let Some(array) = batch.column_by_name(column) else {
-            continue;
+    for (reader, values) in targets {
+        let prints: Vec<Option<String>> = match reader.field()? {
+            None => {
+                let Some(text) = text_column(batch, &reader.column)? else {
+                    continue;
+                };
+                text.as_string::<i32>()
+                    .iter()
+                    .map(|v| v.and_then(pnex_core::datasets::fingerprint))
+                    .collect()
+            }
+            Some(f) => {
+                let mut rows = vec![serde_json::Map::new(); batch.num_rows()];
+                for column in reader.columns()? {
+                    let Some(text) = text_column(batch, &column)? else {
+                        continue;
+                    };
+                    for (row, v) in rows.iter_mut().zip(text.as_string::<i32>().iter()) {
+                        if let Some(v) = v {
+                            row.insert(column.clone(), v.into());
+                        }
+                    }
+                }
+                rows.into_iter()
+                    .map(|row| {
+                        pnex_core::ontology::import::field_text(&row.into(), &f)
+                            .and_then(|v| pnex_core::datasets::fingerprint(&v))
+                    })
+                    .collect()
+            }
         };
-        if !can_cast_types(array.data_type(), &DataType::Utf8) {
-            continue;
-        }
-        let text = cast(array, &DataType::Utf8)?;
-        for (i, value) in text.as_string::<i32>().iter().enumerate() {
-            let print = value.and_then(pnex_core::datasets::fingerprint);
+        for (i, print) in prints.into_iter().enumerate() {
             if print.is_some_and(|v| values.contains(&v)) {
                 hit[i] = true;
             }
@@ -313,12 +373,16 @@ pub async fn has_match(
         size,
     };
     let builder = ParquetRecordBatchStreamBuilder::new(reader).await?;
+    let mut needed = HashSet::new();
+    for reader in targets.keys() {
+        needed.extend(reader.columns()?);
+    }
     let roots: Vec<usize> = builder
         .schema()
         .fields()
         .iter()
         .enumerate()
-        .filter(|(_, f)| targets.contains_key(f.name()))
+        .filter(|(_, f)| needed.contains(f.name()))
         .map(|(i, _)| i)
         .collect();
     if roots.is_empty() {
@@ -421,4 +485,56 @@ pub fn records(batch: &RecordBatch) -> ParquetResult<Vec<serde_json::Value>> {
             serde_json::Value::Object(row)
         })
         .collect())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use arrow_array::StringArray;
+    use pnex_core::datasets::fingerprint;
+
+    fn batch() -> RecordBatch {
+        let col = |v: [&str; 2]| Arc::new(StringArray::from(v.to_vec())) as arrow_array::ArrayRef;
+        RecordBatch::try_from_iter([
+            ("tel", col(["06 12-34", "07 99"])),
+            ("first", col(["Ann", "Bob"])),
+            ("last", col(["Smith", "Jones"])),
+        ])
+        .unwrap()
+    }
+
+    fn target(column: &str, spec: Option<&str>, value: &str) -> Targets {
+        let reader = Reader {
+            column: column.into(),
+            spec: spec.map(Into::into),
+        };
+        HashMap::from([(reader, HashSet::from([fingerprint(value).unwrap()]))])
+    }
+
+    /// A converted column matches the stored form, not the raw cell.
+    #[test]
+    fn a_converted_column_matches_its_stored_form() {
+        let b = batch();
+        let digits = r#"{"from":"tel","convert":["digits"]}"#;
+        assert_eq!(
+            matches(&b, &target("tel", Some(digits), "061234")).unwrap(),
+            [true, false]
+        );
+        assert_eq!(
+            matches(&b, &target("tel", None, "061234")).unwrap(),
+            [false, false]
+        );
+        let left = r#"{"from":"last","convert":["left:3"]}"#;
+        assert_eq!(
+            matches(&b, &target("last", Some(left), "Jon")).unwrap(),
+            [false, true]
+        );
+        let concat = r#"{"concat":["first","last"]}"#;
+        let t = target("first+last", Some(concat), "ann SMITH");
+        assert_eq!(matches(&b, &t).unwrap(), [true, false]);
+        assert_eq!(
+            t.keys().next().unwrap().columns().unwrap(),
+            ["first", "last"]
+        );
+    }
 }

@@ -1208,6 +1208,12 @@ fn read(row: &Value, elem: Elem, f: &FieldSpec) -> Result<Option<Value>, (String
     convert(raw, &f.convert).map_err(|t| (col, t))
 }
 
+/// The text a field gives for a record outside an `each`, converted: what an
+/// import stores, so that erasure finds the cell of a stored value.
+pub fn field_text(row: &Value, f: &FieldSpec) -> Option<String> {
+    read(row, None, f).ok().flatten().as_ref().and_then(text_of)
+}
+
 /// Plans one record: objects (with `each` expanded) and links. Returns
 /// the plan, or the issues of the record (it is then skipped whole).
 pub fn plan_row(
