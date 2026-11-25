@@ -40,7 +40,7 @@ const TS: &str = "'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'";
 
 fn select() -> String {
     format!(
-        "SELECT id, name, condition, propose, channel_id, enabled, firing, version, created_by, state, \
+        "SELECT id, name, condition, propose, channel_id, action, enabled, firing, version, created_by, state, \
            to_char(last_fired_at AT TIME ZONE 'UTC', {TS}) AS last_fired_at, \
            to_char(updated_at AT TIME ZONE 'UTC', {TS}) AS updated_at FROM rules"
     )
@@ -57,6 +57,7 @@ fn view(r: &QueryResult) -> Result<Rule, DbErr> {
         channel_id: r
             .try_get::<Option<Uuid>>("", "channel_id")?
             .map(|u| u.to_string()),
+        action: serde_json::from_value(Value::String(r.try_get("", "action")?)).unwrap_or_default(),
         enabled: r.try_get("", "enabled")?,
         firing: r.try_get("", "firing")?,
         last_fired_at: r.try_get("", "last_fired_at")?,
@@ -149,6 +150,13 @@ fn propose_json(input: &RuleInput) -> Option<Value> {
         .map(|p| serde_json::to_value(p).unwrap_or_default())
 }
 
+fn action_text(input: &RuleInput) -> String {
+    serde_json::to_value(input.action)
+        .ok()
+        .and_then(|v| v.as_str().map(str::to_string))
+        .unwrap_or_default()
+}
+
 fn is_unique_violation(e: &DbErr) -> bool {
     e.to_string().contains("duplicate key")
 }
@@ -163,8 +171,8 @@ pub async fn create(
     let id = Uuid::new_v4();
     let condition = serde_json::to_string(&input.condition).unwrap_or_default();
     db.execute_raw(stmt(
-        "INSERT INTO rules (id, org_id, name, condition, channel_id, enabled, created_by, propose) \
-         VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8)",
+        "INSERT INTO rules (id, org_id, name, condition, channel_id, enabled, created_by, propose, action) \
+         VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8, $9)",
         vec![
             id.into(),
             org_id.into(),
@@ -174,6 +182,7 @@ pub async fn create(
             input.enabled.into(),
             by.into(),
             propose_json(input).into(),
+            action_text(input).into(),
         ],
     ))
     .await
@@ -210,7 +219,7 @@ pub async fn update(
             "UPDATE rules SET name = $3, condition = $4::jsonb, channel_id = $5, enabled = $6, \
                created_by = $7, state = CASE WHEN $8 THEN NULL ELSE state END, \
                firing = CASE WHEN $8 THEN false ELSE firing END, \
-               propose = $10, version = version + 1, updated_at = now() \
+               propose = $10, action = $11, version = version + 1, updated_at = now() \
              WHERE org_id = $1 AND id = $2 AND version = $9",
             vec![
                 org_id.into(),
@@ -224,6 +233,7 @@ pub async fn update(
                 restart.into(),
                 expected.into(),
                 propose_json(input).into(),
+                action_text(input).into(),
             ],
         ))
         .await
@@ -364,13 +374,26 @@ async fn notify(ctx: &loco_rs::app::AppContext, org_id: i64, rule: &Rule, body: 
         source: "rule".into(),
         ..Default::default()
     };
+    if !to_channel(ctx, rule, &msg, entry.clone()).await {
+        crate::services::notify::deliver_in_app(entry, &msg);
+    }
+}
+
+/// Sends `msg` by the rule's channel, journaled; `false` when the rule has
+/// no channel or it is gone or disabled.
+pub(crate) async fn to_channel(
+    ctx: &loco_rs::app::AppContext,
+    rule: &Rule,
+    msg: &pnex_notify::Message,
+    entry: pnex_core::NotifyDeliveryEntry,
+) -> bool {
+    let org_id = entry.org_id;
     let channel = rule
         .channel_id
         .as_deref()
         .and_then(|c| Uuid::parse_str(c).ok());
     let Some(channel_id) = channel else {
-        crate::services::notify::deliver_in_app(entry, &msg);
-        return;
+        return false;
     };
     use crate::models::_entities::notify_channels as nc;
     use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
@@ -382,8 +405,7 @@ async fn notify(ctx: &loco_rs::app::AppContext, org_id: i64, rule: &Rule, body: 
         .ok()
         .flatten();
     let Some(m) = row.filter(|m| m.enabled) else {
-        crate::services::notify::deliver_in_app(entry, &msg);
-        return;
+        return false;
     };
     let sent = async {
         let ring = crate::controllers::secrets::keyring(ctx).map_err(|e| format!("{e:?}"))?;
@@ -392,7 +414,7 @@ async fn notify(ctx: &loco_rs::app::AppContext, org_id: i64, rule: &Rule, body: 
                 .await
                 .map_err(|e| format!("{e:?}"))?;
         let ch = pnex_notify::channel(&m.kind).ok_or("unknown channel kind")?;
-        ch.send(&config, &msg).await.map_err(|e| e.to_string())
+        ch.send(&config, msg).await.map_err(|e| e.to_string())
     }
     .await;
     crate::services::notify_journal::submit(pnex_core::NotifyDeliveryEntry {
@@ -408,6 +430,7 @@ async fn notify(ctx: &loco_rs::app::AppContext, org_id: i64, rule: &Rule, body: 
         subject: msg.subject.clone(),
         ..entry
     });
+    true
 }
 
 /// D829: one pass over the enabled rules. An objects rule notifies the objects
@@ -418,7 +441,7 @@ pub async fn pass(ctx: &loco_rs::app::AppContext) -> Result<u64, DbErr> {
     let rows = db
         .query_all_raw(stmt(
             &format!(
-                "{} WHERE enabled",
+                "{} WHERE enabled AND action = 'notify'",
                 select().replace("FROM rules", ", org_id FROM rules")
             ),
             vec![],

@@ -1,13 +1,13 @@
 //! Abnormal sessions of the watched series (markets-research.md D734-D738):
 //! found by the pack's pipeline `markets/market_moves` and created by the
 //! import "Abnormal sessions" (pipelines.md D946, D949). Here: the
-//! watched entries, the session view and the channels of the daily summary.
+//! watched entries and the session view.
 
 use chrono::NaiveDate;
 use pnex_core::markets::moves::{
     self as mv, MarketSession, SessionMove, SessionWorldEvent, WatchedSeries,
 };
-use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, DbErr, Statement};
+use sea_orm::{ConnectionTrait, DatabaseBackend, DbErr, Statement};
 use serde_json::Value;
 use uuid::Uuid;
 
@@ -16,9 +16,6 @@ pub const MOVE_SETTINGS: [&str; 2] = ["markets.move_series", "markets.move_ticke
 pub const EVENT_TYPE: &str = "market_event";
 pub const KIND_MOVE: &str = "market_move";
 pub const GEO_TYPE: &str = "geo_event";
-
-/// Channel names the daily session summary also goes to (D738, D814).
-const NOTIFY_SETTING: &str = "markets.move_notify_channels";
 
 /// Every watched series of the org, FRED codes then tickers.
 pub async fn watched<C: ConnectionTrait>(db: &C, org_id: i64) -> Result<Vec<WatchedSeries>, DbErr> {
@@ -35,67 +32,6 @@ pub async fn watched<C: ConnectionTrait>(db: &C, org_id: i64) -> Result<Vec<Watc
 
 fn stmt(sql: &str, values: Vec<sea_orm::Value>) -> Statement {
     Statement::from_sql_and_values(DatabaseBackend::Postgres, sql, values)
-}
-
-/// The org's channels named in `move_notify_channels` (D738): e-mail, Slack,
-/// ntfy… any kind but the websocket, which always gets the notice. An
-/// unknown or disabled name is skipped; every send is journaled.
-pub(super) async fn to_channels(db: &DatabaseConnection, org_id: i64, msg: &pnex_notify::Message) {
-    use crate::models::_entities::notify_channels;
-    use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
-    let names = crate::services::ontology::packs::setting_value(db, org_id, NOTIFY_SETTING)
-        .await
-        .ok()
-        .flatten()
-        .and_then(|v| v.as_str().map(str::to_string))
-        .unwrap_or_default();
-    let names: Vec<String> = names
-        .split([',', ';'])
-        .map(|n| n.trim().to_string())
-        .filter(|n| !n.is_empty())
-        .collect();
-    if names.is_empty() {
-        return;
-    }
-    let Some(ring) = super::keyring() else {
-        tracing::warn!(org = org_id, "market move notice: no vault keyring");
-        return;
-    };
-    let channels = notify_channels::Entity::find()
-        .filter(notify_channels::Column::OrgId.eq(org_id))
-        .filter(notify_channels::Column::Name.is_in(names))
-        .filter(notify_channels::Column::Enabled.eq(true))
-        .filter(notify_channels::Column::Kind.ne("websocket"))
-        .all(db)
-        .await
-        .unwrap_or_default();
-    for ch in channels {
-        let Some(sender) = pnex_notify::channel(&ch.kind) else {
-            continue;
-        };
-        let outcome = match crate::services::secrets::notify::sendable(
-            db, ring, org_id, &ch.kind, &ch.config,
-        )
-        .await
-        {
-            Ok(config) => sender.send(&config, msg).await.map_err(|e| e.to_string()),
-            Err(e) => Err(e.to_string()),
-        };
-        let (status, error) = match &outcome {
-            Ok(()) => (pnex_core::DELIVERY_SENT, None),
-            Err(e) => (pnex_core::DELIVERY_FAILED, Some(e.clone())),
-        };
-        crate::services::notify_journal::submit(pnex_core::NotifyDeliveryEntry {
-            org_id,
-            channel_id: ch.id,
-            channel_kind: ch.kind.clone(),
-            source: "market-moves".into(),
-            status: status.into(),
-            error,
-            subject: msg.subject.clone(),
-            ..Default::default()
-        });
-    }
 }
 
 fn text(v: &Value, k: &str) -> String {

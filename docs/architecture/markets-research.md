@@ -144,8 +144,9 @@ flowchart LR
   imp --> ev[market_event market_move]
   ev --> rule[Règle d'avis de l'org]
   ev --> ses[Vue Séance]
-  ses --> sum[Synthèse quotidienne]
-  sum --> ch[move_notify_channels]
+  ev --> srule[Règle de synthèse]
+  srule --> sum[Synthèse quotidienne]
+  sum --> ch[Canal de la règle]
 ```
 
 Le pipeline `market_moves` lit les séries de `move_series` (FRED, `bis:` pour la BRI) et de `move_tickers` (Tiingo). Format d'une entrée : `[bis:]CODE:mode:classe[:k[:plancher]]`. Une séance est anormale si sa variation dépasse `k` écarts types des 250 variations précédentes **et** un plancher absolu (D735). Il faut 60 points au moins. Les jours sans cotation sont ignorés, jamais interpolés.
@@ -158,7 +159,7 @@ Le pipeline `market_moves` lit les séries de `move_series` (FRED, `bis:` pour l
 
 Valeurs par défaut : VIX, taux US à 10 ans, WTI, Brent, dollar pondéré, et les taux directeurs du G10 en `bis:` avec `k = 1` et un plancher de 0,05 (D881, D888). `SPY` et `QQQ` remplacent les indices FRED `SP500` et `NASDAQCOM`, dont la reproduction exige un accord (Q-MK5).
 
-Le mouvement hérite le `known_at` de la valeur qui le déclenche, et sa marque `backfilled` (D736). Il est créé sans file « À valider » (D738). La vue **Séance** (`GET /markets/sessions/{date}`) liste les mouvements d'une date par |mesure| / sigma. La synthèse quotidienne (D814, réglage `session_summary`, `off` par défaut) est rédigée par le fournisseur d'IA de l'org. Elle part dans l'application et vers les canaux de `move_notify_channels`. Rien n'est stocké comme objet.
+Le mouvement hérite le `known_at` de la valeur qui le déclenche, et sa marque `backfilled` (D736). Il est créé sans file « À valider » (D738). La vue **Séance** (`GET /markets/sessions/{date}`) liste les mouvements d'une date par |mesure| / sigma. La synthèse quotidienne (D814) est l'action d'une règle d'org sur les `market_event` (`analysis.md` D829). Le fournisseur d'IA de l'org la rédige à partir des mouvements que la règle retient. Elle part une fois par règle et par séance, dans l'application et sur le canal de la règle. Rien n'est stocké comme objet.
 
 ### 3.5 Événements du monde
 
@@ -618,7 +619,7 @@ Pipeline `gleif_identity`. Codé, jamais essayé sur le vrai GLEIF.
 Onglet **Cours**, `GET /markets/issuers/{id}/chart`. Codé.
 
 #### D814 — Synthèse quotidienne : l'assistant de l'org, en lecture
-Réglage `session_summary`, un paragraphe par séance, rien stocké. Codé, jamais essayé avec un vrai fournisseur.
+Un paragraphe par séance, rien stocké. Depuis le 2026-11-25 (choix de Shan, PE8), c'est l'action `session_summary` d'une règle d'org : un canal par règle, une note par règle et par séance. Les réglages `session_summary` et `move_notify_channels` sont retirés. La migration 000176 crée une règle par canal valide pour une org qui avait la synthèse active. Codé, jamais essayé avec un vrai fournisseur.
 
 #### D815 — MK3 (extraction par LLM) après tout le reste
 Tenue : MK3 codé en dernier (§3.6).
@@ -877,7 +878,7 @@ Codes d'erreur du domaine : préfixe `market-` (`market-decision-stale`, `market
 
 | Pack | Réglages |
 |---|---|
-| `markets` | `source_contact`, `covered_tickers`, `covered_leis`, `benchmark_ticker`, `macro_series`, `ecb_series`, `bis_series`, `eurostat_series`, `eia_series`, `cot_markets`, `chokepoints`, `calendars`, `move_series`, `move_tickers`, `move_notify_channels`, `session_summary`, `event_extraction_from`, `price_move_threshold_pct`, réglages d'historique (§3.8) |
+| `markets` | `source_contact`, `covered_tickers`, `covered_leis`, `benchmark_ticker`, `macro_series`, `ecb_series`, `bis_series`, `eurostat_series`, `eia_series`, `cot_markets`, `chokepoints`, `calendars`, `move_series`, `move_tickers`, `event_extraction_from`, `price_move_threshold_pct`, réglages d'historique (§3.8) |
 | `world_events` | `geo_watch`, `gdelt_codes` |
 | `prediction_markets` | `market_ids`, `fine_markets`, `history_from`, `early_bet_*` |
 | `trading_accounts` | `bars_source`, `entry_window_minutes`, `entry_move_pct`, `release_window_minutes`, `entry_min_count`, `entry_min_share_pct` |

@@ -1,8 +1,8 @@
-//! The daily session summary (markets-research.md D814): once a session
-//! has moves, the org's own AI provider (D119, usage `extraction`) writes a
-//! short note from the session view, sent in the app and to the channels of
-//! `move_notify_channels`. Read only: no tool, no object written. Off unless
-//! the org turns on `session_summary`.
+//! The daily session summary (markets-research.md D814): the action of an
+//! org rule on market events (analysis.md D829). Once a session has moves the
+//! rule matches, the org's own AI provider (D119, usage `extraction`) writes a
+//! short note from them, sent in the app and on the rule's channel, once per
+//! rule and session. Read only: no tool, no object written.
 
 use std::time::Duration;
 
@@ -17,7 +17,6 @@ use crate::services::ai::provider::{AiChatRequest, Msg};
 use crate::services::stop;
 
 const EVERY: Duration = Duration::from_secs(1800);
-const SETTING: &str = "markets.session_summary";
 /// Hour (UTC) from which the previous session is summed up: US closes and
 /// FRED values of the day before are in by then.
 const FROM_HOUR: u32 = 12;
@@ -60,64 +59,89 @@ pub fn previous_session(today: NaiveDate) -> Option<NaiveDate> {
     today.checked_sub_days(chrono::Days::new(back))
 }
 
-/// Every org with moves on `day` and the setting on gets its note once.
+/// Every enabled summary rule of an org with moves on `day` gets its note once.
 pub async fn sweep(ctx: &AppContext, day: NaiveDate) -> Result<(), sea_orm::DbErr> {
-    let orgs: Vec<i64> = ctx
+    let rules = ctx
         .db
         .query_all_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            "SELECT DISTINCT org_id FROM objects WHERE type_key = 'market_event' \
-               AND valid_to IS NULL AND properties ->> 'kind' = 'market_move' \
-               AND properties ->> 'event_at' = $1 AND NOT (properties ->> 'backfilled')::boolean",
+            "SELECT r.id, r.org_id, r.created_by FROM rules r \
+             WHERE r.enabled AND r.action = 'session_summary' AND EXISTS ( \
+               SELECT 1 FROM objects o WHERE o.org_id = r.org_id AND o.type_key = 'market_event' \
+                 AND o.valid_to IS NULL AND o.properties ->> 'kind' = 'market_move' \
+                 AND o.properties ->> 'event_at' = $1 AND NOT (o.properties ->> 'backfilled')::boolean)",
             vec![day.to_string().into()],
         ))
-        .await?
-        .iter()
-        .filter_map(|r| r.try_get("", "org_id").ok())
-        .collect();
-    for org in orgs {
-        let on = crate::services::ontology::packs::setting_value(&ctx.db, org, SETTING)
-            .await?
-            .and_then(|v| v.as_str().map(|s| s.trim().eq_ignore_ascii_case("on")))
-            .unwrap_or(false);
-        if on {
-            summarize(ctx, org, day).await?;
-        }
+        .await?;
+    for r in rules {
+        let (id, org): (uuid::Uuid, i64) = (r.try_get("", "id")?, r.try_get("", "org_id")?);
+        // Its author left or lost the right: the rule rests, as in a rules pass.
+        let Some(author) = r.try_get::<Option<i64>>("", "created_by")? else {
+            continue;
+        };
+        let Some((hide, _)) = crate::services::rules::author_mask(&ctx.db, org, author).await?
+        else {
+            continue;
+        };
+        let rule = match crate::services::rules::get(&ctx.db, org, id).await {
+            Ok(rule) => rule,
+            Err(e) => {
+                tracing::warn!(org, rule = %id, "market summary: rule read failed: {e:?}");
+                continue;
+            }
+        };
+        summarize(ctx, org, &rule, hide, day).await?;
     }
     Ok(())
 }
 
-async fn summarize(ctx: &AppContext, org: i64, day: NaiveDate) -> Result<(), sea_orm::DbErr> {
+async fn summarize(
+    ctx: &AppContext,
+    org: i64,
+    rule: &pnex_core::rules::Rule,
+    hide: crate::services::ontology::redact::Redaction,
+    day: NaiveDate,
+) -> Result<(), sea_orm::DbErr> {
     let Some(cfg) =
         crate::services::ai::config::resolve(&ctx.db, &ctx.config, org, LlmUsage::Extraction).await
     else {
         return Ok(());
     };
+    let Some(data) = session_data(&ctx.db, org, day, rule, hide).await? else {
+        return Ok(());
+    };
+    let rule_id = uuid::Uuid::parse_str(&rule.id).unwrap_or_default();
     // Claimed first: two pods, or a crash after the send, never send twice.
     let claimed = ctx
         .db
         .query_one_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            "INSERT INTO market_session_summaries (org_id, session, state) VALUES ($1, $2::date, 'claimed') \
-             ON CONFLICT DO NOTHING RETURNING org_id",
-            vec![org.into(), day.to_string().into()],
+            "INSERT INTO market_session_summaries (org_id, rule_id, session, state) \
+             VALUES ($1, $2, $3::date, 'claimed') ON CONFLICT DO NOTHING RETURNING org_id",
+            vec![org.into(), rule_id.into(), day.to_string().into()],
         ))
         .await?
         .is_some();
     if !claimed {
         return Ok(());
     }
-    let data = session_data(&ctx.db, org, day).await?;
     let state = match write(ctx, &cfg, org, &data).await {
         Some(text) => {
             let msg = pnex_notify::Message {
                 subject: Some(format!("Session summary {day}")),
-                body: format!("{text}\n\nWritten by the org's AI from the session's measured moves; not advice."),
-                meta: json!({ "kind": "market-summary", "date": day.to_string() }),
+                body: format!(
+                    "{text}\n\nWritten by the org's AI from the session's measured moves; not advice."
+                ),
+                meta: json!({ "kind": "market-summary", "date": day.to_string(), "rule_id": rule.id }),
             };
             crate::services::data_builds::notify_org(&ctx.db, org, "market-moves", msg.clone())
                 .await;
-            super::moves::to_channels(&ctx.db, org, &msg).await;
+            let entry = pnex_core::NotifyDeliveryEntry {
+                org_id: org,
+                source: "market-moves".into(),
+                ..Default::default()
+            };
+            crate::services::rules::to_channel(ctx, rule, &msg, entry).await;
             "sent"
         }
         None => "failed",
@@ -125,20 +149,47 @@ async fn summarize(ctx: &AppContext, org: i64, day: NaiveDate) -> Result<(), sea
     ctx.db
         .execute_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            "UPDATE market_session_summaries SET state = $3 WHERE org_id = $1 AND session = $2::date",
-            vec![org.into(), day.to_string().into(), state.into()],
+            "UPDATE market_session_summaries SET state = $3 WHERE rule_id = $1 AND session = $2::date",
+            vec![rule_id.into(), day.to_string().into(), state.into()],
         ))
         .await?;
     Ok(())
 }
 
-/// The session view and the day's filings, as plain lines for the model.
-async fn session_data<C: ConnectionTrait>(
-    db: &C,
+/// The session's moves the rule matches (as its author sees them), its world
+/// events and the day's filings, as plain lines for the model; `None` when
+/// the rule matches no move.
+async fn session_data(
+    db: &sea_orm::DatabaseConnection,
     org: i64,
     day: NaiveDate,
-) -> Result<String, sea_orm::DbErr> {
-    let s = super::moves::session(db, org, day).await?;
+    rule: &pnex_core::rules::Rule,
+    hide: crate::services::ontology::redact::Redaction,
+) -> Result<Option<String>, sea_orm::DbErr> {
+    use pnex_core::ontology::api::{OntologyQuery, QUERY_LIMIT_MAX};
+    let mut s = super::moves::session(db, org, day).await?;
+    if s.moves.is_empty() {
+        return Ok(None);
+    }
+    let q = OntologyQuery {
+        type_key: Some(rule.condition.type_key.clone()),
+        ids: s.moves.iter().map(|m| m.id.clone()).collect(),
+        filters: rule.condition.filters.clone(),
+        limit: Some(QUERY_LIMIT_MAX),
+        ..Default::default()
+    };
+    let kept: std::collections::BTreeSet<String> =
+        match crate::services::ontology::query::run(db, None, org, &q, hide).await {
+            Ok(page) => page.rows.into_iter().map(|r| r.object.id).collect(),
+            Err(e) => {
+                tracing::warn!(org, rule = %rule.id, "market summary: rule query failed: {e}");
+                return Ok(None);
+            }
+        };
+    s.moves.retain(|m| kept.contains(&m.id));
+    if s.moves.is_empty() {
+        return Ok(None);
+    }
     let mut lines = vec![format!(
         "Session {} (window {} to {})",
         s.date, s.window_from, s.window_to
@@ -169,7 +220,7 @@ async fn session_data<C: ConnectionTrait>(
         let items: String = f.try_get("", "items")?;
         lines.push(format!("filing: {title} items {items}"));
     }
-    Ok(lines.join("\n"))
+    Ok(Some(lines.join("\n")))
 }
 
 async fn write(

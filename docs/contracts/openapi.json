@@ -28041,6 +28041,9 @@
       "Rule": {
         "description": "A rule as read.",
         "properties": {
+          "action": {
+            "$ref": "#/components/schemas/RuleAction"
+          },
           "channel_id": {
             "format": "uuid",
             "type": [
@@ -28094,6 +28097,14 @@
           "updated_at"
         ],
         "type": "object"
+      },
+      "RuleAction": {
+        "description": "What a rule does when it fires.",
+        "enum": [
+          "notify",
+          "session_summary"
+        ],
+        "type": "string"
       },
       "RuleCondition": {
         "description": "What a rule watches; only the fields of its kind are read.",
@@ -28162,6 +28173,9 @@
       },
       "RuleInput": {
         "properties": {
+          "action": {
+            "$ref": "#/components/schemas/RuleAction"
+          },
           "channel_id": {
             "description": "A notification channel of the org; absent = in-app.",
             "format": "uuid",
@@ -93964,7 +93978,7 @@
         "x-pnex-as-of": "current_only"
       },
       "post": {
-        "description": "A condition on the objects of a type (filters of the ontology query) or on a series (threshold held for some minutes), evaluated every five minutes with the rights of who saved it, notifying in-app or by a channel of the org when it turns true. With `propose`, each firing also files an object proposal linked to what fired, which a member validates; it never writes the object itself. Requires `rules:write`, and `proposals:file` with `propose`.",
+        "description": "A condition on the objects of a type (filters of the ontology query) or on a series (threshold held for some minutes), evaluated every five minutes with the rights of who saved it, notifying in-app or by a channel of the org when it turns true. With `propose`, each firing also files an object proposal linked to what fired, which a member validates; it never writes the object itself. With `action` `session_summary` (objects rules on `market_event` only), the rule sends instead, once per market session, a note the org's AI writes from the session's moves it matches, in-app and on its channel. Requires `rules:write`, and `proposals:file` with `propose`.",
         "operationId": "rules_create",
         "parameters": [
           {

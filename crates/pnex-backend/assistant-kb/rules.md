@@ -13,6 +13,8 @@ Rules are evaluated every five minutes with the rights of the member who saved t
 
 A rule may also **propose an object** each time it fires: an object of a chosen type (a work order, for example), with a title and fixed values, linked to the object that fired or to the device of the measure. It waits in **To validate**, where a member accepts or rejects it. In the title, `{value}` becomes the value of the measure. Proposing needs the right to file proposals.
 
+A rule on **Market event** objects may send the **daily session note** instead of a notice per event: tick the box under the channel. The organization's AI writes one note per market session from the moves the rule matches, in the app and on the rule's channel.
+
 **Replay** shows when a rule would have fired over the last hours or days, from the history of the objects and the measures, without sending anything: a way to tune the threshold before turning a rule on.
 
 ## Troubleshooting

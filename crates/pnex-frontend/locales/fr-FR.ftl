@@ -4662,6 +4662,7 @@ rules-replay-title = Rejouer { $name }
 rules-replay-window = Sur
 rules-window-1h = la dernière heure
 rules-window-6h = les 6 dernières heures
+rules-session-summary = Au lieu d'un avis par événement, envoyer la note quotidienne de séance que l'IA de l'organisation rédige à partir des mouvements retenus
 rules-window-24h = les dernières 24 heures
 rules-window-7d = les 7 derniers jours
 rules-window-30d = les 30 derniers jours

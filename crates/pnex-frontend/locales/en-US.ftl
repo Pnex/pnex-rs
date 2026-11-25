@@ -4663,6 +4663,7 @@ rules-replay-title = Replay { $name }
 rules-replay-window = Over the last
 rules-window-1h = hour
 rules-window-6h = 6 hours
+rules-session-summary = Instead of a notice per event, send the daily session note the organization's AI writes from the matching moves
 rules-window-24h = 24 hours
 rules-window-7d = 7 days
 rules-window-30d = 30 days

@@ -46,6 +46,24 @@ impl Cmp {
     }
 }
 
+/// What a rule does when it fires.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum RuleAction {
+    /// A notice per firing.
+    #[default]
+    Notify,
+    /// The daily note of a market session (markets-research.md D814), written
+    /// by the org's AI from the session's moves the condition matches, once
+    /// per session, instead of a notice per object. Objects rules on
+    /// [`SESSION_SUMMARY_TYPE`] only.
+    SessionSummary,
+}
+
+/// The type a session summary rule watches.
+pub const SESSION_SUMMARY_TYPE: &str = "market_event";
+
 /// What a rule watches; only the fields of its kind are read.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -118,6 +136,8 @@ pub struct RuleInput {
     #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
     #[serde(default)]
     pub channel_id: Option<String>,
+    #[serde(default)]
+    pub action: RuleAction,
     #[serde(default = "yes")]
     pub enabled: bool,
     /// The version read, on an update.
@@ -173,6 +193,11 @@ impl RuleInput {
                 }
             }
         }
+        if self.action == RuleAction::SessionSummary
+            && (c.kind != RuleKind::Objects || c.type_key != SESSION_SUMMARY_TYPE)
+        {
+            return Some(("action", "invalid".into()));
+        }
         if let Some(p) = &self.propose {
             if !key_ok(&p.type_key) {
                 return Some(("propose.type_key", "required".into()));
@@ -206,6 +231,8 @@ pub struct Rule {
     pub propose: Option<RuleProposal>,
     #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
     pub channel_id: Option<String>,
+    #[serde(default)]
+    pub action: RuleAction,
     pub enabled: bool,
     /// The condition held at the last pass.
     pub firing: bool,
@@ -459,10 +486,28 @@ mod tests {
             },
             propose: None,
             channel_id: None,
+            action: RuleAction::Notify,
             enabled: true,
             expected_version: None,
         };
         assert!(ok.violation().is_none());
+        let summary = RuleInput {
+            action: RuleAction::SessionSummary,
+            ..ok.clone()
+        };
+        assert_eq!(
+            summary.violation().unwrap().0,
+            "action",
+            "deals are no session"
+        );
+        let summary = RuleInput {
+            condition: RuleCondition {
+                type_key: SESSION_SUMMARY_TYPE.into(),
+                ..ok.condition.clone()
+            },
+            ..summary
+        };
+        assert!(summary.violation().is_none());
         let proposing = RuleInput {
             propose: Some(RuleProposal {
                 type_key: "work_order".into(),

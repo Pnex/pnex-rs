@@ -2152,8 +2152,9 @@ async fn sec_companies_are_matched_to_their_lei_by_proposal() {
     .await;
 }
 
-/// D814: a session with moves gets one note from the org's own AI, built
-/// from the session view only, sent once however many sweeps run.
+/// D814: a summary rule gets one note per session from the org's own AI,
+/// built from the session's moves it matches only, sent once however many
+/// sweeps run.
 #[tokio::test]
 #[serial]
 async fn the_session_summary_is_written_once_by_the_orgs_ai() {
@@ -2203,8 +2204,21 @@ async fn the_session_summary_is_written_once_by_the_orgs_ai() {
 
         let sweep = || pnex_backend::services::markets::summary::sweep(&ctx, day);
         sweep().await.unwrap();
-        assert!(asked.lock().unwrap().is_empty(), "off by default");
-        api.settings(json!({ "session_summary": "on" })).await;
+        assert!(asked.lock().unwrap().is_empty(), "no summary rule: nothing");
+        // A summary is the action of a rule on market events, nothing else.
+        let rule = |series: &str| {
+            json!({"name": "Session note", "action": "session_summary",
+                   "condition": {"kind": "objects", "type_key": "market_event", "filters": [
+                       {"key": "kind", "op": "eq", "value": "market_move"},
+                       {"key": "series_code", "op": "eq", "value": series}]}})
+        };
+        let mut wrong = rule("TESTIDX");
+        wrong["condition"]["type_key"] = json!("filing");
+        let (st, e) = api.call("POST", "/api/v1/rules", Some(wrong)).await;
+        assert_eq!((st, e["errors"]["fields"]["action"].as_str()), (400, Some("invalid")), "{e}");
+        let (st, r) = api.call("POST", "/api/v1/rules", Some(rule("OTHERIDX"))).await;
+        assert_eq!(st, 201, "{r}");
+        let rule_id = r["id"].as_str().unwrap().to_string();
         sweep().await.unwrap();
         assert!(asked.lock().unwrap().is_empty(), "no provider: nothing");
 
@@ -2215,6 +2229,13 @@ async fn the_session_summary_is_written_once_by_the_orgs_ai() {
             .await;
         assert_eq!(st, 201, "{r}");
         sweep().await.unwrap();
+        assert!(asked.lock().unwrap().is_empty(), "the rule matches no move of the session");
+        let (_, cur) = api.call("GET", &format!("/api/v1/rules/{rule_id}"), None).await;
+        let mut body = rule("TESTIDX");
+        body["expected_version"] = cur["version"].clone();
+        let (st, r) = api.call("PUT", &format!("/api/v1/rules/{rule_id}"), Some(body)).await;
+        assert_eq!(st, 200, "{r}");
+        sweep().await.unwrap();
         sweep().await.unwrap();
         let calls = asked.lock().unwrap().clone();
         assert_eq!(calls.len(), 1, "written once: {calls:?}");
@@ -2223,7 +2244,7 @@ async fn the_session_summary_is_written_once_by_the_orgs_ai() {
         assert!(calls[0]["tools"].as_array().is_none_or(|t| t.is_empty()), "no tool: read only");
         let state = count(
             &db,
-            format!("SELECT count(*) AS n FROM market_session_summaries WHERE org_id = {org} AND state = 'sent'"),
+            format!("SELECT count(*) AS n FROM market_session_summaries WHERE rule_id = '{rule_id}' AND state = 'sent'"),
         )
         .await;
         assert_eq!(state, 1);

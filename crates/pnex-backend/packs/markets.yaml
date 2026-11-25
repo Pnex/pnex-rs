@@ -195,13 +195,6 @@ settings:
     descriptions: {fr: "Mêmes entrées que ci-dessus pour des tickers, lus avec la clé Tiingo de l'org : SPY suit le S&P 500, QQQ le Nasdaq-100. Le mode volume surveille le volume échangé au lieu du cours : une séance à plusieurs fois son volume habituel (k sigmas, au moins le double par défaut)."}
     kind: text
     default: "SPY:log_return:equity_index, QQQ:log_return:equity_index, SPY:volume:equity_index, QQQ:volume:equity_index"
-  - key: session_summary
-    name: Daily session summary (AI)
-    names: {fr: "Synthèse quotidienne de séance (IA)"}
-    description: "on: after a session with abnormal moves, the org's own AI provider (file analyses) writes a short note sent with the session notice. It reads only the session's moves, filings and world events, never decides nor writes. off by default."
-    descriptions: {fr: "on : après une séance avec des mouvements anormaux, le fournisseur d'IA de l'org (analyses de fichiers) rédige une note courte envoyée avec l'avis de séance. Il lit seulement les mouvements, dépôts et événements du monde de la séance, ne décide ni n'écrit. off par défaut."}
-    kind: text
-    default: "off"
   - key: event_extraction_from
     name: Read 8-K press releases with AI from
     names: {fr: "Lire les communiqués 8-K avec l'IA à partir du"}
@@ -291,13 +284,6 @@ settings:
     names: {fr: "Premier jour des bougies d'une minute Dukascopy"}
     description: "YYYY-MM-DD. Loaded from this day; twelve months back when empty."
     descriptions: {fr: "AAAA-MM-JJ. Chargé à partir de ce jour ; douze mois en arrière si vide."}
-    kind: text
-    default: ""
-  - key: move_notify_channels
-    name: Channels of the abnormal session notice
-    names: {fr: "Canaux de l'avis de séance anormale"}
-    description: "Comma-separated names of the org's notification channels (e-mail, Slack, ntfy…) that also get the daily session summary. The in-app summary is always sent. An abnormal session is announced by a rule on market events (Automation › Rules)."
-    descriptions: {fr: "Noms des canaux de notification de l'org (e-mail, Slack, ntfy…), séparés par des virgules, qui reçoivent aussi la synthèse quotidienne de séance. La synthèse dans l'application part toujours. Une séance anormale s'annonce par une règle sur les événements de marché (Automatisation › Règles)."}
     kind: text
     default: ""
 extends:

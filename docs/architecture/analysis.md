@@ -18,6 +18,8 @@ page, calculée avec les droits du lecteur. Tout se fait en lecture seule (D557)
 - **Objet figé** : copie Parquet des objets d'un type, tels que l'auteur de la requête les voit.
 - **Requête nommée** : requête d'un pack installé, avec des paramètres typés (D948, `pipelines.md`).
 - **Règle** : condition sur les objets d'un type ou sur une série, avec son auteur.
+- **Action** : ce que fait une règle qui se déclenche. `notify` envoie un avis. `session_summary`
+  envoie la synthèse quotidienne d'une séance de marché (D814).
 - **Proposition de règle** : objet qu'une règle propose à chaque déclenchement, lié à ce qui a
   déclenché. Il attend dans « À valider » (`proposals.md`).
 - **Rejeu** : aperçu des déclenchements d'une règle sur une fenêtre passée. Il n'envoie rien.
@@ -189,6 +191,16 @@ Une règle porte sur un type d'objet (filtres D185) ou sur une série (seuil, du
 Elle peut aussi proposer un objet lié à ce qui a déclenché (choix de Shan, 2026-11-20). Proposer
 demande `proposals:file` à l'auteur de la règle, à l'enregistrement et à chaque passage.
 
+Action `session_summary` (choix de Shan, 2026-11-25) : une règle d'objets sur `market_event` peut
+envoyer la synthèse quotidienne de séance (`markets-research.md` D814) au lieu d'un avis par objet.
+Les règles :
+
+- Le passage des règles ignore cette règle. Le balayage de la synthèse la lit.
+- L'IA de l'org rédige une note à partir des mouvements de la séance que la condition retient, avec
+  les droits de l'auteur.
+- La note part une fois par règle et par séance (`market_session_summaries`), dans l'application et
+  sur le canal de la règle. Une règle a un seul canal.
+
 ### D830 — Rejeu
 
 Une règle se rejoue sur une fenêtre passée, sans rien envoyer.
@@ -240,8 +252,8 @@ Deux lectures génériques (PE8, `pipelines.md`) mesurent une série autour d'é
 - **Codes** : `analysis-busy`, `analysis-unavailable`, `analysis-table-unknown`,
   `analysis-sql-invalid`, `analysis-timeout`, `analysis-result-too-large`,
   `analysis-too-many-objects`, `named-query-not-found`, `rule-not-found`.
-- **Tables** : `analysis_queries` (migration 000131), `rules` (migrations 000132 et 000161,
-  colonne `propose`).
+- **Tables** : `analysis_queries` (migration 000131), `rules` (migrations 000132, 000161 pour
+  `propose` et 000176 pour `action`).
 - **UI** : onglet « Requête SQL » de `/pipelines` (Ctrl+Entrée). Page `/rules` sous Automatisation.
   Fiche `assistant-kb/rules.md`.
 - **Code** : `pnex_core::{analysis, rules, pages}`, `services/{analysis,rules}.rs`, module

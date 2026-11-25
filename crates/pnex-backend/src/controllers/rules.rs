@@ -115,7 +115,7 @@ async fn list(
     tag = "rules",
     operation_id = "rules_create",
     summary = "Create a rule",
-    description = "A condition on the objects of a type (filters of the ontology query) or on a series (threshold held for some minutes), evaluated every five minutes with the rights of who saved it, notifying in-app or by a channel of the org when it turns true. With `propose`, each firing also files an object proposal linked to what fired, which a member validates; it never writes the object itself. Requires `rules:write`, and `proposals:file` with `propose`.",
+    description = "A condition on the objects of a type (filters of the ontology query) or on a series (threshold held for some minutes), evaluated every five minutes with the rights of who saved it, notifying in-app or by a channel of the org when it turns true. With `propose`, each firing also files an object proposal linked to what fired, which a member validates; it never writes the object itself. With `action` `session_summary` (objects rules on `market_event` only), the rule sends instead, once per market session, a note the org's AI writes from the session's moves it matches, in-app and on its channel. Requires `rules:write`, and `proposals:file` with `propose`.",
     request_body = pnex_core::rules::RuleInput,
     responses(
         (status = 201, body = pnex_core::rules::Rule),

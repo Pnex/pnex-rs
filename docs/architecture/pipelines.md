@@ -784,9 +784,9 @@ tests:
 
 **Lots du moteur non finis :**
 
-- PE8 (choix de Shan, 2026-11-24) :
-  - Fait le 2026-11-25 : la mesure autour d'événements et les chaînes candidates sont des routes génériques de `/analysis` (`analysis.md` §5). Chaque lecture garde son stockage. Les causes restent celles des paires des packs. `/markets/instruments/{id}/event-study` et `/markets/chains` sont retirées. market-advisor lit `/analysis/chains`.
-  - Reste : la synthèse quotidienne (D814) devient l'action d'une règle d'org (D829). `session_summary` et `move_notify_channels` disparaissent.
+- PE8 (choix de Shan, 2026-11-24) : fait le 2026-11-25.
+  - La mesure autour d'événements et les chaînes candidates sont des routes génériques de `/analysis` (`analysis.md` §5). Chaque lecture garde son stockage. Les causes restent celles des paires des packs. `/markets/instruments/{id}/event-study` et `/markets/chains` sont retirées. market-advisor lit `/analysis/chains`.
+  - La synthèse quotidienne (D814) est l'action `session_summary` d'une règle d'org (`analysis.md` D829). `session_summary` et `move_notify_channels` sont retirés.
 
 **Écarts connus du moteur :**
 

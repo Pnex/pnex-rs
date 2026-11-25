@@ -3,7 +3,9 @@
 use dioxus::prelude::*;
 use dioxus_i18n::t;
 use pnex_core::ontology::api::{FilterOp, PropertyFilter};
-use pnex_core::rules::{Cmp, Rule, RuleCondition, RuleInput, RuleKind, RuleProposal};
+use pnex_core::rules::{
+    Cmp, Rule, RuleAction, RuleCondition, RuleInput, RuleKind, RuleProposal, SESSION_SUMMARY_TYPE,
+};
 use serde_json::Value;
 
 use super::cmp_label;
@@ -39,6 +41,11 @@ pub(super) fn RuleForm(
             .unwrap_or_default()
     });
     let mut enabled = use_signal(|| initial.as_ref().is_none_or(|r| r.enabled));
+    let mut summary = use_signal(|| {
+        initial
+            .as_ref()
+            .is_some_and(|r| r.action == RuleAction::SessionSummary)
+    });
     let propose = use_signal(|| initial.as_ref().and_then(|r| r.propose.clone()));
     let propose_values = use_signal(|| {
         initial
@@ -76,6 +83,11 @@ pub(super) fn RuleForm(
             ..p
         }),
         channel_id: Some(channel()).filter(|c| !c.is_empty()),
+        action: if summary() && kind() == RuleKind::Objects && type_key() == SESSION_SUMMARY_TYPE {
+            RuleAction::SessionSummary
+        } else {
+            RuleAction::Notify
+        },
         enabled: enabled(),
         expected_version: version,
     };
@@ -306,6 +318,17 @@ pub(super) fn RuleForm(
                                 "{c.name}"
                             }
                         }
+                    }
+                }
+                if k == RuleKind::Objects && chosen_type == SESSION_SUMMARY_TYPE {
+                    label { class: "flex items-center gap-2 text-sm text-ink",
+                        input {
+                            r#type: "checkbox",
+                            "data-testid": "rule-session-summary",
+                            checked: summary(),
+                            onchange: move |e| summary.set(e.checked()),
+                        }
+                        {t!("rules-session-summary")}
                     }
                 }
                 if crate::state::access::can("proposals:file") {
