@@ -1585,10 +1585,10 @@ impl Transport for HttpTransport {
     }
 }
 
-/// The steps of an import's run in its history (the `ingest_steps` journal
-/// an import's steps write, read by `ingest::run_steps`): one line per step,
-/// its rows and the bytes it read, its error with its code and arguments.
-/// `node`: whose run it is, `import:<id>` or `pipeline:<id>`.
+/// The steps of a run in its history (the `ingest_steps` journal, read by
+/// `ingest::run_steps`): one line per step, its rows and the bytes it read,
+/// its error with its code and arguments. `node`: whose run it is,
+/// `pipeline:<id>`.
 pub async fn journal(
     db: &impl ConnectionTrait,
     org: i64,

@@ -14,7 +14,7 @@ use serde_json::json;
 
 use crate::services::ai::agent::shared_http;
 use crate::services::ai::provider::{AiChatRequest, Msg};
-use crate::services::ontology::imports::stop;
+use crate::services::stop;
 
 const EVERY: Duration = Duration::from_secs(1800);
 const SETTING: &str = "markets.session_summary";

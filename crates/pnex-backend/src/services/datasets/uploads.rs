@@ -455,7 +455,7 @@ pub fn spawn(ctx: &loco_rs::app::AppContext) {
     tokio::spawn(async move {
         loop {
             tokio::time::sleep(CONVERT_EVERY).await;
-            if crate::services::ontology::imports::stop::stopping() {
+            if crate::services::stop::stopping() {
                 continue;
             }
             let Ok(store) = super::store_of(&config) else {

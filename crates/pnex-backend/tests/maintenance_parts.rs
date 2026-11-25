@@ -14,7 +14,7 @@ use serial_test::serial;
 
 async fn with_app<F, Fut>(f: F)
 where
-    F: FnOnce(axum_test::TestServer, String, sea_orm::DatabaseConnection) -> Fut,
+    F: FnOnce(axum_test::TestServer, String, loco_rs::app::AppContext) -> Fut,
     Fut: std::future::Future<Output = ()>,
 {
     let base = common::spawn_mock_rauthy().await;
@@ -31,7 +31,7 @@ where
         config,
         move |server, ctx| async move {
             common::seed_catalogue(&ctx.db).await;
-            f(server, alice, ctx.db.clone()).await;
+            f(server, alice, ctx.clone()).await;
         },
     )
     .await;
@@ -39,6 +39,7 @@ where
 
 struct Api<'a> {
     server: &'a axum_test::TestServer,
+    ctx: &'a loco_rs::app::AppContext,
     token: String,
     org: i64,
 }
@@ -64,60 +65,15 @@ impl Api<'_> {
         )
     }
 
-    /// Runs the mapping of the pack import `name` on `csv` and applies it.
+    /// Loads `csv` into the Table of the pack's pipeline `name` and runs it (D1050).
     async fn import(&self, name: &str, csv: &str) -> Value {
-        let (st, import) = self
-            .call(
-                "POST",
-                "/api/v1/ontology/imports",
-                Some(common::pack_import_body(name)),
-            )
-            .await;
-        assert_eq!(st, 201, "{import}");
-        let id = import["id"].as_str().unwrap().to_string();
-        let res = self
-            .server
-            .post(&format!(
-                "/api/v1/ontology/imports/{id}/dry-run?filename=list.csv"
-            ))
-            .add_header("Authorization", format!("Bearer {}", self.token))
-            .add_header("X-Org-Id", self.org.to_string())
-            .add_header("Content-Type", "application/octet-stream")
-            .bytes(csv.as_bytes().to_vec().into())
-            .await;
-        assert_eq!(res.status_code().as_u16(), 202, "{}", res.text());
-        let run = res.json::<Value>()["id"].as_str().unwrap().to_string();
-        let settled = |run: String| {
-            let id = id.clone();
-            async move {
-                for _ in 0..200 {
-                    let (_, r) = self
-                        .call(
-                            "GET",
-                            &format!("/api/v1/ontology/imports/{id}/runs/{run}"),
-                            None,
-                        )
-                        .await;
-                    if r["run"]["state"] != "running" {
-                        return r;
-                    }
-                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-                }
-                panic!("run never settled");
-            }
-        };
-        let p = settled(run.clone()).await;
-        assert_eq!(p["run"]["state"], "preview", "{p}");
-        let (st, r) = self
-            .call(
-                "POST",
-                &format!("/api/v1/ontology/imports/{id}/apply"),
-                Some(json!({ "run_id": run, "expected_version": import["version"] })),
-            )
-            .await;
-        assert_eq!(st, 202, "{r}");
-        let done = settled(run).await;
-        assert_eq!(done["run"]["state"], "applied", "{done}");
+        let (server, token, org) = (self.server, self.token.as_str(), self.org);
+        common::load_table(server, token, org, name, csv.as_bytes()).await;
+        let id = common::pack_pipeline(server, token, org, name).await;
+        let worker = common::spawn_pipeline_worker();
+        let done = common::run_org_pipeline(server, self.ctx, token, org, &id).await;
+        worker.abort();
+        assert_eq!(done["state"], "done", "{done}");
         done
     }
 
@@ -142,7 +98,7 @@ fn titles(r: &Value) -> Vec<String> {
 #[tokio::test]
 #[serial]
 async fn a_parts_list_is_found_by_any_spelling_of_a_reference() {
-    with_app(|server, token, _db| async move {
+    with_app(|server, token, ctx| async move {
         let org = server
             .get("/api/v1/user-info")
             .add_header("Authorization", format!("Bearer {token}"))
@@ -150,7 +106,7 @@ async fn a_parts_list_is_found_by_any_spelling_of_a_reference() {
             .json::<Value>()["orgs"][0]["id"]
             .as_i64()
             .unwrap();
-        let api = Api { server: &server, token, org };
+        let api = Api { server: &server, ctx: &ctx, token, org };
         let (st, r) = api.call("POST", "/api/v1/ontology/packs/maintenance_partners/install", None).await;
         assert_eq!(st, 200, "{r}");
 
@@ -163,7 +119,7 @@ async fn a_parts_list_is_found_by_any_spelling_of_a_reference() {
                  CF-200,Cold room unit,14,P-300,Fan motor (new),AB 12.4,1,S5000,,2024-01-01,,\n",
             )
             .await;
-        assert_eq!(done["run"]["counts"]["errors"], 0, "{done}");
+        assert_eq!(common::written(&done)["errors"], 0, "{done}");
 
         // The reference is stored normalized, its title as typed.
         let refs = api
@@ -219,7 +175,8 @@ async fn a_parts_list_is_found_by_any_spelling_of_a_reference() {
 #[ignore]
 async fn an_old_reference_finds_the_current_part_among_100000() {
     use sea_orm::ConnectionTrait;
-    with_app(|server, token, db| async move {
+    with_app(|server, token, ctx| async move {
+        let db = ctx.db.clone();
         let org = server
             .get("/api/v1/user-info")
             .add_header("Authorization", format!("Bearer {token}"))
@@ -227,7 +184,7 @@ async fn an_old_reference_finds_the_current_part_among_100000() {
             .json::<Value>()["orgs"][0]["id"]
             .as_i64()
             .unwrap();
-        let api = Api { server: &server, token, org };
+        let api = Api { server: &server, ctx: &ctx, token, org };
         let (st, r) = api.call("POST", "/api/v1/ontology/packs/maintenance/install", None).await;
         assert_eq!(st, 200, "{r}");
         let n = 100_000;

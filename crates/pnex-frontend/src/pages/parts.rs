@@ -178,14 +178,11 @@ pub fn Parts() -> Element {
         ListLayout {
             title: t!("parts-title").to_string(),
             subtitle: Some(t!("parts-subtitle").to_string()),
-            // Parts come from parts lists: the add button imports one.
+            // Parts come from parts lists: a pipeline imports one (D1050).
             can_write: crate::state::access::can("ontology:write"),
             add_label: Some(t!("parts-import").to_string()),
             on_add: move |_| {
-                nav.push(Route::Ontology {
-                    tab: "imports".into(),
-                    type_key: String::new(),
-                });
+                nav.push(Route::Pipelines {});
             },
             on_refresh: move |_| results.restart(),
             div { class: "space-y-4",

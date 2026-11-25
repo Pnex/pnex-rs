@@ -173,7 +173,6 @@ const VIEW_TRANSACTIONS: &str = "\
     ), 0)";
 
 const DATASET_COLUMNS: &str = "\
-    (SELECT i.name FROM object_imports i WHERE i.id = d.import_id) AS import_name, \
     d.id, d.name, d.schema, d.max_age_hours, \
     (d.max_age_hours IS NOT NULL AND coalesce(v.committed_at, d.created_at) \
       < now() - make_interval(hours => d.max_age_hours)) AS stale, \
@@ -211,7 +210,6 @@ fn dataset_of(row: &QueryResult) -> Result<Dataset, DbErr> {
         committed_at: row.try_get("", "committed_at")?,
         max_age_hours: row.try_get("", "max_age_hours")?,
         stale: row.try_get("", "stale")?,
-        import_name: row.try_get("", "import_name")?,
         markings: serde_json::from_value(row.try_get("", "markings")?).unwrap_or_default(),
         created_at: row.try_get("", "created_at")?,
     })

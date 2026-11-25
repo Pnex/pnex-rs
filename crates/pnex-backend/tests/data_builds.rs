@@ -1,6 +1,6 @@
 //! Chained runs (pipelines.md D575), stale tables (D576) and dataset events
-//! (D578): imports really run; the worker's job is played in SQL, its own tests
-//! cover what it computes.
+//! (D578): the worker's job is played in SQL, its own tests cover what it
+//! computes; pipelines that write objects really run (D1050).
 //!
 //! Needs PostgreSQL (TEST_DATABASE_URL), the compose `rustfs` and `valkey` services.
 
@@ -9,8 +9,7 @@ mod common;
 use futures_util::StreamExt;
 use loco_rs::testing::request::{RequestConfig, RequestConfigBuilder};
 use pnex_backend::app::App;
-use pnex_backend::services::artifact_store::{S3Config, S3Store};
-use pnex_backend::services::{data_builds, ontology::imports};
+use pnex_backend::services::data_builds;
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, QueryResult, Statement};
 use serde_json::{json, Value};
 use serial_test::serial;
@@ -117,17 +116,14 @@ impl Api<'_> {
         p["id"].as_str().unwrap().to_string()
     }
 
-    async fn import(&self, name: &str, table: &str, mapping: &str, extra: Value) -> String {
-        let mut body = json!({ "name": name, "mapping": mapping, "source": "dataset",
-                               "source_url": table, "mode": "incremental" });
-        for (k, v) in extra.as_object().unwrap() {
-            body[k] = v.clone();
+    /// An org pipeline writing objects from `table` with `mapping`, after the
+    /// pipelines named in `after`.
+    async fn objects(&self, name: &str, table: &str, mapping: &str, after: &[&str]) -> String {
+        let mut document = common::objects_pipeline(table, mapping, false);
+        if !after.is_empty() {
+            document.push_str(&format!("after: [{}]\n", after.join(", ")));
         }
-        let (s, i) = self
-            .call("POST", "/api/v1/ontology/imports", Some(body))
-            .await;
-        assert_eq!(s, 201, "{i}");
-        i["id"].as_str().unwrap().to_string()
+        common::create_pipeline(self.server, self.token, self.org, name, &document).await
     }
 
     async fn build(&self, kind: &str, id: &str) -> (u16, Value) {
@@ -168,10 +164,6 @@ async fn sql(db: &DatabaseConnection, text: &str) -> Vec<QueryResult> {
         .unwrap()
 }
 
-fn store(ctx: &loco_rs::app::AppContext) -> S3Store {
-    S3Config::from_config(&ctx.config).store().unwrap()
-}
-
 /// Plays the worker: the queued job of this pipeline ends in `state`.
 async fn finish_job(db: &DatabaseConnection, pipeline: &str, state: &str, code: Option<&str>) {
     let code = code.map_or("NULL".to_string(), |c| format!("'{c}'"));
@@ -201,11 +193,12 @@ fn states(build: &Value) -> Vec<String> {
         .collect()
 }
 
-/// Ticks until the build ends: imports run in the background of this process.
+/// Ticks until the build ends, the server taking each run it queues (`sql` steps
+/// need a worker).
 async fn run_to_end(api: &Api<'_>, ctx: &loco_rs::app::AppContext, id: &str) -> Value {
-    let store = store(ctx);
     for _ in 0..300 {
-        data_builds::tick(&ctx.db, Some(&store)).await.unwrap();
+        data_builds::tick(&ctx.db).await.unwrap();
+        let _ = pnex_backend::services::pipelines::run_next(ctx).await;
         let b = api.get_build(id).await;
         if b["state"] != "running" {
             return b;
@@ -216,8 +209,6 @@ async fn run_to_end(api: &Api<'_>, ctx: &loco_rs::app::AppContext, id: &str) -> 
 }
 
 const CERTS: &str = r#"
-key: certs
-name: Certifications
 objects:
   - as: cert
     type: certification
@@ -229,9 +220,6 @@ objects:
 
 /// Waits for `certs`: its links need the certifications to exist.
 const PARTNERS: &str = r#"
-key: partners
-name: Partners
-after: [certs]
 objects:
   - as: org
     type: organization
@@ -261,7 +249,7 @@ async fn links_of(db: &DatabaseConnection, org: i64) -> i64 {
         db,
         &format!(
             "SELECT count(*) AS n FROM resource_edges WHERE org_id = {org} \
-             AND valid_to IS NULL AND source_ref LIKE 'import:%'"
+             AND valid_to IS NULL AND source_ref LIKE 'pipeline:%'"
         ),
     )
     .await[0]
@@ -301,39 +289,28 @@ async fn a_cycle_is_refused_when_saved() {
             .await;
         assert_eq!(s, 400);
 
-        // Through imports.
-        let (s, e) = api
-            .call("POST", "/api/v1/ontology/packs/quali_watch/install", None)
-            .await;
-        assert_eq!(s, 200, "{e}");
-        let certs = api.table("certs_table", CERTS_CSV).await;
-        let partners = api.table("partners_table", PARTNERS_CSV).await;
-        let one = api.import("certs", &certs, CERTS, json!({})).await;
-        api.import("partners", &partners, PARTNERS, json!({})).await;
-        let looped = format!("{CERTS}after: [partners]\n");
+        // Through `after` (D1050).
+        let x = api.pipeline("x", "raw", "x_out").await;
+        let y = api.pipeline("y", "raw", "y_out").await;
+        let after = |a: &str| format!("{}after: [{a}]\n", document("raw", "y_out"));
         let (s, e) = api
             .call(
                 "PUT",
-                &format!("/api/v1/ontology/imports/{one}"),
-                Some(
-                    json!({ "name": "certs", "mapping": looped, "source": "dataset",
-                             "source_url": certs, "mode": "incremental",
-                             "expected_version": 1 }),
-                ),
+                &format!("/api/v1/pipelines/{y}"),
+                Some(json!({ "document": after("x"), "expected_version": 1 })),
+            )
+            .await;
+        assert_eq!(s, 200, "{e}");
+        let looped = format!("{}after: [y]\n", document("raw", "x_out"));
+        let (s, e) = api
+            .call(
+                "PUT",
+                &format!("/api/v1/pipelines/{x}"),
+                Some(json!({ "document": looped, "expected_version": 1 })),
             )
             .await;
         assert_eq!(s, 400, "{e}");
-        assert_eq!(e["errors"]["fields"]["mapping.after"], "cycle", "{e}");
-        let own = format!("{CERTS}after: [certs]\n");
-        let (s, _) = api
-            .call(
-                "POST",
-                "/api/v1/ontology/imports",
-                Some(json!({ "name": "own", "mapping": own, "source": "dataset",
-                             "source_url": certs, "mode": "incremental" })),
-            )
-            .await;
-        assert_eq!(s, 400);
+        assert_eq!(e["errors"]["violations"][0]["token"], "cycle", "{e}");
     })
     .await;
 }
@@ -349,7 +326,6 @@ async fn a_failure_blocks_what_depends_on_it_and_nothing_else() {
             org,
         };
         let db = &ctx.db;
-        let store = store(&ctx);
         api.table("raw", b"a\n1\n").await;
         let first = api.pipeline("first", "raw", "clean").await;
         let second = api.pipeline("second", "clean", "final").await;
@@ -371,14 +347,14 @@ async fn a_failure_blocks_what_depends_on_it_and_nothing_else() {
         let id = b["id"].as_str().unwrap().to_string();
 
         // In order, one at a time.
-        data_builds::tick(db, Some(&store)).await.unwrap();
+        data_builds::tick(db).await.unwrap();
         let b = api.get_build(&id).await;
         assert_eq!(
             states(&b),
             ["first=running", "second=pending", "third=pending"]
         );
         finish_job(db, &first, "done", None).await;
-        data_builds::tick(db, Some(&store)).await.unwrap();
+        data_builds::tick(db).await.unwrap();
         let b = api.get_build(&id).await;
         assert_eq!(
             states(&b),
@@ -397,7 +373,7 @@ async fn a_failure_blocks_what_depends_on_it_and_nothing_else() {
 
         // Its input failed: the third never starts, the build says why.
         finish_job(db, &second, "failed", Some("pipeline-sql-invalid")).await;
-        data_builds::tick(db, Some(&store)).await.unwrap();
+        data_builds::tick(db).await.unwrap();
         let b = api.get_build(&id).await;
         assert_eq!(states(&b), ["first=done", "second=failed", "third=blocked"]);
         assert_eq!(b["state"], "failed", "{b}");
@@ -413,7 +389,7 @@ async fn a_failure_blocks_what_depends_on_it_and_nothing_else() {
         assert_eq!(s, 202, "{r}");
         finish_job(db, &first, "failed", Some("pipeline-check-failed")).await;
         assert_eq!(sql(db, unnotified).await.len(), 1);
-        data_builds::tick(db, Some(&store)).await.unwrap();
+        data_builds::tick(db).await.unwrap();
         assert!(sql(db, unnotified).await.is_empty());
         // Old finished builds go, a running or recent one stays.
         sql(
@@ -423,7 +399,7 @@ async fn a_failure_blocks_what_depends_on_it_and_nothing_else() {
             ),
         )
         .await;
-        data_builds::tick(db, Some(&store)).await.unwrap();
+        data_builds::tick(db).await.unwrap();
         let (s, _) = api
             .call("GET", &format!("/api/v1/data-builds/{id}"), None)
             .await;
@@ -443,7 +419,7 @@ async fn a_failure_blocks_what_depends_on_it_and_nothing_else() {
 
 #[tokio::test]
 #[serial]
-async fn one_schedule_runs_an_import_and_what_it_waits_for() {
+async fn one_schedule_runs_a_pipeline_and_what_it_waits_for() {
     with_app(|server, env, ctx| async move {
         let org = personal_org(&server, &env.alice).await;
         let api = Api {
@@ -456,25 +432,32 @@ async fn one_schedule_runs_an_import_and_what_it_waits_for() {
             .call("POST", "/api/v1/ontology/packs/quali_watch/install", None)
             .await;
         assert_eq!(s, 200, "{e}");
-        let certs_table = api.table("certs_table", CERTS_CSV).await;
-        let partners_table = api.table("partners_table", PARTNERS_CSV).await;
-        let every_day =
-            json!({ "recurrence": { "start": "2026-01-01", "every": 1, "unit": "day" } });
-        let certs = api.import("certs", &certs_table, CERTS, json!({})).await;
+        api.table("certs_table", CERTS_CSV).await;
+        api.table("partners_table", PARTNERS_CSV).await;
+        let certs = api.objects("certs", "certs_table", CERTS, &[]).await;
         // Declared second, scheduled alone: the only thing that orders them is `after`.
         let partners = api
-            .import("partners", &partners_table, PARTNERS, every_day)
+            .objects("partners", "partners_table", PARTNERS, &["certs"])
             .await;
-
+        let every_day =
+            json!({ "recurrence": { "start": "2026-01-01", "every": 1, "unit": "day" } });
+        let (s, e) = api
+            .call(
+                "PUT",
+                &format!("/api/v1/pipelines/{partners}/schedule"),
+                Some(every_day),
+            )
+            .await;
+        assert_eq!(s, 200, "{e}");
         sql(
             db,
             &format!(
-                "UPDATE object_imports SET next_run_at = now() - interval '1 minute' \
+                "UPDATE pipelines SET next_run_at = now() - interval '1 minute' \
                  WHERE id = '{partners}'"
             ),
         )
         .await;
-        imports::sweep(db).await.unwrap();
+        data_builds::tick(db).await.unwrap();
         let (_, list) = api.call("GET", "/api/v1/data-builds", None).await;
         assert_eq!(list["count"], 1, "{list}");
         let b = &list["results"][0];
@@ -482,6 +465,7 @@ async fn one_schedule_runs_an_import_and_what_it_waits_for() {
         assert_eq!(b["target_name"], "partners");
         let id = b["id"].as_str().unwrap().to_string();
 
+        let worker = common::spawn_pipeline_worker();
         let b = run_to_end(&api, &ctx, &id).await;
         assert_eq!(states(&b), ["certs=done", "partners=done"], "{b}");
         assert_eq!(b["state"], "done", "{b}");
@@ -491,106 +475,21 @@ async fn one_schedule_runs_an_import_and_what_it_waits_for() {
             "the certification existed in time"
         );
 
-        // A changed mapping stops its import at a preview: what waits for it stays.
-        let (_, read) = api
-            .call("GET", &format!("/api/v1/ontology/imports/{certs}"), None)
-            .await;
-        let changed = CERTS.replace("name: Certifications", "name: Other name");
-        let (s, e) = api
-            .call(
-                "PUT",
-                &format!("/api/v1/ontology/imports/{certs}"),
-                Some(
-                    json!({ "name": "certs", "mapping": changed, "source": "dataset",
-                             "source_url": certs_table, "mode": "incremental",
-                             "expected_version": read["version"] }),
-                ),
-            )
-            .await;
-        assert_eq!(s, 200, "{e}");
-        let (s, b) = api.build("import", &partners).await;
+        // What it waits for fails: it does not run, and keeps what it wrote.
+        sql(
+            db,
+            &format!(
+                "UPDATE pipeline_versions SET document = replace(document, 'SELECT * FROM source', \
+                   'SELECT missing FROM source') WHERE pipeline_id = '{certs}'"
+            ),
+        )
+        .await;
+        let (s, b) = api.build("pipeline", &partners).await;
         assert_eq!(s, 202, "{b}");
         let b = run_to_end(&api, &ctx, b["id"].as_str().unwrap()).await;
+        worker.abort();
         assert_eq!(states(&b), ["certs=failed", "partners=blocked"], "{b}");
-        assert_eq!(b["code"], "import-preview-required", "{b}");
-    })
-    .await;
-}
-
-/// Waits for the run of the only step to end, then marks it lost with its server.
-async fn lose_run_of_step(api: &Api<'_>, ctx: &loco_rs::app::AppContext, id: &str) -> String {
-    let store = store(ctx);
-    for _ in 0..300 {
-        let b = api.get_build(id).await;
-        if let Some(run) = b["steps"][0]["run_id"].as_str() {
-            let state = sql(
-                &ctx.db,
-                &format!("SELECT state FROM object_import_runs WHERE id = '{run}'"),
-            )
-            .await;
-            if state[0].try_get::<String>("", "state").unwrap() != "running" {
-                sql(
-                    &ctx.db,
-                    &format!(
-                        "UPDATE object_import_runs \
-                         SET state = 'failed', state_code = 'import-run-interrupted' \
-                         WHERE id = '{run}'"
-                    ),
-                )
-                .await;
-                return run.to_string();
-            }
-        } else {
-            data_builds::tick(&ctx.db, Some(&store)).await.unwrap();
-        }
-        tokio::time::sleep(Duration::from_millis(100)).await;
-    }
-    panic!("no run ended: {}", api.get_build(id).await);
-}
-
-#[tokio::test]
-#[serial]
-async fn a_run_lost_with_its_server_starts_again_once() {
-    with_app(|server, env, ctx| async move {
-        let org = personal_org(&server, &env.alice).await;
-        let api = Api {
-            server: &server,
-            token: &env.alice,
-            org,
-        };
-        let (s, e) = api
-            .call("POST", "/api/v1/ontology/packs/quali_watch/install", None)
-            .await;
-        assert_eq!(s, 200, "{e}");
-        let table = api.table("certs_table", CERTS_CSV).await;
-        let import = api.import("certs", &table, CERTS, json!({})).await;
-
-        // A deployment during the run: the build carries on with a new run.
-        let (s, b) = api.build("import", &import).await;
-        assert_eq!(s, 202, "{b}");
-        let id = b["id"].as_str().unwrap().to_string();
-        let lost = lose_run_of_step(&api, &ctx, &id).await;
-        let done = run_to_end(&api, &ctx, &id).await;
-        assert_eq!(done["state"], "done", "{done}");
-        assert_eq!(done["steps"][0]["retries"], 1, "{done}");
-        assert_ne!(done["steps"][0]["run_id"], lost.as_str(), "{done}");
-
-        // Lost twice: it stops there and says why.
-        let (s, b) = api.build("import", &import).await;
-        assert_eq!(s, 202, "{b}");
-        let id = b["id"].as_str().unwrap().to_string();
-        lose_run_of_step(&api, &ctx, &id).await;
-        let store = store(&ctx);
-        data_builds::tick(&ctx.db, Some(&store)).await.unwrap();
-        let again = api.get_build(&id).await;
-        assert_eq!(again["steps"][0]["retries"], 1, "{again}");
-        lose_run_of_step(&api, &ctx, &id).await;
-        let failed = run_to_end(&api, &ctx, &id).await;
-        assert_eq!(failed["state"], "failed", "{failed}");
-        assert_eq!(
-            failed["steps"][0]["code"], "import-run-interrupted",
-            "{failed}"
-        );
+        assert_eq!(links_of(db, org).await, 1);
     })
     .await;
 }
@@ -606,7 +505,6 @@ async fn a_request_during_a_build_is_one_more_pass() {
             org,
         };
         let db = &ctx.db;
-        let store = store(&ctx);
         api.table("raw", b"a\n1\n").await;
         let p = api.pipeline("only", "raw", "clean").await;
         let (_, first) = api.build("pipeline", &p).await;
@@ -617,10 +515,10 @@ async fn a_request_during_a_build_is_one_more_pass() {
         let (_, third) = api.build("pipeline", &p).await;
         assert_eq!(third["id"], first["id"], "merged once");
 
-        data_builds::tick(db, Some(&store)).await.unwrap();
+        data_builds::tick(db).await.unwrap();
         finish_job(db, &p, "done", None).await;
-        data_builds::tick(db, Some(&store)).await.unwrap();
-        data_builds::tick(db, Some(&store)).await.unwrap();
+        data_builds::tick(db).await.unwrap();
+        data_builds::tick(db).await.unwrap();
         let (_, list) = api.call("GET", "/api/v1/data-builds", None).await;
         assert_eq!(list["count"], 2, "exactly one more: {list}");
         assert_eq!(list["results"][1]["state"], "done", "{list}");
@@ -703,7 +601,6 @@ async fn a_scheduled_build_reads_the_rights_of_its_author_before_each_step() {
             token: &env.alice,
             org,
         };
-        let store = store(&ctx);
         api.table("raw", b"a\n1\n").await;
         let p = api.pipeline("only", "raw", "clean").await;
         let author: i64 = sql(
@@ -728,7 +625,7 @@ async fn a_scheduled_build_reads_the_rights_of_its_author_before_each_step() {
             &format!("UPDATE organization_members SET role = 'viewer' WHERE org_id = {org}"),
         )
         .await;
-        data_builds::tick(&ctx.db, Some(&store)).await.unwrap();
+        data_builds::tick(&ctx.db).await.unwrap();
         let queued = sql(&ctx.db, "SELECT id FROM pipeline_jobs").await;
         assert!(queued.is_empty(), "a job was queued for a viewer");
         let done = api.get_build(&build.id).await;
@@ -754,7 +651,6 @@ async fn a_schedule_answers_to_who_set_it() {
             org,
         };
         let db = &ctx.db;
-        let store = store(&ctx);
         alice.table("raw", b"a\n1\n").await;
         let p = alice.pipeline("only", "raw", "clean").await;
         let schedule = format!("/api/v1/pipelines/{p}/schedule");
@@ -820,7 +716,7 @@ async fn a_schedule_answers_to_who_set_it() {
             "UPDATE pipelines SET next_run_at = now() - interval '1 minute' WHERE id = '{p}'"
         );
         sql(db, &due).await;
-        data_builds::tick(db, Some(&store)).await.unwrap();
+        data_builds::tick(db).await.unwrap();
         let (_, list) = alice.call("GET", "/api/v1/data-builds", None).await;
         assert_eq!(list["results"][0]["state"], "running", "{list}");
         assert_eq!(list["results"][0]["trigger"], "schedule", "{list}");
@@ -830,7 +726,7 @@ async fn a_schedule_answers_to_who_set_it() {
             .1;
         assert!(next["next_run_at"].is_string(), "moved ahead: {next}");
         finish_job(db, &p, "done", None).await;
-        data_builds::tick(db, Some(&store)).await.unwrap();
+        data_builds::tick(db).await.unwrap();
 
         // Who set it is no longer allowed: nothing runs, and it says why.
         sql(
@@ -843,7 +739,7 @@ async fn a_schedule_answers_to_who_set_it() {
         .await;
         sql(db, &due).await;
         let jobs_before = sql(db, "SELECT id FROM pipeline_jobs").await.len();
-        data_builds::tick(db, Some(&store)).await.unwrap();
+        data_builds::tick(db).await.unwrap();
         let (_, list) = alice.call("GET", "/api/v1/data-builds", None).await;
         assert_eq!(list["results"][0]["state"], "failed", "{list}");
         assert_eq!(
@@ -911,7 +807,7 @@ async fn a_table_without_a_new_version_warns_once() {
                     .unwrap()
             }
         };
-        data_builds::tick(db, None).await.unwrap();
+        data_builds::tick(db).await.unwrap();
         assert!(
             notified(db, id.clone()).await.is_none(),
             "fresh: no warning"
@@ -929,9 +825,9 @@ async fn a_table_without_a_new_version_warns_once() {
             .call("GET", &format!("/api/v1/datasets/{id}"), None)
             .await;
         assert_eq!(d["stale"], true, "{d}");
-        data_builds::tick(db, None).await.unwrap();
+        data_builds::tick(db).await.unwrap();
         let first = notified(db, id.clone()).await.expect("warned");
-        data_builds::tick(db, None).await.unwrap();
+        data_builds::tick(db).await.unwrap();
         assert_eq!(notified(db, id.clone()).await.unwrap(), first, "once");
 
         // A new version ends it, and a later lapse warns again.
@@ -956,7 +852,7 @@ async fn a_table_without_a_new_version_warns_once() {
             ),
         )
         .await;
-        data_builds::tick(db, None).await.unwrap();
+        data_builds::tick(db).await.unwrap();
         assert_ne!(
             notified(db, id.clone()).await.unwrap(),
             first,
@@ -968,7 +864,7 @@ async fn a_table_without_a_new_version_warns_once() {
 
 #[tokio::test]
 #[serial]
-async fn commits_and_syncs_reach_the_channel_of_their_org_once() {
+async fn commits_reach_the_channel_of_their_org_once() {
     with_app(|server, env, ctx| async move {
         let org = personal_org(&server, &env.alice).await;
         let api = Api {
@@ -988,11 +884,7 @@ async fn commits_and_syncs_reach_the_channel_of_their_org_once() {
             .await
             .expect("valkey is configured for tests");
 
-        let (s, e) = api
-            .call("POST", "/api/v1/ontology/packs/quali_watch/install", None)
-            .await;
-        assert_eq!(s, 200, "{e}");
-        let table = api.table("certs_table", CERTS_CSV).await;
+        api.table("certs_table", CERTS_CSV).await;
         // An old commit is not announced late.
         let old = api.table("old_table", b"a\n1\n").await;
         sql(
@@ -1003,31 +895,6 @@ async fn commits_and_syncs_reach_the_channel_of_their_org_once() {
             ),
         )
         .await;
-        let certs = api.import("certs", &table, CERTS, json!({})).await;
-        let (s, r) = api
-            .call(
-                "POST",
-                &format!("/api/v1/ontology/imports/{certs}/runs"),
-                None,
-            )
-            .await;
-        assert_eq!(s, 202, "{r}");
-        let run = r["id"].as_str().unwrap().to_string();
-        for _ in 0..200 {
-            let (_, v) = api
-                .call(
-                    "GET",
-                    &format!("/api/v1/ontology/imports/{certs}/runs/{run}"),
-                    None,
-                )
-                .await;
-            if v["run"]["state"] != "running" {
-                assert_eq!(v["run"]["state"], "applied", "{v}");
-                break;
-            }
-            tokio::time::sleep(Duration::from_millis(50)).await;
-        }
-
         data_builds::publish_events(db, &mut conn).await.unwrap();
         let mut stream = sub.on_message();
         let mut next = async || {
@@ -1041,11 +908,6 @@ async fn commits_and_syncs_reach_the_channel_of_their_org_once() {
         assert_eq!(commit["event"], "dataset.committed", "{commit}");
         assert_eq!(commit["dataset"], "certs_table", "{commit}");
         assert_eq!(commit["counts"]["rows"], 1, "{commit}");
-        let synced = next().await;
-        assert_eq!(synced["event"], "dataset.synced", "{synced}");
-        assert_eq!(synced["dataset"], "certs_table", "{synced}");
-        assert_eq!(synced["reference"], format!("{certs}@1"), "{synced}");
-        assert_eq!(synced["changed"].as_array().unwrap().len(), 1, "{synced}");
 
         // Already sent: nothing more comes.
         data_builds::publish_events(db, &mut conn).await.unwrap();

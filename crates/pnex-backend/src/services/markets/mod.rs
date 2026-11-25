@@ -30,7 +30,7 @@ pub fn spawn_scheduler(ctx: &loco_rs::app::AppContext) {
     tokio::spawn(async move {
         tokio::time::sleep(std::time::Duration::from_secs(180)).await;
         loop {
-            if !crate::services::ontology::imports::stop::stopping()
+            if !crate::services::stop::stopping()
                 && crate::services::singleton::my_turn(&ctx.db, "market-documents", SWEEP_EVERY)
                     .await
             {

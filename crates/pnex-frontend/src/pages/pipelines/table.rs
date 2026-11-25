@@ -351,9 +351,7 @@ pub fn PipelineTable(id: String) -> Element {
                         }
                     }
                 }
-                if let Some(import) = current.import_name.clone() {
-                    p { class: FIELD_HELP, {t!("pipe-table-filled-by", name : import)} }
-                } else if can_write {
+                if can_write {
                     section { class: "{PANEL} space-y-3 p-3",
                         h2 { class: "text-sm font-semibold text-ink", {t!("pipe-table-load")} }
                         p { class: FIELD_HELP, {t!("pipe-table-load-help")} }

@@ -570,7 +570,7 @@ pub fn spawn(ctx: &AppContext) {
         let mut ticks = 0u32;
         loop {
             tokio::time::sleep(JOIN_EVERY).await;
-            if crate::services::ontology::imports::stop::stopping() {
+            if crate::services::stop::stopping() {
                 continue;
             }
             let Ok(store) = MediaSettings::from_config(&ctx.config).storage.store() else {

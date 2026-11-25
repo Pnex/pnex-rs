@@ -1,7 +1,7 @@
 //! Scheduler with dependencies (pipelines.md D575): a build runs a target and
 //! what it depends on, one step at a time, with the state in PostgreSQL so that
-//! another pod carries on. Pipelines run in the worker, imports in the server; a
-//! failed step blocks what depends on it, which keeps its last valid version.
+//! another pod carries on. Pipelines run in the worker; a failed step blocks what
+//! depends on it, which keeps its last valid version.
 //!
 //! The same tick warns about stale datasets (D576) and publishes what was committed
 //! (D578): the worker has neither Valkey nor notifications (D573).
@@ -12,8 +12,7 @@ use pnex_core::err_codes;
 use pnex_core::pipeline::doc::Document;
 use pnex_core::pipelines::{
     dataset_channel, find_cycle, next_step, plan, Build, BuildState, BuildStep, BuildStepState,
-    BuildTargetKind, DatasetEvent, GraphNode, PlanError, CHANGED_IDS_MAX, DATASET_COMMITTED,
-    DATASET_SYNCED,
+    BuildTargetKind, DatasetEvent, GraphNode, PlanError, DATASET_COMMITTED,
 };
 use sea_orm::{
     ConnectionTrait, DatabaseBackend, DatabaseConnection, DbErr, QueryResult, Statement,
@@ -22,8 +21,6 @@ use serde_json::{json, Value};
 use uuid::Uuid;
 
 use crate::models::_entities::sea_orm_active_enums::OrgMemberRole;
-use crate::services::artifact_store::S3Store;
-use crate::services::ontology::imports;
 
 const TICK_EVERY: Duration = Duration::from_secs(15);
 /// A step that never ends, usually a queue no worker takes.
@@ -105,9 +102,7 @@ pub(crate) fn pipeline_node(id: Uuid, name: String, doc: Option<&Document>) -> G
 
 /// Everything of the org a schedule can chain.
 pub async fn graph(db: &impl ConnectionTrait, org_id: i64) -> Result<Vec<GraphNode>, DbErr> {
-    let mut nodes = pipeline_nodes(db, org_id).await?;
-    nodes.extend(imports::graph_nodes(db, org_id).await?);
-    Ok(nodes)
+    pipeline_nodes(db, org_id).await
 }
 
 /// The cycle a new version would close, refused at save (D575).
@@ -165,19 +160,11 @@ const BUILD_SELECT: &str =
     to_char(finished_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"') AS finished_at \
     FROM data_builds";
 
-fn kind_of(s: &str) -> BuildTargetKind {
-    match s {
-        "pipeline" => BuildTargetKind::Pipeline,
-        _ => BuildTargetKind::Import,
-    }
-}
-
 fn build_of(r: &QueryResult) -> Result<Build, DbErr> {
     let state: String = r.try_get("", "state")?;
-    let kind: String = r.try_get("", "target_kind")?;
     Ok(Build {
         id: r.try_get::<Uuid>("", "id")?.to_string(),
-        target_kind: kind_of(&kind),
+        target_kind: BuildTargetKind::Pipeline,
         target_id: r.try_get::<Uuid>("", "target_id")?.to_string(),
         target_name: r.try_get("", "target_name")?,
         trigger: r.try_get("", "trigger")?,
@@ -301,7 +288,7 @@ async fn refuse(
     Ok(())
 }
 
-/// The sweep of due imports goes through a build, like a pipeline.
+/// A due schedule goes through a build.
 pub async fn fire(
     db: &DatabaseConnection,
     org_id: i64,
@@ -332,9 +319,6 @@ pub fn rights_of(steps: &[BuildStep]) -> Vec<&'static str> {
     let mut needed = vec!["pipelines:run"];
     if steps.iter().any(|s| s.kind == BuildTargetKind::Pipeline) {
         needed.extend(["datasets:read", "datasets:write"]);
-    }
-    if steps.iter().any(|s| s.kind == BuildTargetKind::Import) {
-        needed.push("ontology:write");
     }
     needed
 }
@@ -391,7 +375,10 @@ async fn fire_due_pipelines(db: &DatabaseConnection) -> Result<(), DbErr> {
         // Moved first: a build that cannot start is not retried in a loop.
         db.execute_raw(stmt(
             "UPDATE pipelines SET next_run_at = $2 WHERE id = $1",
-            vec![id.into(), imports::next_run(recurrence.as_ref()).into()],
+            vec![
+                id.into(),
+                crate::services::ontology::imports::next_run(recurrence.as_ref()).into(),
+            ],
         ))
         .await?;
         let kind = BuildTargetKind::Pipeline;
@@ -418,41 +405,26 @@ async fn poll_step(
     let Some(run) = step.run_id.as_deref().and_then(|r| r.parse::<Uuid>().ok()) else {
         return Ok(Some((BuildStepState::Pending, None)));
     };
-    let (sql, code_column) = match step.kind {
-        BuildTargetKind::Pipeline => (
-            "SELECT state, code FROM pipeline_jobs WHERE id = $1",
-            "code",
-        ),
-        BuildTargetKind::Import => (
-            "SELECT state, state_code FROM object_import_runs WHERE id = $1",
-            "state_code",
-        ),
-    };
+    let sql = "SELECT state, code FROM pipeline_jobs WHERE id = $1";
     let Some(row) = db.query_one_raw(stmt(sql, vec![run.into()])).await? else {
-        // Its pipeline or import was deleted during the build.
+        // Its pipeline was deleted during the build.
         return Ok(Some((
             BuildStepState::Failed,
             Some(err_codes::BUILD_NOT_FOUND.to_string()),
         )));
     };
     let state: String = row.try_get("", "state")?;
-    let code: Option<String> = row.try_get("", code_column)?;
+    let code: Option<String> = row.try_get("", "code")?;
     Ok(match state.as_str() {
         "queued" | "running" => None,
-        "done" | "applied" => Some((BuildStepState::Done, None)),
-        // A run stopped at a preview waits for a person: what follows must not go on.
-        "preview" => Some((
-            BuildStepState::Failed,
-            Some(code.unwrap_or_else(|| err_codes::IMPORT_PREVIEW_REQUIRED.to_string())),
-        )),
+        "done" => Some((BuildStepState::Done, None)),
         _ => Some((BuildStepState::Failed, code)),
     })
 }
 
-/// Starts a step. `Ok(false)`: not now (a run of it is active, the server is stopping).
+/// Starts a step. `Ok(false)`: not now (a run of it is active).
 async fn start_step(
     db: &DatabaseConnection,
-    store: Option<&S3Store>,
     org_id: i64,
     author: Option<i64>,
     step: &mut BuildStep,
@@ -465,80 +437,50 @@ async fn start_step(
     let Ok(id) = step.id.parse::<Uuid>() else {
         return fail(step, err_codes::BUILD_NOT_FOUND);
     };
-    match step.kind {
-        BuildTargetKind::Pipeline => {
-            // The build reads under its author's rights (governance.md D801).
-            let doc = db
+    // The build reads under its author's rights (governance.md D801).
+    let doc = db
+        .query_one_raw(stmt(
+            "SELECT document FROM pipelines WHERE org_id = $1 AND id = $2",
+            vec![org_id.into(), id.into()],
+        ))
+        .await?
+        .and_then(|r| r.try_get::<String>("", "document").ok());
+    if let Some(doc) = doc {
+        let missing =
+            crate::services::pipelines::missing_markings(db, org_id, author.unwrap_or(-1), &doc)
+                .await?;
+        if !missing.is_empty() {
+            return fail(step, err_codes::MARKING_REQUIRED);
+        }
+    }
+    let row = db
+        .query_one_raw(stmt(
+            "INSERT INTO pipeline_jobs (org_id, pipeline_id, version, trigger, started_by) \
+             SELECT org_id, id, version, 'build', $3 FROM pipelines \
+             WHERE org_id = $1 AND id = $2 \
+             ON CONFLICT (pipeline_id) WHERE state IN ('queued', 'running') DO NOTHING \
+             RETURNING id",
+            vec![org_id.into(), id.into(), author.into()],
+        ))
+        .await?;
+    match row {
+        Some(r) => {
+            step.run_id = Some(r.try_get::<Uuid>("", "id")?.to_string());
+            step.state = BuildStepState::Running;
+            Ok(true)
+        }
+        None => {
+            let exists = db
                 .query_one_raw(stmt(
-                    "SELECT document FROM pipelines WHERE org_id = $1 AND id = $2",
+                    "SELECT 1 AS x FROM pipelines WHERE org_id = $1 AND id = $2",
                     vec![org_id.into(), id.into()],
                 ))
                 .await?
-                .and_then(|r| r.try_get::<String>("", "document").ok());
-            if let Some(doc) = doc {
-                let missing = crate::services::pipelines::missing_markings(
-                    db,
-                    org_id,
-                    author.unwrap_or(-1),
-                    &doc,
-                )
-                .await?;
-                if !missing.is_empty() {
-                    return fail(step, err_codes::MARKING_REQUIRED);
-                }
-            }
-            let row = db
-                .query_one_raw(stmt(
-                    "INSERT INTO pipeline_jobs (org_id, pipeline_id, version, trigger, started_by) \
-                     SELECT org_id, id, version, 'build', $3 FROM pipelines \
-                     WHERE org_id = $1 AND id = $2 \
-                     ON CONFLICT (pipeline_id) WHERE state IN ('queued', 'running') DO NOTHING \
-                     RETURNING id",
-                    vec![org_id.into(), id.into(), author.into()],
-                ))
-                .await?;
-            match row {
-                Some(r) => {
-                    step.run_id = Some(r.try_get::<Uuid>("", "id")?.to_string());
-                    step.state = BuildStepState::Running;
-                    Ok(true)
-                }
-                None => {
-                    let exists = db
-                        .query_one_raw(stmt(
-                            "SELECT 1 AS x FROM pipelines WHERE org_id = $1 AND id = $2",
-                            vec![org_id.into(), id.into()],
-                        ))
-                        .await?
-                        .is_some();
-                    if exists {
-                        Ok(false)
-                    } else {
-                        fail(step, err_codes::PIPELINE_NOT_FOUND)
-                    }
-                }
-            }
-        }
-        BuildTargetKind::Import => {
-            let active = db
-                .query_one_raw(stmt(
-                    "SELECT 1 AS x FROM object_import_runs \
-                     WHERE import_id = $1 AND state = 'running'",
-                    vec![id.into()],
-                ))
-                .await?
                 .is_some();
-            if active {
-                return Ok(false);
-            }
-            match imports::start(db, store.cloned(), org_id, id, author, "schedule").await {
-                Ok(run) => {
-                    step.run_id = Some(run.id);
-                    step.state = BuildStepState::Running;
-                    Ok(true)
-                }
-                Err(e) if imports::stopping_refusal(&e) => Ok(false),
-                Err(e) => fail(step, imports::error_code(&e)),
+            if exists {
+                Ok(false)
+            } else {
+                fail(step, err_codes::PIPELINE_NOT_FOUND)
             }
         }
     }
@@ -565,11 +507,7 @@ async fn save_steps(
 }
 
 /// Moves one build as far as it can go now.
-async fn advance(
-    db: &DatabaseConnection,
-    store: Option<&S3Store>,
-    row: &QueryResult,
-) -> Result<(), DbErr> {
+async fn advance(db: &DatabaseConnection, row: &QueryResult) -> Result<(), DbErr> {
     let id: Uuid = row.try_get("", "id")?;
     let org_id: i64 = row.try_get("", "org_id")?;
     let author: Option<i64> = row.try_get("", "requested_by")?;
@@ -589,9 +527,6 @@ async fn advance(
             Some((state, code)) => {
                 steps[i].state = state;
                 steps[i].code = code;
-                if steps[i].retry_if_lost() {
-                    tracing::info!(build = %id, step = %steps[i].name, "run lost with its server: starting again");
-                }
             }
         }
         save_steps(db, id, &steps, true).await?;
@@ -606,7 +541,7 @@ async fn advance(
             steps[i].code = Some(err_codes::BUILD_AUTHOR_FORBIDDEN.to_string());
             return save_steps(db, id, &steps, true).await;
         }
-        let moved = start_step(db, store, org_id, author, &mut steps[i]).await?;
+        let moved = start_step(db, org_id, author, &mut steps[i]).await?;
         if !moved && late {
             steps[i].state = BuildStepState::Failed;
             steps[i].code = Some(err_codes::BUILD_TIMEOUT.to_string());
@@ -659,11 +594,19 @@ async fn finish(
     if row.try_get::<bool>("", "again").unwrap_or(false)
         || again_since_read(db, id).await.unwrap_or(false)
     {
-        let kind: String = row.try_get("", "target_kind")?;
         let target: Uuid = row.try_get("", "target_id")?;
         let trigger: String = row.try_get("", "trigger")?;
         let author: Option<i64> = row.try_get("", "requested_by")?;
-        if let Err(e) = request(db, org_id, kind_of(&kind), target, &trigger, author).await {
+        if let Err(e) = request(
+            db,
+            org_id,
+            BuildTargetKind::Pipeline,
+            target,
+            &trigger,
+            author,
+        )
+        .await
+        {
             tracing::warn!(target = %target, error = ?e, "next build not requested");
         }
     }
@@ -810,7 +753,7 @@ async fn send(conn: &mut redis::aio::ConnectionManager, org_id: i64, event: &Dat
     }
 }
 
-/// Announces new versions and applied syncs to flows (D578). Kept in place until
+/// Announces new versions to flows (D578). Kept in place until
 /// sent, so a pod lost between commit and publication loses no event, and a commit
 /// from the worker, which has no Valkey, gets one too.
 pub async fn publish_events(
@@ -858,70 +801,11 @@ pub async fn publish_events(
         ))
         .await?;
     }
-    // A sync is an import reading a table, or filling its own.
-    db.execute_raw(stmt(
-        &format!(
-            "UPDATE object_import_runs r SET published_at = now() FROM object_imports i \
-             WHERE i.id = r.import_id AND r.state = 'applied' AND r.published_at IS NULL \
-             AND (r.finished_at < {late} OR NOT EXISTS ( \
-               SELECT 1 FROM datasets d WHERE d.org_id = r.org_id AND (d.import_id = i.id \
-                 OR (i.source = 'dataset' AND i.source_url = d.id::text))))"
-        ),
-        vec![],
-    ))
-    .await?;
-    let syncs = db
-        .query_all_raw(stmt(
-            "SELECT r.id, r.org_id, r.import_id, r.number, r.counts, d.id AS dataset_id, d.name \
-             FROM object_import_runs r JOIN object_imports i ON i.id = r.import_id \
-             JOIN datasets d ON d.org_id = r.org_id AND (d.import_id = i.id \
-               OR (i.source = 'dataset' AND i.source_url = d.id::text)) \
-             WHERE r.state = 'applied' AND r.published_at IS NULL \
-             ORDER BY r.finished_at LIMIT $1",
-            vec![PUBLISH_BATCH.into()],
-        ))
-        .await?;
-    for r in &syncs {
-        let id: Uuid = r.try_get("", "id")?;
-        let org_id: i64 = r.try_get("", "org_id")?;
-        let import: Uuid = r.try_get("", "import_id")?;
-        let number: i32 = r.try_get("", "number")?;
-        let changed = db
-            .query_all_raw(stmt(
-                "SELECT id FROM objects WHERE org_id = $1 AND source_ref = $2 LIMIT $3",
-                vec![
-                    org_id.into(),
-                    format!("import:{import}@{number}").into(),
-                    CHANGED_IDS_MAX.into(),
-                ],
-            ))
-            .await?
-            .iter()
-            .filter_map(|o| o.try_get::<Uuid>("", "id").ok().map(|u| u.to_string()))
-            .collect();
-        let event = DatasetEvent {
-            event: DATASET_SYNCED.into(),
-            dataset_id: r.try_get::<Uuid>("", "dataset_id")?.to_string(),
-            dataset: r.try_get("", "name")?,
-            reference: format!("{import}@{number}"),
-            counts: r.try_get("", "counts")?,
-            changed,
-            ts_ms: now_ms,
-        };
-        if !send(conn, org_id, &event).await {
-            return Ok(());
-        }
-        db.execute_raw(stmt(
-            "UPDATE object_import_runs SET published_at = now() WHERE id = $1",
-            vec![id.into()],
-        ))
-        .await?;
-    }
     Ok(())
 }
 
 /// One round: due schedules, running builds, then notices. Public for the tests.
-pub async fn tick(db: &DatabaseConnection, store: Option<&S3Store>) -> Result<(), DbErr> {
+pub async fn tick(db: &DatabaseConnection) -> Result<(), DbErr> {
     fire_due_pipelines(db).await?;
     let running = db
         .query_all_raw(stmt(
@@ -935,7 +819,7 @@ pub async fn tick(db: &DatabaseConnection, store: Option<&S3Store>) -> Result<()
         .await?;
     for row in &running {
         // One build failing to move does not stop the others.
-        if let Err(e) = advance(db, store, row).await {
+        if let Err(e) = advance(db, row).await {
             tracing::warn!(error = %e, "build not advanced");
         }
     }
@@ -952,16 +836,13 @@ pub async fn tick(db: &DatabaseConnection, store: Option<&S3Store>) -> Result<()
 pub fn spawn(ctx: &loco_rs::app::AppContext) {
     let db = ctx.db.clone();
     let config = ctx.config.clone();
-    let store = crate::services::artifact_store::S3Config::from_config(&ctx.config)
-        .store()
-        .ok();
     tokio::spawn(async move {
         tokio::time::sleep(Duration::from_secs(30)).await;
         loop {
-            if !imports::stop::stopping()
+            if !crate::services::stop::stopping()
                 && crate::services::singleton::my_turn(&db, "data-builds", TICK_EVERY).await
             {
-                if let Err(e) = tick(&db, store.as_ref()).await {
+                if let Err(e) = tick(&db).await {
                     tracing::warn!("build tick failed: {e}");
                 }
                 if let Some(mut conn) = crate::services::shared_valkey::conn(&config).await {

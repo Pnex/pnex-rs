@@ -12,7 +12,7 @@ Un pipeline fait entrer des données externes dans PneX. Il lit une source (fich
 - **Table de travail** : résultat nommé d'une étape (`as`), lu par l'étape suivante (`from`, `for_each`). Elle vit le temps de l'exécution (D935).
 - **Élément** : une ligne d'une énumération suivie (`track: true`). Son état est gardé entre deux exécutions (D937).
 - **Table** : lignes versionnées par transactions, fichiers Parquet sur S3 et catalogue PostgreSQL. Le nom technique est `datasets` (D569, lexique Q-P7).
-- **Import** : un `object_import`. Il applique un mapping D301 à une table ou à un fichier et écrit objets et liens dans l'ontologie (synchro, D577).
+- **Écriture d'objets** : l'étape `write objects` d'un pipeline. Elle applique un mapping D301 aux lignes d'une table et écrit objets et liens dans l'ontologie (D577, D1050). Un import est devenu un pipeline d'org avec cette étape (D1050).
 - **Exécution enchaînée** : une cible et ce dont elle dépend, exécutés dans l'ordre (`data_builds`, D575).
 - **Connecteur** : accès enregistré à une base, une API REST ou un point d'arrivée d'appels signés. Ses identifiants restent au coffre (D791).
 - **Webhook** : connecteur qui reçoit les appels signés d'un autre système (D795).
@@ -122,7 +122,7 @@ flowchart LR
 
 Chaque étape lit une table de travail et en écrit une. Une colonne `file` porte une clé de fichier, jamais des octets. Un corps de plus de 4 Mo passe sur disque (`blob.rs`). Un `read` CSV est lu en flux. Les lignes typées vont dans un fichier Arrow IPC, relu par lots par `write`.
 
-Le moteur garde un journal par étape : lignes, octets, première adresse, code d'erreur. L'historique d'un import affiche ce journal (`ingest_steps`).
+Le moteur garde un journal par étape : lignes, octets, première adresse, code d'erreur. La page d'une exécution affiche ce journal (`ingest_steps`).
 
 Un import peut désigner un pipeline (`mapping.pipeline: <pack>/<clé>`). Le run remplit alors la table de l'import par le moteur (écriture `replace: true`), puis la synchro D577 écrit l'ontologie. Tous les imports des packs passent par ce chemin. Un import qu'une org écrit lit une Table que son pipeline d'org remplit (`source: dataset`).
 
@@ -217,26 +217,26 @@ config:
   layout: elk
 ---
 flowchart LR
-  t1[(Transaction lue au dernier run)] --> p1[Plan par entité]
-  t2[(Transaction courante)] --> p2[Plan par entité]
+  t1[(Base gardée au run précédent)] --> p1[Plan par entité]
+  t2[(Lignes du run)] --> p2[Plan par entité]
   p1 --> d{Valeur changée ?}
   p2 --> d
   d -->|oui| w[Écriture en bloc]
   d -->|non| s[Rien]
   w --> c[Commit]
   c --> j[Journal O2 par lots]
-  c --> ev[dataset.synced]
+  c --> b[(Nouvelle base)]
 ```
 
-La synchro compare deux transactions de la table : celle du dernier run appliqué et la nouvelle (D577). Elle compare des **entités planifiées**, pas des lignes (Q-P8). `plan_row` et `diff::Planned` produisent les objets et liens planifiés par clé d'entité. Une ligne retirée ne ferme donc pas une organisation qu'une ligne sœur porte encore.
+L'étape `write objects` compare les lignes du run à la base gardée au run précédent (`pipeline_object_bases`, D577, D1050). Elle compare des **entités planifiées**, pas des lignes (Q-P8). `plan_row` et `diff::Planned` produisent les objets et liens planifiés par clé d'entité. Une ligne retirée ne ferme donc pas une organisation qu'une ligne sœur porte encore.
 
-Seul ce qui change va vers l'ontologie. Une édition humaine survit tant que la source ne change pas cette valeur (Q-P6). Sans référence valable (mapping modifié, version purgée), la comparaison se fait à l'état courant et le run s'arrête à un aperçu. C'est le seul chemin qui écrase une édition. Un aperçu dont la table a bougé est refusé (`import-run-stale`).
+Seul ce qui change va vers l'ontologie. Une édition humaine survit tant que la source ne change pas cette valeur (Q-P6). Sans base (premier run, mapping modifié, base retirée par un effacement), la comparaison se fait à l'ontologie. C'est le seul chemin qui écrase une édition. La sonde montre avant le run ce qu'il écrira (D944).
 
 L'écriture passe par `objects::create_many_with`, `update_many_with` et leurs équivalents pour les liens (D347). Les contrôles sont ceux du chemin unitaire, faits par lots de 5 000 lignes. Une entrée `create: false` laissée de côté faute d'objet est notée (`skipped_keys`) et replanifiée au run suivant.
 
 Le journal des changements part après le commit (D350). Une transaction annulée ne journalise rien (`changes::deferred`, `changes::flush`). Le writer O2 envoie par lots de 1 000 documents ou 1 s, dans une file bornée à 100 000. Le flux `object_changes` garde `history_retention_days`, 3 650 jours par défaut, réglé par l'admin plateforme (Q-P1).
 
-Contrôles d'un import : forme changée, chute suspecte, snapshot avec erreurs (D303), et `max_closures_pct`, 20 % par défaut (D322). Une source publique livre `invalid: skip` sur sa clé et ses textes libres : une valeur sale ne doit pas refuser tout le run.
+Contrôles d'une étape `write objects` : une ligne en erreur refuse le run (`import-has-errors`), et un `snapshot` ne ferme pas plus de 20 % de ce que l'étape tient (`ingest-suspicious-closures`, D322). Une source publique livre `invalid: skip` sur sa clé et ses textes libres : une valeur sale ne doit pas refuser tout le run.
 
 ### 3.7 Tables versionnées et pipelines d'org
 
@@ -270,7 +270,7 @@ sequenceDiagram
   S->>S: dataset.committed sur pnex:ds:v1:{org}
 ```
 
-Le serveur prend les exécutions des pipelines d'org dans `pipeline_jobs` et joue leurs étapes, comme celles d'un pipeline de pack. Au début de l'exécution, il relit les droits de qui l'a lancée : chaque cible d'écriture demande le droit de sa route (`ontology:write` pour des objets). Un pipeline d'org n'écrit jamais la table d'un import (`table_reserved`). Une étape `browse` joue dans l'agent navigateur de qui a lancé l'exécution (D782) et demande `browse:use`. À la reprise de la ligne, le serveur relit ses droits. S'il en a perdu un, la ligne échoue (`access-denied`). Un pipeline d'org ne peut ni partager vers une autre org (`share`), ni porter son propre horaire (`schedule`) : la route de planification s'en charge. Il peut attendre les réglages d'un pack (`requires`). Il peut nommer dans `after` d'autres pipelines de son org : une exécution enchaînée les lance d'abord, dans cet ordre (D1050). Les réponses de ses tests sont écrites dans le document (`given:`, `tables:` en CSV), 64 Ko au plus.
+Le serveur prend les exécutions des pipelines d'org dans `pipeline_jobs` et joue leurs étapes, comme celles d'un pipeline de pack. Au début de l'exécution, il relit les droits de qui l'a lancée : chaque cible d'écriture demande le droit de sa route (`ontology:write` pour des objets). Un pipeline d'org n'écrit jamais la table d'un import pas encore converti (`table_reserved`). Une étape `browse` joue dans l'agent navigateur de qui a lancé l'exécution (D782) et demande `browse:use`. À la reprise de la ligne, le serveur relit ses droits. S'il en a perdu un, la ligne échoue (`access-denied`). Un pipeline d'org ne peut ni partager vers une autre org (`share`), ni porter son propre horaire (`schedule`) : la route de planification s'en charge. Il peut attendre les réglages d'un pack (`requires`). Il peut nommer dans `after` d'autres pipelines de son org : une exécution enchaînée les lance d'abord, dans cet ordre (D1050). Les réponses de ses tests sont écrites dans le document (`given:`, `tables:` en CSV), 64 Ko au plus.
 
 Le SQL d'une étape `sql` est une entrée hostile (D572). Une session par exécution n'enregistre que les tables déclarées en entrée. Le moteur refuse DDL, DML et instructions de session sur le plan logique. Les fonctions sont en liste blanche, conversions D301 comprises. La mémoire est bornée, avec débordement disque, délai et plafond d'octets.
 
@@ -309,13 +309,13 @@ flowchart LR
   i2 -.échec.-> x[Aval bloqué, garde ses données]
 ```
 
-On planifie une cible (D575). L'exécution enchaînée remonte les dépendances : une table écrite d'un côté, lue de l'autre, ou un `after:` déclaré dans le mapping d'un import. Elle exécute tout amont exécutable, dans l'ordre. Un cycle est refusé. Une entrée en échec bloque l'aval. Une étape à la fois par exécution enchaînée, 12 h au plus (`build-timeout`). L'état vit dans PostgreSQL : un autre pod la reprend. Un run d'import perdu avec son pod repart une fois.
+On planifie une cible (D575). L'exécution enchaînée remonte les dépendances : une table écrite d'un côté, lue de l'autre, ou un `after:` déclaré dans le document. Elle exécute tout amont exécutable, dans l'ordre. Un cycle est refusé. Une entrée en échec bloque l'aval. Une étape à la fois par exécution enchaînée, 12 h au plus (`build-timeout`). L'état vit dans PostgreSQL : un autre pod la reprend. Un run d'import perdu avec son pod repart une fois.
 
 Les droits sont revérifiés à chaque déclenchement, sur le rôle géré de la personne qui a posé l'horaire. Sinon l'horaire échoue (`build-author-forbidden`).
 
 Les pipelines des packs ne passent pas par ces exécutions enchaînées. Un balayage par minute lance chaque pipeline d'un pack installé quand son `schedule` est échu (`pipeline_engine::store::sweep`). Un pipeline attend ses pipelines amont du même pack : ceux que nomme son `after`, et ceux qui écrivent une table qu'il lit. Il attend tant qu'un amont planifié est échu ou a échoué à son dernier run. Un run demandé par un membre (sans `schedule`) qui échoue ne bloque rien. Un seul run de pipeline à la fois par org (verrou `PIPELINE_RUN`).
 
-Les flows reçoivent `dataset.committed` et `dataset.synced` par le nœud `dataset_trigger` (D578). Le serveur les publie depuis une marque en base (`published_at`). Un flow ne lance ni n'écrit jamais une table.
+Les flows reçoivent `dataset.committed` par le nœud `dataset_trigger` (D578). Depuis le retrait des imports, le serveur n'émet plus `dataset.synced` (voir « Reste à faire »). Le serveur les publie depuis une marque en base (`published_at`). Un flow ne lance ni n'écrit jamais une table.
 
 ### 3.10 Connecteurs
 
@@ -333,10 +333,10 @@ flowchart LR
   q -->|fichier CSV| rd[read]
   rd --> w[write]
   w --> tab[(Table)]
-  tab --> sync[Synchro d'un import]
+  tab --> obj[write objects]
 ```
 
-Un connecteur a un nom, une sorte, une cible et ses identifiants au coffre (D791). Les sortes sont `postgres`, `mysql`, `rest` et `webhook`. Tous lisent seulement. L'étape `connector` d'un pipeline d'org porte la requête. Son exécution demande `connectors:use`. Le résultat suit le chemin de tout fichier : table, synchro, planification, événements.
+Un connecteur a un nom, une sorte, une cible et ses identifiants au coffre (D791). Les sortes sont `postgres`, `mysql`, `rest` et `webhook`. Tous lisent seulement. L'étape `connector` d'un pipeline d'org porte la requête. Son exécution demande `connectors:use`. Le résultat suit le chemin de tout fichier : table, objets, planification, événements.
 
 - **SQL** : session en lecture seule, une seule instruction préparée d'abord, délai et plafond d'octets (500 Mo par défaut, 2 Go au plus). MySQL exige TLS (D792).
 - **REST** : authentification `none`, `bearer`, `header`, `basic` ou `oauth2_client_credentials`. Pagination `page`, `offset`, `cursor` ou `link`. `GET` seulement. Un hôte qui change en cours de pagination est refusé (D793).
@@ -353,7 +353,7 @@ sequenceDiagram
   H->>B: appel gardé
   H-->>X: 202
   I->>B: appels au-delà du dernier id lu
-  I->>I: table (append), puis synchro de l'import
+  I->>I: table (append), puis write objects
 ```
 
 Un appel inconnu, sans secret, mal signé ou périmé reçoit le même `401 hook-signature-invalid` (D795). Un corps fait 1 Mio au plus. Une boîte garde 100 000 appels non lus sur 7 jours, sinon `503 hook-inbox-full`. Le limiteur commun compte 600 appels par minute et par adresse cliente.
@@ -376,7 +376,7 @@ flowchart LR
   a -->|oui| d[Tables aval sans déclaration : versions supprimées, recalcul]
 ```
 
-Une ligne de table n'a aucun lien avec un objet sans déclaration. `PUT /datasets/{id}/identity` dit quelle colonne identifie quel type d'objet. Le mapping d'un import pose cette déclaration quand la colonne garde sa forme. La file garde seulement l'empreinte de la valeur (sha256 de la forme pliée), et la garde après la passe. Tout chargement ultérieur écarte donc la personne. Une table aval recalculée répond 410 jusqu'au recalcul. Le worker ne prend aucun run d'une org qui a un effacement en attente.
+Une ligne de table n'a aucun lien avec un objet sans déclaration. `PUT /datasets/{id}/identity` dit quelle colonne identifie quel type d'objet. La file garde seulement l'empreinte de la valeur (sha256 de la forme pliée), et la garde après la passe. Tout chargement ultérieur écarte donc la personne. Une table aval recalculée répond 410 jusqu'au recalcul. Le worker ne prend aucun run d'une org qui a un effacement en attente.
 
 ### 3.12 Envoi par parties
 
@@ -398,19 +398,19 @@ sequenceDiagram
 
 Un proxy limite une requête à 100 Mo et coupe une réponse lente. Un fichier entre donc en parties : 1 000 parties et 5 Gio au plus, dans n'importe quel ordre. L'interface et `pnex dataset load` envoient des parties de 32 Mio. Les parties sont retirées à la fin, réussie ou non. Inachevées, elles partent après 24 h. Une conversion perdue avec son pod repart après 10 min sans battement, trois fois au plus (`dataset-upload-lost`). Les médias utilisent le même mécanisme (`media.md`).
 
-### 3.13 Arrêt propre des imports
+### 3.13 Arrêt propre
 
 ```mermaid
 stateDiagram-v2
-  [*] --> running
-  running --> applied: commit
-  running --> preview: aperçu requis
-  running --> failed: refus codé + state_args
-  running --> failed: 10 min sans battement (import-run-interrupted)
-  preview --> applied: application
+  [*] --> queued
+  queued --> running: prise par un serveur
+  running --> done
+  running --> failed: refus codé
+  running --> queued: 11 min sans battement, 2 essais au plus
+  running --> failed: 11 min sans battement au dernier essai (pipeline-worker-lost)
 ```
 
-Un run bat toutes les 30 s (`heartbeat_at`). Seul le battement fait foi, jamais le démarrage d'un pod. Sur SIGTERM, le pod ne lance plus de run (`503 import-server-stopping`). Les runs en cours ont `PNEX_SHUTDOWN_GRACE_SECS` (270 s par défaut) pour finir. `terminationGracePeriodSeconds` vaut 300 pour l'API et le flow-worker. Un refus garde ses arguments dans `state_args`, et l'historique rend le message avec ses chiffres. Un bail de singleton porte la version de son porteur : la page Système passe en `degraded` si deux versions tournent.
+Une exécution bat toutes les 30 s (`heartbeat_at`). Seul le battement fait foi, jamais le démarrage d'un pod. Sur SIGTERM, le pod ne lance plus d'exécution enchaînée ni d'envoi par parties (`services::stop`). `terminationGracePeriodSeconds` vaut 300 pour l'API et le flow-worker. Un bail de singleton porte la version de son porteur : la page Système passe en `degraded` si deux versions tournent.
 
 ### 3.14 Veille : pack `watch`
 
@@ -464,7 +464,7 @@ Un pipeline peut déclarer `object_hosts` : des adresses tenues par les objets d
 
 1. L'org doit venir du principal, du pipeline, du job ou du connecteur. Jamais d'une ligne ni d'un paramètre (R1).
 2. Chaque route doit avoir sa permission au registre IAM et son test 403 : `pipelines:read|write|run`, `datasets:read|write`, `connectors:read|write|use|test|delete` (R2).
-3. Un run doit écrire avec le rôle de l'auteur, revérifié au début de chaque run (D303). `connectors:use` est revérifié sur l'auteur de l'import.
+3. Un run doit écrire avec le rôle de l'auteur, revérifié au début de chaque run (D303). `connectors:use` est revérifié sur l'auteur de la version.
 4. Un secret ne doit jamais apparaître dans un document, une table de travail, un journal, une sonde, une réponse ni une erreur (R4, R16). Un document d'org nomme un connecteur, jamais une clé du coffre. Un connecteur déplacé (hôte ou port) doit redemander son mot de passe.
 5. Chaque adresse appelée doit passer l'egress (R8). Une redirection ne doit jamais sortir des hôtes déclarés. Un proxy (`fetch.proxy`) refusé par l'egress fait échouer l'appel, sans repli direct.
 6. Une entrée hostile doit rester bornée : octets, entrées d'archive (10 000), taille décompressée, profondeur XML et JSON (128), `for_each`, `binary` et `lzma`.
@@ -687,7 +687,17 @@ Choix de Shan (2026-11-24). La table `object_imports` et les routes `/ontology/i
 
 Chaque étape `write objects` garde une base : le dernier plan appliqué, dans `pipeline_object_bases` (org, pipeline, table d'entrée). Le run suivant compare ses lignes à cette base. Sans `snapshot`, la base garde aussi les objets absents du run : un run partiel ne perd rien. Sans base (premier run, mapping changé, base retirée par un effacement), le run compare ses lignes à l'ontologie : une édition faite à la main peut être écrasée une fois. Un pipeline de pack écrit avec le rôle Member.
 
-La migration réécrit la provenance `import:<id>` en provenance du pipeline d'org. Un fichier envoyé va dans une Table, puis un pipeline d'org la lit.
+Un fichier envoyé va dans une Table, puis un pipeline d'org la lit.
+
+Au démarrage, le serveur convertit chaque import restant en pipeline d'org (choix de Shan, 2026-11-24) :
+- Chaque import passe dans sa transaction, ligne verrouillée : deux pods ne convertissent jamais le même import. Un import qui échoue reste pour le démarrage suivant.
+- Un import de pack devient la copie du pack. Si l'org l'a édité et que son mapping nomme un pipeline, la copie garde la version de l'org. Une édition de l'ancienne forme (URL lue par l'import) prend la version du pack.
+- Un import d'org lit sa Table. Un import de fichier, d'URL ou d'API lit la Table au nom de l'import : l'adresse d'un import d'URL est perdue.
+- La provenance `import:<id>@<n>` devient `pipeline:<id>` (objets, liens, versions de liens, observations). La Table est libérée. Les runs, leur journal et les builds de l'import sont supprimés.
+- Un import sur Table sème la base de son pipeline depuis son dernier run appliqué, si le mapping n'a pas changé depuis.
+- Un nom déjà pris par un pipeline de l'org reçoit le suffixe « (import) ».
+
+La migration 000173 supprime les tables `object_imports` et `object_import_runs` seulement si `object_imports` est vide (choix de Shan, 2026-11-25). Sinon les tables restent, et la conversion au démarrage les vide : un release suivant les supprime. Sans table, la conversion ne fait rien. La migration supprime aussi les exécutions enchaînées qui nomment un import. La colonne `datasets.import_id` reste : la garde `table_reserved` la lit encore.
 
 Un pack copie chaque import en pipeline d'org (choix de Shan, 2026-11-24) :
 - La copie reprend les étapes du pipeline de pack. Elle garde son `write table`, car d'autres pipelines lisent cette Table. Puis un `write objects` écrit le mapping de l'import depuis les mêmes lignes.
@@ -698,7 +708,7 @@ Un pack copie chaque import en pipeline d'org (choix de Shan, 2026-11-24) :
 - `pipelines.pack` nomme le pack qui a écrit la copie. Une version sans auteur écrite par le pack écrit avec le rôle Member, à la main comme à l'horaire. Dès qu'un membre l'édite, elle écrit avec le rôle de ce membre.
 - À la mise à jour du pack, une copie que l'org n'a pas éditée prend le nouveau document. Une copie éditée reste, sauf si l'org la reprend (D424). `pack_written` garde le dernier document écrit par le pack.
 - Un `write objects` peut n'écrire que des `observations:` sur des objets déjà présents.
-- Les objets écrits par un pipeline d'org portent les marquages des Tables que lit son `sql` (D802), comme ceux d'une synchronisation.
+- Les objets écrits par un pipeline d'org portent les marquages des Tables que lit son `sql` (D802).
 
 ## 6. Interfaces
 
@@ -760,7 +770,6 @@ tests:
 | `PUT /api/v1/pipelines/{id}/schedule` | Horaire d'une cible |
 | `GET/POST /api/v1/data-builds`, `…/plan` | Exécutions enchaînées |
 | `/api/v1/datasets…` | Tables, transactions, échantillon, profil, fraîcheur, identité, lignage, envoi par parties |
-| `/api/v1/ontology/imports…` | Imports, runs (avec `steps`), aperçu, application |
 | `/api/v1/connectors…`, `POST …/{id}/secret`, `POST …/{id}/test` | Connecteurs |
 | `POST /api/v1/hooks/{id}` | Entrée d'un webhook (`Public`, signature) |
 | `GET /api/v1/analysis/named`, `POST …/{pack}/{key}` | Requêtes nommées |
@@ -769,7 +778,7 @@ tests:
 
 ### 6.3 Écrans
 
-`/pipelines` a quatre onglets : Pipelines, Tables, Exécutions enchaînées, Connecteurs. `/pipelines/:id` est le studio d'un pipeline d'org : graphe SVG en colonnes, en lecture seule, un nœud par table lue ou écrite. La colonne de droite montre le document YAML, vérifié et testé à la frappe, ses exécutions et son horaire. La scène montre l'échantillon et le profil de colonnes. `/pipelines/tables/:id` montre une table. L'onglet Imports de l'ontologie reste : il porte l'historique, les étapes et l'aperçu des imports. Pas de lecteur commun D220, pas de « Reprendre au traitement N ».
+`/pipelines` a quatre onglets : Pipelines, Tables, Exécutions enchaînées, Connecteurs. `/pipelines/:id` est le studio d'un pipeline d'org : graphe SVG en colonnes, en lecture seule, un nœud par table lue ou écrite. La colonne de droite montre le document YAML, vérifié et testé à la frappe, ses exécutions et son horaire. La scène montre l'échantillon et le profil de colonnes. `/pipelines/tables/:id` montre une table. Pas de lecteur commun D220, pas de « Reprendre au traitement N ».
 
 ## 7. Reste à faire
 
@@ -784,7 +793,6 @@ tests:
 - Une seule énumération suivie, en première étape.
 - XML et JSON lus en mémoire, 64 Mo au plus.
 - Un événement archivé par un membre peut être recréé au run suivant : clé d'unicité sur les archivés, générique.
-- Un import (sans contexte d'application) ne peut ni naviguer ni écrire de documents (`step_unsupported`).
 - Les lignes passent au bac à sable Starlark en JSON : une table large de 200 000 lignes peut dépasser 64 Mo.
 - Pas de fonctions JSON ni de tableaux dans la liste blanche du worker.
 - Marchés de prédiction : formes des réponses non vérifiées en réel (hôtes bloqués depuis la France).
@@ -797,22 +805,14 @@ tests:
 - Pas de transaction `delete`. Quota de 20 Go en constante, pas par tier.
 - Un client arrêté recommence son envoi depuis le début.
 - Une étape à la fois par exécution enchaînée.
-- Retrait des imports (D1050), avant PE8. Plan :
-  1. `write objects` : delta et éditions protégées, `snapshot`, `close_missing`, `observations`, droits de l'auteur. Fait (2026-11-24), sans test des `observations`.
-  2. Packs : un import de pack devient un pipeline d'org à l'installation, éditions gardées à la mise à jour.
-     - 2a. Fait (2026-11-24) : `pack_copy` et `install_copies`, colonnes `pipelines.pack` et `pack_written`. L'installation crée encore des imports.
-     - 2b. Fait (2026-11-24) : l'installation crée les copies, plus les imports. Une org installée avant garde ses imports jusqu'à l'étape 3. Les tests qui envoient un fichier à un import de pack créent un import d'org avec le mapping du pack, jusqu'à l'étape 5.
-     - Limite de 2b : le message « reprendre la version du pack » d'une copie parle encore du mode et des pages d'un import, jusqu'à l'étape 5.
-  3. Migration : imports → pipelines d'org. Fait (2026-11-24). Choix de Shan : au démarrage, une fois, historique supprimé, base semée.
-     - Le serveur convertit chaque import restant dans sa transaction, ligne verrouillée : deux pods ne convertissent jamais le même import. Un import qui échoue reste pour le démarrage suivant.
-     - Un import de pack devient la copie du pack. Si l'org l'a édité et que son mapping nomme un pipeline, la copie garde la version de l'org. Une édition de l'ancienne forme (URL lue par l'import) prend la version du pack, avec une ligne de journal.
-     - Un import d'org lit sa Table. Un import de fichier, d'URL ou d'API lit la Table au nom de l'import : l'adresse d'un import d'URL de l'org est perdue (aucun sur dev).
-     - La provenance `import:<id>@<n>` devient `pipeline:<id>` (objets, liens, versions de liens, observations). La Table est libérée. Les runs, leur journal et les builds de l'import sont supprimés.
-     - Un import sur Table sème la base de son pipeline depuis les transactions de son dernier run appliqué, si le mapping n'a pas changé depuis.
-     - Un nom déjà pris par un pipeline de l'org reçoit le suffixe « (import) ».
-  4. Front (choix de Shan, 2026-11-25 : avant le retrait, pour que l'envoi d'un fichier ne manque jamais) : l'écran d'un pipeline qui lit une Table propose d'y envoyer un fichier, puis de le sonder et de le lancer. La sonde d'une étape `write objects` montre ce qu'elle écrirait. La page d'une exécution montre ses étapes, avec les compteurs et les premiers avertissements de `write objects`. E2E. Fait (2026-11-25) : test `a file into its table` de `e2e/tests/pipelines.spec.ts`.
-     - Trois tests de ce fichier échouent déjà sur `main` : le studio n'a plus `pipe-transform` ni la clé `pipe-sql` depuis D934, et le test du flow déployé demande le runtime des flows. À réparer à part.
-  5. Retrait : table, routes, service, page, CLI, contrat (`exposure.rs`, `iam.rs`), fiche de l'assistant. `stop.rs` reste, déplacé.
+- Retrait des imports (D1050) : fait (2026-11-25). Suites :
+  - `dataset.synced` n'a plus d'émetteur : le nœud `dataset_trigger` avec `on: synced` ne part plus. Choix à faire : l'émettre après une étape `write objects`, ou retirer l'option.
+  - Une étape `write objects` ne déclare pas les colonnes d'identité de la Table qu'elle lit, comme le mapping d'un import le faisait (§3.11). Un effacement n'atteint pas ces lignes sans `PUT /datasets/{id}/identity`.
+  - Une étape `write objects` écrit avec le rôle de l'auteur de la version, même sur une Table que tout membre charge. Une synchronisation de Table écrivait avec le rôle Member (SEC-93).
+  - Un pipeline d'org ne refuse pas à l'enregistrement un mapping qui nomme une propriété inconnue ou une valeur sensible.
+  - La vérification (D431) d'un pipeline d'org porte l'id du pipeline, pas son nom.
+  - Un release après le déploiement sur dev et en prod : supprimer `object_imports`, `object_import_runs`, `datasets.import_id`, la conversion au démarrage, la garde `table_reserved` et `ImportRow`.
+  - Trois tests de `e2e/tests/pipelines.spec.ts` échouent déjà sur `main` : le studio n'a plus `pipe-transform` ni la clé `pipe-sql` depuis D934, et le test du flow déployé demande le runtime des flows. À réparer à part.
 - Compteurs (choix de Shan, 2026-11-25) : l'étape `write objects` écrit dans son journal ses compteurs (créés, mis à jour, fermés, liens, observations, avertissements) et ses 20 premiers avertissements (`manifest.written`). Un refus pour lignes en erreur donne ses 20 premières erreurs dans ses arguments.
 - `fc_rs_xml` : vérifier qu'il passe par la table et protège les éditions depuis son portage en pipeline.
 - Chart `pipelineWorker`, `NetworkPolicy` et `images.yml` jamais essayés sur un cluster.

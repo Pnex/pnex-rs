@@ -476,7 +476,7 @@ Routes (sous `/api/v1`) :
 - **Packs** : `crates/pnex-backend/packs/{companies,companies_fr,prospecting_b2b,prospecting_b2b_fr,crm}.yaml`. Pipelines dans `packs/prospecting_b2b/pipelines/` et `packs/prospecting_b2b_fr/pipelines/`.
 - **Noyau** : `pnex_core::{fold, org_resolve, browser_agent}`, `ontology::{schema, page_render, aggregate, flow, api}`.
 - **Backend** : `services/ontology/{redact, erase, opposition, transitions, changes}.rs`, `services/profiles.rs`, `services/org_resolve.rs`, `services/network_connections.rs`, `services/connection_shares.rs`.
-- **Tables** : `objects.erased_at` (migration 000057), `prospecting_oppositions` (000041), `object_imports.per_object_cursor` (000045), `network_connections` (000152), `connection_shares` (000165). Stream O2 `object_transitions`.
+- **Tables** : `objects.erased_at` (migration 000057), `prospecting_oppositions` (000041), `network_connections` (000152), `connection_shares` (000165). Stream O2 `object_transitions`.
 - **Erreurs** : `prospecting-opposed`, `ontology-erased`, `ext-target-not-profile`, `ext-profile-daily-cap`, `ext-target-not-people-page`, `ext-people-daily-cap`, `ext-login-required`, `ext-challenge`, `ext-connections-hidden`.
 - **Assistant** : fiches `assistant-kb/sales-follow-up.md`, `personal-data.md`, `company-groups.md`, `profile.md`.
 - **Tests** : `tests/crm.rs`, `tests/personal_data.rs`, `tests/partner_watch.rs`, `tests/org_resolve.rs`, `tests/extension.rs`, `tests/mail.rs`, `pnex-node-starlark/tests/pack_rules.rs`, `e2e/tests/crm.spec.ts`.

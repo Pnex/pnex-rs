@@ -1,6 +1,7 @@
-//! A real server process killed (SIGKILL) in the middle of an import, then a new one:
-//! nothing half written, the chained run starts it again. Then a real SIGTERM. The 10
-//! minutes without a heartbeat are skipped in SQL, the rest is what a lost pod does.
+//! A real server process killed (SIGKILL) in the middle of a pipeline writing objects,
+//! then a new one: nothing half written, its run is queued again. Then a real SIGTERM.
+//! The 11 minutes without a heartbeat are skipped in SQL, the rest is what a lost pod
+//! does. The test process plays the pipeline worker.
 //!
 //! Needs PNEX_SERVER_BIN, PostgreSQL (TEST_DATABASE_URL), the compose `rustfs` and `valkey`.
 
@@ -14,8 +15,6 @@ use std::time::{Duration, Instant};
 const PORT: u16 = 5197;
 const ROWS: usize = 150_000;
 const MAPPING: &str = r#"
-key: certs
-name: Certifications
 objects:
   - as: cert
     type: certification
@@ -161,31 +160,35 @@ async fn a_killed_server_loses_nothing_and_a_sigterm_stops_it() {
         "{}",
         response.text().await.unwrap()
     );
-    let import = api
+    let document = common::objects_pipeline("certs_table", MAPPING, false);
+    let pipeline = api
         .post(
-            "/api/v1/ontology/imports",
-            Some(
-                json!({ "name": "certs", "mapping": MAPPING, "source": "dataset",
-                         "source_url": table, "mode": "incremental" }),
-            ),
+            "/api/v1/pipelines",
+            Some(json!({ "name": "certs", "document": document })),
         )
         .await;
+    let worker = common::spawn_pipeline_worker();
     let objects = format!("SELECT count(*) AS n FROM objects WHERE org_id = {org}");
     let before = count(&db, objects.clone()).await;
     let build = api
         .post(
             "/api/v1/data-builds",
-            Some(json!({ "target_kind": "import", "target_id": import["id"] })),
+            Some(json!({ "target_kind": "pipeline", "target_id": pipeline["id"] })),
         )
         .await;
     let build = build["id"].as_str().unwrap().to_string();
 
-    // The server's own loop takes the build.
+    // The server's own loop takes the build, then its run.
     let started = Instant::now();
     let lost = loop {
         let state = api.build(&build).await.unwrap();
         if let Some(run) = state["steps"][0]["run_id"].as_str() {
-            break run.to_string();
+            let running = format!(
+                "SELECT count(*) AS n FROM pipeline_jobs WHERE id = '{run}' AND state = 'running'"
+            );
+            if count(&db, running).await == 1 {
+                break run.to_string();
+            }
         }
         assert!(
             started.elapsed() < Duration::from_secs(120),
@@ -194,7 +197,7 @@ async fn a_killed_server_loses_nothing_and_a_sigterm_stops_it() {
         tokio::time::sleep(Duration::from_millis(250)).await;
     };
     let running = format!(
-        "SELECT count(*) AS n FROM object_import_runs WHERE id = '{lost}' AND state = 'running'"
+        "SELECT count(*) AS n FROM pipeline_jobs WHERE id = '{lost}' AND state = 'running'"
     );
     tokio::time::sleep(Duration::from_secs(1)).await;
     server.0.kill().unwrap();
@@ -203,14 +206,14 @@ async fn a_killed_server_loses_nothing_and_a_sigterm_stops_it() {
     assert_eq!(
         count(&db, objects.clone()).await,
         before,
-        "half an import is written"
+        "half a write is written"
     );
 
-    // What 10 minutes of silence would do, and the new pod takes over.
+    // What 11 minutes of silence would do, and the new pod takes over.
     db.execute_raw(Statement::from_string(
         DatabaseBackend::Postgres,
         format!(
-            "UPDATE object_import_runs SET heartbeat_at = now() - interval '11 minutes' \
+            "UPDATE pipeline_jobs SET heartbeat_at = now() - interval '12 minutes' \
              WHERE id = '{lost}'"
         ),
     ))
@@ -230,17 +233,13 @@ async fn a_killed_server_loses_nothing_and_a_sigterm_stops_it() {
         }
         tokio::time::sleep(Duration::from_secs(1)).await;
     };
+    worker.abort();
     assert_eq!(done["state"], "done", "{done}");
-    assert_eq!(done["steps"][0]["retries"], 1, "{done}");
-    assert_ne!(done["steps"][0]["run_id"], lost.as_str(), "{done}");
     assert_eq!(count(&db, objects).await, before + ROWS as i64);
     assert_eq!(
         count(
             &db,
-            format!(
-                "SELECT count(*) AS n FROM object_import_runs WHERE id = '{lost}' \
-                 AND state = 'failed' AND state_code = 'import-run-interrupted'"
-            )
+            format!("SELECT count(*) AS n FROM pipeline_jobs WHERE id = '{lost}' AND attempts = 2")
         )
         .await,
         1

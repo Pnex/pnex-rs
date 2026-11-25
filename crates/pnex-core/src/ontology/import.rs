@@ -1596,23 +1596,6 @@ fn plan_object(
     }))
 }
 
-/// Columns the mapping reads that no record of the run holds (D303: an
-/// unexpected schema refuses a scheduled run).
-pub fn missing_columns(m: &Mapping, rows: &[Value]) -> Vec<String> {
-    m.columns()
-        .into_iter()
-        .filter(|c| !rows.iter().any(|r| get_path(r, c).is_some()))
-        .collect()
-}
-
-/// D303: a snapshot run that lost more than this share of the rows of the
-/// previous one is refused.
-pub const SUSPICIOUS_DROP: f64 = 0.30;
-
-pub fn suspicious_drop(previous: usize, now: usize) -> bool {
-    previous > 0 && (now as f64) < (previous as f64) * (1.0 - SUSPICIOUS_DROP)
-}
-
 // ───────────────────────────── wire (API) ─────────────────────────────
 
 /// Where an import reads its records.
@@ -1663,60 +1646,6 @@ impl ImportSource {
     }
 }
 
-/// Pages fetched from an API by one run, at most.
-pub const PAGES_MAX: u32 = 500;
-
-/// Create or update an import (`expected_version` on update, else 409).
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-pub struct ObjectImportInput {
-    pub name: String,
-    /// The mapping, YAML.
-    pub mapping: String,
-    #[serde(default)]
-    pub source: ImportSource,
-    /// On an update, absent keeps the current value and `null` clears it
-    /// (same for `recurrence` and `max_pages`).
-    #[serde(
-        default,
-        deserialize_with = "present",
-        skip_serializing_if = "Option::is_none"
-    )]
-    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>))]
-    pub source_url: Option<Option<String>>,
-    #[serde(default)]
-    pub mode: ImportMode,
-    /// A `recurrence` value (URL and API sources only): scheduled runs
-    /// apply without preview.
-    #[serde(
-        default,
-        deserialize_with = "present",
-        skip_serializing_if = "Option::is_none"
-    )]
-    #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>))]
-    pub recurrence: Option<Option<Value>>,
-    /// API pages per run (default 50, at most `PAGES_MAX`).
-    #[serde(
-        default,
-        deserialize_with = "present",
-        skip_serializing_if = "Option::is_none"
-    )]
-    #[cfg_attr(feature = "openapi", schema(value_type = Option<u32>))]
-    pub max_pages: Option<Option<u32>>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub expected_version: Option<i32>,
-}
-
-/// A field sent, even as `null` (`Some(None)`), told from an absent one
-/// (`None`, with `#[serde(default)]`).
-fn present<'de, D, T>(d: D) -> Result<Option<Option<T>>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-    T: Deserialize<'de>,
-{
-    Option::<T>::deserialize(d).map(Some)
-}
-
 /// An import shipped by a pack: the mapping inline.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -1750,69 +1679,6 @@ pub struct ImportCounts {
     pub warnings: usize,
     #[serde(default)]
     pub observations: usize,
-}
-
-/// One run: a preview waiting for its application, or a finished run.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-pub struct ImportRunView {
-    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
-    pub id: String,
-    /// Sequence per import: provenance `import:<import id>@<number>`.
-    pub number: i32,
-    /// `running` | `preview` | `applied` | `refused` | `failed` | `stale`.
-    pub state: String,
-    /// Machine code of a refusal or failure (`import-schema-changed`…).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub state_code: Option<String>,
-    /// Its arguments (`{rows, max}` for a source too large, the missing
-    /// columns…), for the `err-<code>` message.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>))]
-    pub state_args: Option<Value>,
-    /// `preview` | `schedule` | `manual`.
-    pub trigger: String,
-    /// Import version the run was computed on.
-    pub import_version: i32,
-    pub rows: usize,
-    pub counts: ImportCounts,
-    #[cfg_attr(feature = "openapi", schema(format = "date-time"))]
-    pub started_at: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "openapi", schema(format = "date-time"))]
-    pub finished_at: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-pub struct ObjectImportView {
-    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
-    pub id: String,
-    pub name: String,
-    /// The mapping, YAML.
-    pub mapping: String,
-    /// The pack that shipped the mapping, if any.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub pack_key: Option<String>,
-    pub source: ImportSource,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub source_url: Option<String>,
-    pub mode: ImportMode,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>))]
-    pub recurrence: Option<Value>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "openapi", schema(format = "date-time"))]
-    pub next_run_at: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub max_pages: Option<u32>,
-    pub version: i32,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub last_run: Option<ImportRunView>,
-    #[cfg_attr(feature = "openapi", schema(format = "date-time"))]
-    pub created_at: String,
-    #[cfg_attr(feature = "openapi", schema(format = "date-time"))]
-    pub updated_at: String,
 }
 
 /// A property change `from` → `to`.
@@ -1946,27 +1812,6 @@ impl ImportDiff {
             observations: self.observations.len(),
         }
     }
-}
-
-/// `POST …/dry-run` answer: the run to apply and its difference (each
-/// list cut to 500 entries; `run.counts` has the totals).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-pub struct ImportPreview {
-    pub run: ImportRunView,
-    pub diff: ImportDiff,
-    /// The run's steps, in order (an import with `steps:`).
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub steps: Vec<crate::ingest::IngestStepView>,
-}
-
-/// `POST …/apply`: the preview run, on the import version it was read on.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-pub struct ImportApply {
-    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
-    pub run_id: String,
-    pub expected_version: i32,
 }
 
 #[cfg(test)]
@@ -2221,8 +2066,6 @@ mod tests {
         assert_eq!(get_path(&rows[0], "siege.siret"), Some(&json!("1")));
         assert_eq!(get_path(&rows[0], "dirigeants.0.nom"), Some(&json!("A")));
         assert_eq!(get_path(&json!({"a.b": 1}), "a.b"), Some(&json!(1)));
-        let m = mapping();
-        assert_eq!(missing_columns(&m, &[json!({"siret": "1"})]).len(), 7);
     }
 
     #[test]
@@ -2301,13 +2144,6 @@ mod tests {
         assert_eq!(p.warnings[0].column, "q");
         assert!(p.held.is_empty());
         assert!(plan_row(&mapping("error"), &s, 5, &row).is_err());
-    }
-
-    #[test]
-    fn drops_are_flagged() {
-        assert!(!suspicious_drop(0, 0));
-        assert!(!suspicious_drop(100, 75));
-        assert!(suspicious_drop(100, 69));
     }
 
     #[test]

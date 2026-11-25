@@ -597,58 +597,6 @@ fn key_sql(key_prop: &str, by_property: &'static str) -> String {
     }
 }
 
-/// Plans `rows` with `m` and diffs them against the org's ontology.
-/// `first_row` is the number of the first record as the user sees it (2 in
-/// a sheet with a header line).
-#[allow(clippy::too_many_arguments)]
-pub async fn compute<C: ConnectionTrait>(
-    db: &C,
-    org_id: i64,
-    source: &str,
-    s: &OrgSchema,
-    m: &Mapping,
-    snapshot: bool,
-    rows: &[Value],
-    first_row: usize,
-) -> Result<ImportDiff> {
-    let types = s
-        .types
-        .iter()
-        .map(|(t, _, _)| t.clone())
-        .collect::<Vec<_>>();
-    let links = s
-        .links
-        .iter()
-        .map(|(l, _, _)| l.clone())
-        .collect::<Vec<_>>();
-    let schema = Schema {
-        types: &types,
-        links: &links,
-    };
-    let mut planned = Planned::default();
-    for (i, row) in rows.iter().enumerate() {
-        planned.push(
-            m,
-            &schema,
-            first_row + i,
-            row,
-            pnex_core::ontology::import::PLANNED_MAX,
-        )?;
-    }
-    let observations = match &m.observations {
-        Some(_) => pnex_core::markets::observations(rows),
-        None => Vec::new(),
-    };
-    let closing = if snapshot {
-        Closing::NotSeen
-    } else {
-        Closing::None
-    };
-    let (mut diff, _) = against(db, org_id, source, s, m, planned, closing).await?;
-    diff.observations = observations;
-    Ok(diff)
-}
-
 /// Diffs a plan against the org's ontology. Also returns what it planned and
 /// could not write, for lack of an object it needs.
 pub async fn against<C: ConnectionTrait>(

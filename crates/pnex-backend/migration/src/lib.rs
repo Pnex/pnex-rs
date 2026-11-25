@@ -164,6 +164,7 @@ mod m20261123_000169_site_rules_to_pipelines;
 mod m20261123_000170_pipeline_job_rows;
 mod m20261124_000171_pipeline_object_bases;
 mod m20261124_000172_pipeline_pack_copies;
+mod m20261125_000173_imports_dropped;
 
 pub struct Migrator;
 
@@ -324,6 +325,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20261123_000170_pipeline_job_rows::Migration),
             Box::new(m20261124_000171_pipeline_object_bases::Migration),
             Box::new(m20261124_000172_pipeline_pack_copies::Migration),
+            Box::new(m20261125_000173_imports_dropped::Migration),
         ]
     }
 }

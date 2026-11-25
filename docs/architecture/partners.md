@@ -11,7 +11,7 @@ PneX sert aussi de moteur à un SaaS tiers qui a sa propre interface (D300). Les
 ## 2. Concepts
 
 - **Réseau** : les organisations reliées à une certification par un lien `accredited_for` ouvert, plus le certificateur (lien `holds`).
-- **Import** (`object_imports`) : une source (fichier, URL, API) et un mapping YAML qui écrivent des objets et des liens.
+- **Import** : un pipeline d'org dont l'étape `write objects` écrit des objets et des liens avec un mapping YAML (D301, `pipelines.md` D1050).
 - **Clé naturelle** : une propriété `unique` d'un type (`siren`, `siret`, `ref`). L'import fait l'upsert sur elle.
 - **Crawl** : le parcours d'un site, borné à son origine (mission `crawl_site`).
 - **Page pertinente** : une page qui répond au `match` du crawl.
@@ -67,7 +67,7 @@ config:
   layout: elk
 ---
 flowchart LR
-  xl[Fichier du certificateur] --> imp[Imports]
+  xl[Fichier du certificateur] --> imp[Pipelines]
   reg[Registres publics] --> imp
   imp --> onto[(Ontologie)]
   onto --> nr[Flow network rules]
@@ -83,7 +83,7 @@ flowchart LR
   chk --> case[Dossier de veille]
 ```
 
-Le pack livre ses imports, ses fonctions et ses flows. Les flows arrivent en brouillon : l'humain les déploie (D123, D144, D316). Une règle ne réimplémente rien : elle lit l'ontologie par `ontology_query` et écrit par `object_upsert` et `link_upsert` (D312).
+Le pack livre ses imports, copiés en pipelines d'org (D1050), ses fonctions et ses flows. Les flows arrivent en brouillon : l'humain les déploie (D123, D144, D316). Une règle ne réimplémente rien : elle lit l'ontologie par `ontology_query` et écrit par `object_upsert` et `link_upsert` (D312).
 
 ### 3.2 Imports déclaratifs
 
@@ -92,21 +92,19 @@ sequenceDiagram
   participant U as Humain
   participant S as Serveur
   participant DB as Ontologie
-  U->>S: POST …/dry-run (fichier)
-  S-->>U: 202, run à interroger
-  S->>S: lire, mapper, calculer le différentiel
-  U->>S: GET …/runs/{run}
+  U->>S: envoi du fichier dans la Table du pipeline
+  U->>S: POST /pipelines/probe
   S-->>U: créés, modifiés, fermés, erreurs par ligne
-  U->>S: POST …/apply (expected_version)
+  U->>S: POST /pipelines/{id}/runs
   S->>DB: une transaction
-  S-->>U: 202, puis compteurs du run
+  S-->>U: 202, puis compteurs de l'exécution
 ```
 
-Un import lit un fichier envoyé (`xlsx`, `csv`, `json`), une URL `http(s)` (`csv`, `xml`, `json`, zip possible) ou une API JSON paginée (D301). Le mapping YAML ne contient aucun code : pas de Starlark, pas de gabarit. Il déclare les enregistrements, les types cibles, la clé naturelle, les propriétés avec des conversions fermées et les liens dérivés. Le langage complet et les `steps:` sont dans `pipelines.md`.
+Un import est un pipeline d'org (D1050). Ses étapes lisent un fichier envoyé dans une Table, une URL ou une API, puis son étape `write objects` applique le mapping (D301). Le mapping YAML ne contient aucun code : pas de Starlark, pas de gabarit. Il déclare les types cibles, la clé naturelle, les propriétés avec des conversions fermées et les liens dérivés. Le langage complet est dans `pipelines.md`.
 
-- **Mode `incremental`** : création et mise à jour.
-- **Mode `snapshot`** : en plus, les objets et liens absents du lot sont fermés (`valid_to = now`), jamais supprimés.
-- **Provenance** : `import:<import_id>@<run>` sur chaque fait écrit (D184).
+- **Sans `snapshot`** : création et mise à jour.
+- **Avec `snapshot`** : en plus, les objets et liens absents du lot sont fermés (`valid_to = now`), jamais supprimés.
+- **Provenance** : `pipeline:<id>` sur chaque fait écrit (D184).
 - **Plafonds** : 250 000 lignes par run, 5 000 éléments par `each`, 500 000 objets planifiés par run (`import-source-too-large`), 200 Mo décompressés.
 
 Une source API **par objet** (`per_object`) interroge un registre une fois par objet connu, les moins récents d'abord. Elle est incompatible avec `snapshot`. Trois filtres la bornent au réseau :
@@ -117,11 +115,10 @@ Une source API **par objet** (`per_object`) interroge un registre une fois par o
 
 Un réglage vide, inconnu ou d'un pack absent ne filtre rien.
 
-Un run planifié part à 03:00 UTC du jour de récurrence, avec le rôle actuel de l'auteur (D303). Le serveur refuse le run sans rien écrire sur un schéma inattendu (`import-schema-changed`) ou sur une chute de plus de 30 % des lignes en `snapshot` (`import-suspicious-drop`). Le refus est notifié à l'org. Un run `snapshot` avec des lignes en erreur ne ferme rien.
+Une exécution planifiée part à 03:00 UTC du jour de récurrence, avec le rôle actuel de l'auteur (D303). Le serveur refuse l'exécution sans rien écrire sur une colonne absente (`import-schema-changed`), sur une ligne en erreur (`import-has-errors`) ou sur plus de 20 % de fermetures (`ingest-suspicious-closures`). Le refus est notifié à l'org.
 
 Un `map_pin` sans coordonnées n'est pas créé. La ligne passe en avertissement (`location: required`) et le run continue (D406).
 
-`PUT /ontology/imports/{id}` garde `source_url`, `recurrence` et `max_pages` quand ils sont omis. `null` les efface.
 
 ### 3.3 Imports livrés par un pack
 
@@ -131,15 +128,15 @@ config:
   layout: elk
 ---
 flowchart TD
-  up[Montée du pack] --> q{Import identique à pack_written ?}
+  up[Montée du pack] --> q{Copie identique à pack_written ?}
   q -- oui --> new[Prend la version du pack]
-  q -- non --> kept[Reste tel quel, listé dans kept]
+  q -- non --> kept[Reste telle quelle, listée dans kept]
   kept --> take[Reprise take]
   take --> new
-  new --> keep[Mode, récurrence, max_pages gardés]
+  new --> keep[Récurrence gardée]
 ```
 
-Le pack possède le mapping, la source et l'URL. Le mode, la récurrence et `max_pages` sont des réglages de l'org : le pack ne les remplace jamais (D424). `object_imports.pack_written` garde ce que le pack a écrit (`written`) et la version de l'org remplacée (`replaced`). `differs` dit ce qui change (`source`, `source_url`, `mapping.<clé>`) et sert d'aperçu à la reprise.
+Un pack copie chacun de ses imports en pipeline d'org (`pipelines.md` D1050). Le pack possède le document de la copie. La récurrence est un réglage de l'org : le pack ne la remplace jamais (D424). `pipelines.pack_written` garde le dernier document écrit par le pack. `differs` dit quels champs du document l'org a changés et sert d'aperçu à la reprise.
 
 ### 3.4 Organisations, établissements, hiérarchies
 
@@ -457,9 +454,9 @@ Un client du SaaS est une org PneX (D300). Le SaaS garde une clé de compte de s
 | # | Décision | Choix actuel |
 |---|---|---|
 | D300 | PneX moteur d'un SaaS tiers | une org par client, clé de compte de service côté serveur, écriture bornée aux types d'un pack (non livrée), gestes métier par actions |
-| D301 | Imports déclaratifs | `object_imports`, fichier / URL / API, mapping YAML sans code, `incremental` / `snapshot`, aperçu puis application |
+| D301 | Imports déclaratifs | mapping YAML sans code, `incremental` / `snapshot` ; depuis D1050, l'étape `write objects` d'un pipeline d'org, la sonde tient lieu d'aperçu |
 | D302 | Clé naturelle | `PropertyDef.unique`, contrôlée par le service ; 409 `ontology-unique-duplicates` sur des doublons existants |
-| D303 | Synchronisations planifiées | récurrence, journal `object_import_runs`, refus sans écriture |
+| D303 | Synchronisations planifiées | récurrence, rôle de l'auteur relu à chaque exécution, refus sans écriture ; journal des étapes de l'exécution depuis D1050 |
 | D304 | Pack `companies_fr` | `organization` étendue, établissement = `map_pin`, dirigeants par `manages`, données minimisées ; socle passé à `companies` (D343) |
 | D305 | Hiérarchie | vue d'arbre sur des liens déclarés par le pack, multi-parents, datée ; D180 inchangé |
 | D306 | Extension de type | `extends:` vers un type requis ou système, propriétés optionnelles seulement |
@@ -510,8 +507,6 @@ Routes (sous `/api/v1`) :
 
 | Route | Effet |
 |---|---|
-| `GET`/`POST /ontology/imports`, `GET`/`PUT`/`DELETE …/{id}` | imports |
-| `POST …/{id}/dry-run`, `POST …/{id}/apply`, `GET`/`POST …/{id}/runs` | aperçu, application, runs |
 | `GET /extension/missions/{id}/pages` | registre `site_pages` d'une mission |
 | `GET /extension/proofs/verify` | vérifier la chaîne d'empreintes |
 | `GET /media/{id}/versions/diff?from=n&to=m` | diff de deux versions |
@@ -521,7 +516,7 @@ Routes internes du runtime : `/internal/flow/ontology/{query,upsert,link,check}`
 
 Flows du pack et ordre de déploiement (D414) :
 
-1. Lancez les imports SIRENE, DGEFP, puis CPF RS et RNCP.
+1. Lancez les pipelines SIRENE, DGEFP, puis CPF RS et RNCP.
 2. Déployez « Quali-Watch · network rules » (chaque jour, 05:30). Ne déployez pas aussi « rule ADM-01 ».
 3. Déployez « Web presence · find websites » (`web-presence.md`).
 4. Déployez « Quali-Watch · website check » (dimanche, 02:00).
@@ -531,8 +526,8 @@ Flows du pack et ordre de déploiement (D414) :
 
 - **Packs** : `crates/pnex-backend/packs/{companies,companies_fr,quali_watch}.yaml`.
 - **Noyau** : `pnex_core::{import_read, text_diff, office, site_crawl}`, `ontology::{import, flow, check}`.
-- **Backend** : `services/ontology/{imports, hierarchy, flow_nodes}`, `services/ontology/cases/watch.rs`, `services/{crawl, proofs, site_crawl, office, notify_recipients}`.
-- **Tables** : `object_imports`, `object_import_runs`, `site_pages`, `notify_dynamic_sends`, `object_imports.pack_written` (000052), `check_states` (000062). Stream O2 `check_runs`.
+- **Backend** : `services/ontology/{imports, hierarchy, flow_nodes}` (`imports` : l'étape `write objects`), `services/ontology/cases/watch.rs`, `services/{crawl, proofs, site_crawl, office, notify_recipients}`.
+- **Tables** : `pipelines`, `pipeline_object_bases`, `site_pages`, `notify_dynamic_sends`, `check_states` (000062). `object_imports` part avec la migration 000173 (D1050). Stream O2 `check_runs`.
 - **Tests** : `tests/partner_watch.rs`, `tests/site_crawl.rs`, `pnex-node-starlark/tests/pack_rules.rs`, `e2e/tests/partner-watch.spec.ts`.
 
 ## 7. Reste à faire

@@ -98,8 +98,6 @@ pub struct Dataset {
     pub max_age_hours: Option<i32>,
     /// `max_age_hours` has passed without a new version.
     pub stale: bool,
-    /// The import that fills it: neither a load nor a pipeline may write it.
-    pub import_name: Option<String>,
     /// Keys of its markings (governance.md D800): reading its rows needs a clearance
     /// for each.
     #[serde(default)]

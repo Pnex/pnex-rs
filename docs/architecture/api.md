@@ -196,8 +196,6 @@ claude mcp add --transport http --client-id pnex --callback-port 33418 \
 - `pnex org <id>` fixe l'org par défaut. `--org` la change pour un appel.
 - `pnex dataset load <id> <fichier> --yes` envoie un CSV par parties de 32 Mio. La CLI retente chaque partie quatre fois sur une panne réseau ou un 5xx. Elle attend la conversion et sort en erreur si l'envoi ne devient pas une version. Options : `--delimiter`, `--append`. Ce découpage passe un proxy qui limite la taille d'une requête (Cloudflare : 100 Mo).
 - `pnex media load <fichier>` envoie un média de la même façon (`/api/v1/media/uploads`). La CLI sort en erreur avec le `code` du refus si l'envoi ne devient pas une version. `--asset <id>` crée une nouvelle version, sinon un nouvel asset (`--name`, `--kind`). Pas de `--yes` : l'opération n'est pas dangereuse.
-- `pnex import run <id> --yes` lance une exécution d'import. Avec `--wait`, la CLI la suit et sort en 1 si elle ne finit pas `applied`. La CLI réessaie un serveur injoignable ou occupé pendant 5 minutes. Le run continue côté serveur.
-- `pnex import update <id> --mapping @fichier.yaml` remplace la correspondance d'un import. La CLI relit l'import et envoie son `expected_version`. Une modification concurrente rend un 409.
 - Distribution : `task build:cli [TARGET=<triple>]` produit `target/dist/pnex-cli-<triple>.tar.gz` (`.zip` sous Windows). Le job `cli` d'`apps.yml` publie Linux x86_64 et aarch64 (musl, statique), Windows x86_64 et macOS aarch64 dans la release `nightly` et chaque tag `v*`. Depuis les sources : `cargo install --path crates/pnex-cli`.
 
 ```sh
@@ -206,7 +204,6 @@ pnex org 16
 pnex devices list --limit 5 | jq '.results[].device_id'
 pnex devices delete --id 42 --yes
 pnex raw GET '/api/v1/flows?limit=1'
-pnex import run 7f3e… --wait --yes
 pnex logout
 ```
 

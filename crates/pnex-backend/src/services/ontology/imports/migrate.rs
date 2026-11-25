@@ -21,6 +21,10 @@ use crate::services::artifact_store::S3Store;
 /// Converts every import left; one that fails stays for the next boot.
 /// Returns how many were converted.
 pub async fn run(db: &DatabaseConnection, store: Option<&S3Store>) -> Result<usize> {
+    // Dropped once empty (migration 000173): nothing left to convert.
+    if !imports_left(db).await? {
+        return Ok(0);
+    }
     let rows = ImportRow::find_by_statement(stmt(
         &format!("SELECT {IMPORT_COLUMNS} FROM object_imports ORDER BY org_id, name"),
         vec![],
@@ -38,6 +42,17 @@ pub async fn run(db: &DatabaseConnection, store: Option<&S3Store>) -> Result<usi
         }
     }
     Ok(done)
+}
+
+/// Whether the table of imports is still there.
+pub(crate) async fn imports_left<C: ConnectionTrait>(db: &C) -> Result<bool> {
+    let row = db
+        .query_one_raw(stmt(
+            "SELECT to_regclass('object_imports') IS NOT NULL AS left",
+            vec![],
+        ))
+        .await?;
+    Ok(row.is_some_and(|r| r.try_get::<bool>("", "left").unwrap_or(false)))
 }
 
 /// The pipeline document of `row`, and the pack's copy when a pack ships it.

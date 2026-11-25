@@ -306,16 +306,18 @@ async fn erase_in<C: ConnectionTrait>(
         .map(|v| super::opposition::contact_key(org_id, v))
         .collect();
     super::opposition::record(db, org_id, actor.user_id, &contacts).await?;
-    // A diff kept for review holds titles and properties as they were: the preview
-    // is computed again if someone still wants it.
-    db.execute_raw(Statement::from_sql_and_values(
-        DatabaseBackend::Postgres,
-        "UPDATE object_import_runs SET diff = NULL, \
-           state = CASE WHEN state = 'preview' THEN 'stale' ELSE state END \
-         WHERE org_id = $1 AND diff IS NOT NULL AND state IN ('preview', 'refused')",
-        vec![org_id.into()],
-    ))
-    .await?;
+    // A diff an import not converted yet kept holds titles and properties as they
+    // were (pipelines.md D1050).
+    if super::imports::imports_left(db).await? {
+        db.execute_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "UPDATE object_import_runs SET diff = NULL, \
+               state = CASE WHEN state = 'preview' THEN 'stale' ELSE state END \
+             WHERE org_id = $1 AND diff IS NOT NULL AND state IN ('preview', 'refused')",
+            vec![org_id.into()],
+        ))
+        .await?;
+    }
     // A pipeline's kept base holds the values it wrote: its next run compares
     // to the ontology instead (pipelines.md D1050).
     db.execute_raw(Statement::from_sql_and_values(

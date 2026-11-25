@@ -175,34 +175,6 @@ fn cli(ops: &[Op]) -> Command {
                 .arg(yes_arg()),
         )
         .subcommand(
-            Command::new("import")
-                .about("Run an import")
-                .subcommand_required(true)
-                .subcommand(
-                    Command::new("run")
-                        .about("Start a run; --wait follows it and exits non-zero unless applied")
-                        .arg(Arg::new("id").required(true).help("Import id"))
-                        .arg(
-                            Arg::new("wait")
-                                .long("wait")
-                                .action(ArgAction::SetTrue)
-                                .help("Wait for the end of the run"),
-                        )
-                        .arg(yes_arg()),
-                )
-                .subcommand(
-                    Command::new("update")
-                        .about("Replace the mapping of an import; the version is read for you")
-                        .arg(Arg::new("id").required(true).help("Import id"))
-                        .arg(
-                            Arg::new("mapping")
-                                .long("mapping")
-                                .required(true)
-                                .help("The mapping, YAML: inline, @file or -"),
-                        ),
-                ),
-        )
-        .subcommand(
             Command::new("dataset")
                 .about("Load a file into a table")
                 .subcommand_required(true)
@@ -442,17 +414,6 @@ fn run_org(http: &Client, id: Option<i64>) -> Result<()> {
     Ok(())
 }
 
-/// How a run ended, once it has: `Err` says what stopped it.
-fn run_end(run: &Value) -> Option<Result<(), String>> {
-    let state = run["state"].as_str().unwrap_or("unknown");
-    match (state, run["state_code"].as_str()) {
-        ("running", _) => None,
-        ("applied", _) => Some(Ok(())),
-        (_, Some(code)) => Some(Err(format!("{state}: {code}"))),
-        _ => Some(Err(state.to_string())),
-    }
-}
-
 fn call_json(
     http: &Client,
     session: &mut Session,
@@ -624,91 +585,6 @@ fn post_json(
     Ok((status, serde_json::from_slice(&res.bytes()?)?))
 }
 
-/// `pnex import update`: the update needs the version it replaces; reading it just
-/// before keeps the check (a change made meanwhile still answers 409).
-fn update_import(
-    http: &Client,
-    session: &mut Session,
-    org: Option<i64>,
-    id: &str,
-    mapping: &str,
-) -> Result<Value> {
-    let path = format!("/api/v1/ontology/imports/{}", encode(id));
-    let (status, current) = call_json(http, session, org, Method::GET, &path)?;
-    if !status.is_success() {
-        bail!("HTTP {status}: {current}");
-    }
-    // Absent fields keep their value: only the mapping changes.
-    let body = serde_json::json!({
-        "name": current["name"],
-        "mode": current["mode"],
-        "source": current["source"],
-        "mapping": mapping,
-        "expected_version": current["version"],
-    });
-    let token = session.token(http)?.to_string();
-    let mut req = http
-        .put(format!("{}{path}", session.url))
-        .bearer_auth(token)
-        .json(&body);
-    if let Some(org) = org {
-        req = req.header(ORG_HEADER, org.to_string());
-    }
-    let res = req.send()?;
-    let status = res.status();
-    let answer: Value = serde_json::from_slice(&res.bytes()?)?;
-    if !status.is_success() {
-        bail!("HTTP {status}: {answer}");
-    }
-    Ok(answer)
-}
-
-/// `pnex import run`: the run ends on the server whatever happens here, so a poll that
-/// fails (a pod replaced, a busy server) is retried for `patience` polls in a row.
-fn run_import(
-    http: &Client,
-    session: &mut Session,
-    org: Option<i64>,
-    id: &str,
-    wait: bool,
-    every: std::time::Duration,
-    patience: u32,
-) -> Result<()> {
-    let base = format!("/api/v1/ontology/imports/{}/runs", encode(id));
-    let (status, mut run) = call_json(http, session, org, Method::POST, &base)?;
-    if !status.is_success() {
-        bail!("HTTP {status}: {run}");
-    }
-    if wait {
-        let run_id = run["id"].as_str().context("run without an id")?.to_string();
-        let path = format!("{base}/{}", encode(&run_id));
-        let mut failures = 0;
-        while run_end(&run).is_none() {
-            std::thread::sleep(every);
-            match call_json(http, session, org, Method::GET, &path) {
-                Ok((status, mut body)) if status.is_success() => {
-                    failures = 0;
-                    // The start answers the run, the poll a preview that holds it.
-                    run = body["run"].take();
-                }
-                Ok((status, _)) if status.is_client_error() => bail!("HTTP {status} on {path}"),
-                failed => {
-                    failures += 1;
-                    if failures >= patience {
-                        let why = failed.map_or_else(|e| e.to_string(), |(s, _)| s.to_string());
-                        bail!("run {run_id} still unknown after {failures} polls: {why}");
-                    }
-                }
-            }
-        }
-    }
-    println!("{}", serde_json::to_string_pretty(&run)?);
-    match run_end(&run) {
-        Some(Err(why)) if wait => bail!("run did not apply: {why}"),
-        _ => Ok(()),
-    }
-}
-
 fn run() -> Result<()> {
     let ops = ops();
     let matches = cli(&ops).get_matches();
@@ -807,46 +683,6 @@ fn run() -> Result<()> {
             )
             .map(drop)
         }
-        ("import", m) if m.subcommand_name() == Some("update") => {
-            let (_, m) = m.subcommand().expect("subcommand required");
-            let mut session = Session::load()?;
-            let org = org.or(session.org);
-            if org.is_none() {
-                bail!("no organisation: pick one with `pnex org <id>` or pass --org");
-            }
-            let mapping = String::from_utf8(read_body(
-                m.get_one::<String>("mapping").expect("required"),
-            )?)
-            .context("the mapping is not UTF-8")?;
-            let id = m.get_one::<String>("id").expect("required");
-            let answer = update_import(&http, &mut session, org, id, &mapping)?;
-            println!("{}", serde_json::to_string_pretty(&answer)?);
-            Ok(())
-        }
-        ("import", m) => {
-            let (_, m) = m.subcommand().expect("subcommand required");
-            let start = "ontology_imports_runs_start";
-            if let Some(reason) = danger(start, &Method::POST) {
-                if !m.get_flag("yes") {
-                    bail!("refused without --yes: {reason}");
-                }
-            }
-            let mut session = Session::load()?;
-            let org = org.or(session.org);
-            if org.is_none() {
-                bail!("no organisation: pick one with `pnex org <id>` or pass --org");
-            }
-            run_import(
-                &http,
-                &mut session,
-                org,
-                m.get_one::<String>("id").expect("required"),
-                m.get_flag("wait"),
-                std::time::Duration::from_secs(2),
-                // Five minutes: longer than a rollout.
-                150,
-            )
-        }
         (tag, m) => {
             let (action, m) = m.subcommand().expect("subcommand required");
             let op = ops
@@ -898,134 +734,6 @@ mod tests {
         let ops = ops();
         assert!(ops.len() > 300);
         cli(&ops).debug_assert();
-    }
-
-    #[test]
-    fn a_run_ends_on_anything_but_running() {
-        let end = |v: Value| run_end(&v);
-        assert_eq!(end(serde_json::json!({"state": "running"})), None);
-        assert_eq!(end(serde_json::json!({"state": "applied"})), Some(Ok(())));
-        assert_eq!(
-            end(serde_json::json!({"state": "failed", "state_code": "import-run-interrupted"})),
-            Some(Err("failed: import-run-interrupted".into()))
-        );
-        // A run stopped at a preview wrote nothing: not a success.
-        assert_eq!(
-            end(serde_json::json!({"state": "preview"})),
-            Some(Err("preview".into()))
-        );
-    }
-
-    /// Answers one canned response per connection, in order, and records the request lines.
-    fn mock(answers: Vec<(u16, &'static str)>) -> (String, std::sync::mpsc::Receiver<String>) {
-        use std::io::{BufRead, BufReader};
-        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let url = format!("http://{}", listener.local_addr().unwrap());
-        let (tx, rx) = std::sync::mpsc::channel();
-        std::thread::spawn(move || {
-            for (status, body) in answers {
-                let (mut stream, _) = listener.accept().unwrap();
-                let mut reader = BufReader::new(stream.try_clone().unwrap());
-                let mut line = String::new();
-                reader.read_line(&mut line).unwrap();
-                let _ = tx.send(line.trim().to_string());
-                let mut header = String::new();
-                while reader.read_line(&mut header).unwrap() > 2 {
-                    header.clear();
-                }
-                write!(
-                    stream,
-                    "HTTP/1.1 {status} X\r\nconnection: close\r\ncontent-length: {}\r\n\r\n{body}",
-                    body.len()
-                )
-                .unwrap();
-            }
-        });
-        (url, rx)
-    }
-
-    fn session(url: &str) -> Session {
-        serde_json::from_value(serde_json::json!({
-            "url": url, "org": 7, "access_token": "t", "refresh_token": "r",
-            "expires_at": u64::MAX,
-        }))
-        .unwrap()
-    }
-
-    #[test]
-    fn wait_follows_the_run_through_a_replaced_pod_and_reports_its_end() {
-        let http = Client::new();
-        let tick = std::time::Duration::from_millis(1);
-        let (url, requests) = mock(vec![
-            (202, r#"{"id": "r1", "state": "running"}"#),
-            (503, r#"{"error": "server-busy"}"#),
-            (200, r#"{"run": {"id": "r1", "state": "running"}}"#),
-            (
-                200,
-                r#"{"run": {"id": "r1", "state": "failed", "state_code": "import-schema-changed"}}"#,
-            ),
-        ]);
-        let e = run_import(&http, &mut session(&url), Some(7), "i1", true, tick, 3).unwrap_err();
-        assert_eq!(
-            e.to_string(),
-            "run did not apply: failed: import-schema-changed"
-        );
-        let lines: Vec<String> = requests.try_iter().collect();
-        assert_eq!(lines[0], "POST /api/v1/ontology/imports/i1/runs HTTP/1.1");
-        assert_eq!(lines[3], "GET /api/v1/ontology/imports/i1/runs/r1 HTTP/1.1");
-
-        let (url, _) = mock(vec![
-            (202, r#"{"id": "r2", "state": "running"}"#),
-            (200, r#"{"run": {"id": "r2", "state": "applied"}}"#),
-        ]);
-        run_import(&http, &mut session(&url), Some(7), "i1", true, tick, 3).unwrap();
-
-        // Not waiting: the started run is enough.
-        let (url, _) = mock(vec![(202, r#"{"id": "r3", "state": "running"}"#)]);
-        run_import(&http, &mut session(&url), Some(7), "i1", false, tick, 3).unwrap();
-
-        // A server that never comes back ends the wait instead of hanging.
-        let (url, _) = mock(vec![
-            (202, r#"{"id": "r4", "state": "running"}"#),
-            (503, "{}"),
-            (503, "{}"),
-        ]);
-        let e = run_import(&http, &mut session(&url), Some(7), "i1", true, tick, 2).unwrap_err();
-        assert!(e.to_string().contains("still unknown after 2 polls"), "{e}");
-    }
-
-    #[test]
-    fn update_reads_the_version_then_replaces_the_mapping() {
-        let http = Client::new();
-        let (url, requests) = mock(vec![
-            (
-                200,
-                r#"{"id": "i1", "name": "Sites", "mode": "snapshot", "source": "dataset", "version": 4}"#,
-            ),
-            (200, r#"{"id": "i1", "version": 5}"#),
-        ]);
-        let out = update_import(&http, &mut session(&url), Some(7), "i1", "key: x").unwrap();
-        assert_eq!(out["version"], 5);
-        let lines: Vec<String> = requests.try_iter().collect();
-        assert!(
-            lines[0].starts_with("GET /api/v1/ontology/imports/i1 "),
-            "{lines:?}"
-        );
-        assert!(
-            lines[1].starts_with("PUT /api/v1/ontology/imports/i1 "),
-            "{lines:?}"
-        );
-
-        // Changed meanwhile: the server's 409 reaches the user.
-        let (url, _) = mock(vec![
-            (
-                200,
-                r#"{"id": "i1", "name": "Sites", "mode": "snapshot", "source": "dataset", "version": 4}"#,
-            ),
-            (409, r#"{"error": "ontology-version-conflict"}"#),
-        ]);
-        let e = update_import(&http, &mut session(&url), Some(7), "i1", "key: x").unwrap_err();
-        assert!(e.to_string().contains("409"), "{e}");
     }
 
     #[test]

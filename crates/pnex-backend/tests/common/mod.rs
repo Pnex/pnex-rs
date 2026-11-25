@@ -541,20 +541,184 @@ pub fn sql_pipeline(output: &str, inputs: &[(&str, &str)], sql: &str) -> String 
     )
 }
 
-/// The body of an org import holding the mapping of the pack import `name`
-/// (any shipped pack): its file preview checks the mapping, which a pack now
-/// copies into an org pipeline (pipelines.md D1050).
+/// An org's pipeline (pipelines.md D1050) that reads the Table `table` and
+/// writes objects with `mapping` (its `objects`, `links`, `observations` and
+/// `json_column`): what an import of that Table did.
 #[allow(dead_code)]
-pub fn pack_import_body(name: &str) -> serde_json::Value {
-    let p = pnex_backend::services::ontology::packs::shipped()
+pub fn objects_pipeline(table: &str, mapping: &str, snapshot: bool) -> String {
+    let m: serde_json::Value = serde_saphyr::from_str(mapping).expect("mapping");
+    let mut target = serde_json::Map::new();
+    for k in ["objects", "links", "observations", "json_column"] {
+        if let Some(v) = m.get(k) {
+            target.insert(k.into(), v.clone());
+        }
+    }
+    target.entry("objects").or_insert(serde_json::json!([]));
+    target.insert("snapshot".into(), snapshot.into());
+    format!(
+        "key: p\nsteps:\n  - sql: {{as: rows, tables: {{source: {}}}, sql: \"SELECT * FROM source\"}}\n  - write: {{from: rows, objects: {}}}\n",
+        serde_json::Value::String(table.into()),
+        serde_json::Value::Object(target)
+    )
+}
+
+#[allow(dead_code)]
+async fn api(
+    server: &axum_test::TestServer,
+    token: &str,
+    org: i64,
+    method: &str,
+    path: &str,
+    body: Option<serde_json::Value>,
+) -> (u16, serde_json::Value) {
+    let req = match method {
+        "GET" => server.get(path),
+        "POST" => server.post(path),
+        "PUT" => server.put(path),
+        _ => unreachable!(),
+    }
+    .add_header("Authorization", format!("Bearer {token}"))
+    .add_header("X-Org-Id", org.to_string());
+    let res = match body {
+        Some(b) => req.json(&b).await,
+        None => req.await,
+    };
+    let status = res.status_code().as_u16();
+    (
+        status,
+        serde_json::from_str(&res.text()).unwrap_or_default(),
+    )
+}
+
+/// Loads `csv` as a new version of the Table `name`, created when missing;
+/// returns its id.
+#[allow(dead_code)]
+pub async fn load_table(
+    server: &axum_test::TestServer,
+    token: &str,
+    org: i64,
+    name: &str,
+    csv: &[u8],
+) -> String {
+    let (st, all) = api(
+        server,
+        token,
+        org,
+        "GET",
+        "/api/v1/datasets?limit=200",
+        None,
+    )
+    .await;
+    assert_eq!(st, 200, "{all}");
+    let found = all["results"]
+        .as_array()
+        .and_then(|a| a.iter().find(|d| d["name"] == name))
+        .map(|d| d["id"].as_str().unwrap().to_string());
+    let id = match found {
+        Some(id) => id,
+        None => {
+            let body = serde_json::json!({ "name": name });
+            let (st, d) = api(server, token, org, "POST", "/api/v1/datasets", Some(body)).await;
+            assert_eq!(st, 201, "{d}");
+            d["id"].as_str().unwrap().to_string()
+        }
+    };
+    let res = server
+        .post(&format!("/api/v1/datasets/{id}/transactions/csv"))
+        .add_header("Authorization", format!("Bearer {token}"))
+        .add_header("X-Org-Id", org.to_string())
+        .bytes(csv.to_vec().into())
+        .await;
+    assert_eq!(res.status_code().as_u16(), 201, "{}", res.text());
+    id
+}
+
+/// Creates the org pipeline `name` from `document`; returns its id.
+#[allow(dead_code)]
+pub async fn create_pipeline(
+    server: &axum_test::TestServer,
+    token: &str,
+    org: i64,
+    name: &str,
+    document: &str,
+) -> String {
+    let body = serde_json::json!({ "name": name, "document": document });
+    let (st, p) = api(server, token, org, "POST", "/api/v1/pipelines", Some(body)).await;
+    assert_eq!(st, 201, "{p}");
+    p["id"].as_str().unwrap().to_string()
+}
+
+/// Id of the org pipeline a pack makes of its import `name` (D1050): the copy
+/// its install wrote, or one made of the same document when the pack is not
+/// installed.
+#[allow(dead_code)]
+pub async fn pack_pipeline(
+    server: &axum_test::TestServer,
+    token: &str,
+    org: i64,
+    name: &str,
+) -> String {
+    let (st, list) = api(
+        server,
+        token,
+        org,
+        "GET",
+        "/api/v1/pipelines?limit=200",
+        None,
+    )
+    .await;
+    assert_eq!(st, 200, "{list}");
+    if let Some(p) = list["results"]
+        .as_array()
+        .and_then(|a| a.iter().find(|p| p["name"] == name))
+    {
+        return p["id"].as_str().unwrap().to_string();
+    }
+    let (pack, import) = pnex_backend::services::ontology::packs::shipped()
         .into_iter()
-        .flat_map(|p| p.imports)
-        .find(|i| i.name == name)
+        .find_map(|p| {
+            let i = p.imports.iter().find(|i| i.name == name).cloned();
+            i.map(|i| (p, i))
+        })
         .unwrap_or_else(|| panic!("no pack import {name}"));
-    serde_json::json!({
-        "name": name,
-        "mapping": serde_saphyr::to_string(&p.mapping).unwrap(),
-        "source": p.source,
-        "mode": p.mode,
-    })
+    let doc = pnex_backend::services::ontology::imports::pack_copy(&pack, &import).unwrap();
+    let document = serde_json::to_string_pretty(&doc).unwrap();
+    create_pipeline(server, token, org, name, &document).await
+}
+
+/// Runs the org pipeline `id` on the server and returns its run once ended.
+/// `sql` steps need a worker ([`spawn_pipeline_worker`]).
+#[allow(dead_code)]
+pub async fn run_org_pipeline(
+    server: &axum_test::TestServer,
+    ctx: &loco_rs::app::AppContext,
+    token: &str,
+    org: i64,
+    id: &str,
+) -> serde_json::Value {
+    let runs = format!("/api/v1/pipelines/{id}/runs");
+    let (st, r) = api(server, token, org, "POST", &runs, None).await;
+    assert_eq!(st, 202, "{r}");
+    let path = format!("{runs}/{}", r["id"].as_str().unwrap());
+    for _ in 0..1200 {
+        // Another loop of the test may have taken it.
+        let _ = pnex_backend::services::pipelines::run_next(ctx).await;
+        let (st, r) = api(server, token, org, "GET", &path, None).await;
+        assert_eq!(st, 200, "{r}");
+        if r["state"] == "done" || r["state"] == "failed" {
+            return r;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    panic!("run of {id} never ended");
+}
+
+/// Counts of the run's `write` of objects (D1050).
+#[allow(dead_code)]
+pub fn written(run: &serde_json::Value) -> serde_json::Value {
+    run["steps"]
+        .as_array()
+        .and_then(|s| s.iter().rev().find(|s| s["step"] == "write"))
+        .map(|s| s["manifest"]["written"]["counts"].clone())
+        .unwrap_or(serde_json::Value::Null)
 }

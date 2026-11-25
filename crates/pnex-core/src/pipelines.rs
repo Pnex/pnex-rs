@@ -381,33 +381,30 @@ pub struct DatasetLineage {
 #[serde(rename_all = "lowercase")]
 pub enum BuildTargetKind {
     Pipeline,
-    Import,
 }
 
 impl BuildTargetKind {
     pub fn wire(self) -> &'static str {
         match self {
             Self::Pipeline => "pipeline",
-            Self::Import => "import",
         }
     }
 }
 
-/// A pipeline or an import, as the scheduler sees it.
+/// A pipeline, as the scheduler sees it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GraphNode {
     pub kind: BuildTargetKind,
     pub id: String,
     pub name: String,
-    /// Whether the server can start it: a file import without steps waits for a
-    /// file, and what it wrote last is read as it is.
+    /// Whether the server can start it: what it wrote last is read as it is
+    /// otherwise.
     pub runnable: bool,
     pub reads: Vec<String>,
     pub writes: Vec<String>,
-    /// Keys of what it runs after: an import's mapping keys, a pipeline's
-    /// names of the org's pipelines.
+    /// Names of the org's pipelines it runs after.
     pub after: Vec<String>,
-    /// Mapping key of an import, name of a pipeline.
+    /// Its name, which `after` names.
     pub key: Option<String>,
 }
 
@@ -417,7 +414,7 @@ pub enum PlanError {
     Cycle {
         through: String,
     },
-    /// `after` names an import the org does not have.
+    /// `after` names a pipeline the org does not have.
     Missing {
         name: String,
         after: String,
@@ -524,7 +521,6 @@ pub fn plan(nodes: &[GraphNode], target: usize) -> Result<Vec<BuildStep>, PlanEr
                 after: edges[i].iter().filter_map(|d| position(*d)).collect(),
                 run_id: None,
                 code: None,
-                retries: 0,
             }
         })
         .collect())
@@ -544,7 +540,7 @@ pub enum BuildStepState {
     Skipped,
 }
 
-/// One pipeline or import of a build.
+/// One pipeline of a build.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct BuildStep {
@@ -559,36 +555,11 @@ pub struct BuildStep {
     #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
     pub run_id: Option<String>,
     pub code: Option<String>,
-    /// Times it started again because its run was lost with its server.
-    #[serde(default)]
-    pub retries: u8,
-}
-
-/// How many times a step starts again after its run was lost with its server. Once: an
-/// import that itself brings its server down must not do it forever.
-pub const STEP_RETRIES_MAX: u8 = 1;
-
-impl BuildStep {
-    /// Gives the step another run if it only stopped because its server did. Applying an
-    /// import twice is safe: the second run compares with what the first one wrote.
-    pub fn retry_if_lost(&mut self) -> bool {
-        let lost = self.kind == BuildTargetKind::Import
-            && self.state == BuildStepState::Failed
-            && self.code.as_deref() == Some(crate::err_codes::IMPORT_RUN_INTERRUPTED);
-        if lost && self.retries < STEP_RETRIES_MAX {
-            self.retries += 1;
-            self.state = BuildStepState::Pending;
-            self.run_id = None;
-            self.code = None;
-            return true;
-        }
-        false
-    }
 }
 
 /// Blocks what depends on a failure, then gives the next step to start. `None`
 /// with a step running means wait; `None` without means the build is over. One
-/// step at a time: an org writes one import and runs one pipeline at once anyway.
+/// step at a time: an org runs one pipeline at once anyway.
 pub fn next_step(steps: &mut [BuildStep]) -> Option<usize> {
     use BuildStepState::*;
     for i in 0..steps.len() {
@@ -741,7 +712,7 @@ mod tests {
 
     fn node(name: &str, reads: &[&str], writes: &[&str], after: &[&str]) -> GraphNode {
         GraphNode {
-            kind: BuildTargetKind::Import,
+            kind: BuildTargetKind::Pipeline,
             id: name.into(),
             name: name.into(),
             runnable: true,
@@ -782,7 +753,7 @@ mod tests {
     }
 
     #[test]
-    fn an_unknown_import_in_after_stops_the_plan() {
+    fn an_unknown_pipeline_in_after_stops_the_plan() {
         let g = [node("a", &[], &[], &["gone"])];
         assert_eq!(
             plan(&g, 0),
@@ -818,43 +789,6 @@ mod tests {
         steps[b].state = BuildStepState::Done;
         assert_eq!(next_step(&mut steps), None);
         assert_eq!(steps[t].state, BuildStepState::Blocked);
-    }
-
-    #[test]
-    fn only_a_run_lost_with_its_server_starts_again_and_only_once() {
-        let mut step = BuildStep {
-            kind: BuildTargetKind::Import,
-            id: "i".into(),
-            name: "i".into(),
-            state: BuildStepState::Failed,
-            after: vec![],
-            run_id: Some("r".into()),
-            code: Some(crate::err_codes::IMPORT_RUN_INTERRUPTED.into()),
-            retries: 0,
-        };
-        assert!(step.retry_if_lost());
-        assert_eq!(step.state, BuildStepState::Pending);
-        assert_eq!(step.run_id, None);
-        assert_eq!(step.code, None);
-
-        step.state = BuildStepState::Failed;
-        step.code = Some(crate::err_codes::IMPORT_RUN_INTERRUPTED.into());
-        assert!(!step.retry_if_lost(), "once");
-        assert_eq!(step.state, BuildStepState::Failed);
-
-        let mut refused = BuildStep {
-            code: Some(crate::err_codes::IMPORT_SCHEMA_CHANGED.into()),
-            retries: 0,
-            ..step.clone()
-        };
-        assert!(!refused.retry_if_lost(), "a real failure stays one");
-        let mut pipeline = BuildStep {
-            kind: BuildTargetKind::Pipeline,
-            code: Some(crate::err_codes::IMPORT_RUN_INTERRUPTED.into()),
-            retries: 0,
-            ..step
-        };
-        assert!(!pipeline.retry_if_lost(), "the worker retries its own jobs");
     }
 
     #[test]

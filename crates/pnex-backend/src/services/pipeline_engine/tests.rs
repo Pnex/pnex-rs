@@ -215,7 +215,10 @@ async fn browse_pauses_a_row_and_its_extracts_resume_it() {
     // Waiting rows are not taken again before their wait is over.
     let known = HashMap::from([(item.key.clone(), item.clone())]);
     let now_us = inputs.now.and_utc().timestamp_micros();
-    assert!(pnex_core::pipeline::track::due(&[item.key.clone()], &known, now_us, 10).is_empty());
+    assert!(
+        pnex_core::pipeline::track::due(std::slice::from_ref(&item.key), &known, now_us, 10)
+            .is_empty()
+    );
 
     let extracts = super::extract_rows([("profile".to_string(), "Jane, engineer".to_string())]);
     let (done, failure, rows) = super::resume(

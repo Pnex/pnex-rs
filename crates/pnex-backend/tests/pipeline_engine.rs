@@ -434,11 +434,10 @@ async fn a_table_write_spares_import_tables_erasures_and_cells() {
             let st = Statement::from_sql_and_values(sea_orm::DatabaseBackend::Postgres, sql, values);
             async move { db.execute_raw(st).await.unwrap() }
         };
+        // An import left, until its conversion at boot (D1050).
         exec(
-            "WITH i AS (INSERT INTO object_imports (id, org_id, name, mapping_yaml) \
-               VALUES (gen_random_uuid(), $1, 'x', 'x') RETURNING id) \
-             INSERT INTO datasets (org_id, name, import_id, retain_days) \
-             SELECT $1, 'imported', id, 30 FROM i",
+            "INSERT INTO datasets (org_id, name, import_id, retain_days) \
+             VALUES ($1, 'imported', gen_random_uuid(), 30)",
             vec![org.into()],
         )
         .await;

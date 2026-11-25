@@ -128,6 +128,7 @@ pub mod site_crawl;
 pub mod site_recipes;
 pub mod software_supply;
 pub mod stitch;
+pub mod stop;
 pub mod storage_reconcile;
 pub mod surface_controls;
 pub mod system_status;

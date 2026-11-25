@@ -88,7 +88,6 @@ pub fn spec() -> utoipa::openapi::OpenApi {
         controllers::ontology::openapi(),
         controllers::markets::openapi(),
         controllers::market_decisions::openapi(),
-        controllers::ontology_imports::openapi(),
         controllers::ontology_feed::openapi(),
         controllers::apps::openapi(),
         controllers::cases::openapi(),

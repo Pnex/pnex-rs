@@ -173,7 +173,6 @@ pub fn app_routes() -> AppRoutes {
         .add_route(controllers::ontology::routes())
         .add_route(controllers::markets::routes())
         .add_route(controllers::market_decisions::routes())
-        .add_route(controllers::ontology_imports::routes())
         .add_route(controllers::ontology_feed::routes())
         .add_route(controllers::apps::routes())
         .add_route(controllers::cases::routes())
@@ -320,8 +319,6 @@ impl Hooks for App {
                 }
             });
         }
-        // Scheduled ontology imports (partners.md D303).
-        crate::services::ontology::imports::spawn_scheduler(ctx);
         // Chained runs, stale tables, dataset events (pipelines.md D575–D578).
         crate::services::data_builds::spawn(ctx);
         // Server site crawls (partners.md D307).
@@ -443,17 +440,10 @@ impl Hooks for App {
     }
 
     async fn on_shutdown(ctx: &AppContext) {
-        // Side by side, within the pod's grace period: hand the orgs of the
-        // local flow worker over (D106); let the import runs finish, none
-        // starting any more, the late ones failed `import-run-interrupted`
-        // (pipelines.md §3.13).
-        tokio::join!(
-            crate::services::flow_cluster::shutdown(),
-            crate::services::ontology::imports::stop::shutdown(
-                &ctx.db,
-                crate::services::ontology::imports::stop::grace(),
-            ),
-        );
+        // No new run starts (pipelines.md §3.13), then the orgs of the local
+        // flow worker are handed over (D106).
+        crate::services::stop::shutdown();
+        crate::services::flow_cluster::shutdown().await;
         // Flush buffered writers (O2 telemetry batches, notify journal):
         // their senders live in statics, the channels never close by
         // themselves. Bounded: the pod's grace period is finite.

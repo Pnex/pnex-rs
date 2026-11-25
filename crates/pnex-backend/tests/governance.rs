@@ -273,39 +273,9 @@ async fn a_marked_object_is_masked_and_cannot_be_written() {
     .await;
 }
 
-async fn run_import(server: &axum_test::TestServer, token: &str, org: i64, import: &str) -> Value {
-    let (s, r) = call(
-        server,
-        token,
-        org,
-        "POST",
-        &format!("/api/v1/ontology/imports/{import}/runs"),
-        None,
-    )
-    .await;
-    assert_eq!(s, 202, "{r}");
-    let run = r["id"].as_str().unwrap().to_string();
-    for _ in 0..300 {
-        let (_, v) = call(
-            server,
-            token,
-            org,
-            "GET",
-            &format!("/api/v1/ontology/imports/{import}/runs/{run}"),
-            None,
-        )
-        .await;
-        if v["run"]["state"] != "running" {
-            return v;
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-    }
-    panic!("run {run} never settled");
-}
-
 #[tokio::test]
 #[serial]
-async fn a_sync_needs_a_cleared_author_and_marks_what_it_writes() {
+async fn a_pipeline_needs_a_cleared_starter_and_marks_what_it_writes() {
     with_app(|server, env, ctx| async move {
         let org = personal_org(&server, &env.alice).await;
         let a = env.alice.as_str();
@@ -328,35 +298,33 @@ async fn a_sync_needs_a_cleared_author_and_marks_what_it_writes() {
         call(&server, a, org, "POST", &format!("/api/v1/datasets/{staff}/markings"),
             Some(json!({ "markings": ["hr"] }))).await;
 
-        let mapping = "key: staff_sync\nname: Staff\nformat: csv\nobjects:\n  - as: e\n    type: employee\n    key: code\n    title: { from: name }\n    properties:\n      code: { from: code }\n";
-        let (s, imp) = call(&server, a, org, "POST", "/api/v1/ontology/imports", Some(json!({
-            "name": "staff", "mapping": mapping, "source": "dataset", "source_url": staff,
-            "mode": "snapshot" }))).await;
-        assert_eq!(s, 201, "{imp}");
-        let id = imp["id"].as_str().unwrap().to_string();
+        let mapping = "objects:\n  - as: e\n    type: employee\n    key: code\n    title: { from: name }\n    properties:\n      code: { from: code }\n";
+        let document = common::objects_pipeline("staff", mapping, true);
+        let id = common::create_pipeline(&server, a, org, "staff", &document).await;
 
-        // Its author is not cleared: the run reads nothing.
-        let r = run_import(&server, a, org, &id).await;
-        assert_eq!(r["run"]["state_code"], "marking-required", "{r}");
+        // Its starter is not cleared: the run does not start (D801).
+        let runs = format!("/api/v1/pipelines/{id}/runs");
+        let (s, e) = call(&server, a, org, "POST", &runs, None).await;
+        assert_eq!(e["error"], "marking-required", "{s} {e}");
 
         let alice: i64 = sql(&ctx.db, "SELECT id FROM users WHERE email = 'alice@example.com'").await[0]
             .try_get("", "id").unwrap();
         call(&server, a, org, "POST", "/api/v1/governance/clearances",
             Some(json!({ "user_id": alice, "marking_key": "hr", "purpose": "staff sync", "days": 1 }))).await;
-        let r = run_import(&server, a, org, &id).await;
-        assert_eq!(r["run"]["state"], "applied", "{r}");
+        let worker = common::spawn_pipeline_worker();
+        let r = common::run_org_pipeline(&server, &ctx, a, org, &id).await;
+        assert_eq!(r["state"], "done", "{r}");
         let marked: i64 = sql(&ctx.db, &format!(
             "SELECT count(*) AS n FROM object_markings om JOIN objects o ON o.id = om.object_id \
              WHERE o.org_id = {org} AND o.type_key = 'employee'")).await[0]
             .try_get("", "n").unwrap();
-        assert_eq!(marked, 2, "what the sync wrote carries the table's marking: {r}");
+        assert_eq!(marked, 2, "what the pipeline wrote carries the table's marking: {r}");
 
         // So does what an org pipeline reading the table writes (D802, D1050).
         let document = "key: staff\nsteps:\n  - sql: { as: rows, tables: { s: staff }, sql: \"SELECT 'C3' AS code, 'Cyd' AS name FROM s LIMIT 1\" }\n  - write:\n      from: rows\n      objects:\n        objects:\n          - { as: e, type: employee, key: code, title: { from: name }, properties: { code: { from: code } } }\n";
         let (s, p) = call(&server, a, org, "POST", "/api/v1/pipelines",
             Some(json!({ "name": "staff copy", "document": document }))).await;
         assert_eq!(s, 201, "{p}");
-        let worker = common::spawn_pipeline_worker();
         let runs = format!("/api/v1/pipelines/{}/runs", p["id"].as_str().unwrap());
         let (s, r) = call(&server, a, org, "POST", &runs, None).await;
         assert_eq!(s, 202, "{r}");

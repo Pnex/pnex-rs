@@ -1,6 +1,7 @@
-//! Sync of a dataset into the ontology (pipelines.md D577, §3.6): the
-//! delta is by planned entity, so an edit survives until the source changes that
-//! value, and a row gone does not close what its sibling rows still hold.
+//! A Table written into the ontology by an org pipeline (pipelines.md D577,
+//! D1050): the delta is by planned entity, so an edit survives until the source
+//! changes that value, and a row gone does not close what its sibling rows still
+//! hold.
 //!
 //! Needs PostgreSQL (TEST_DATABASE_URL) and the compose `rustfs` service.
 
@@ -111,35 +112,14 @@ impl Api<'_> {
         d["id"].as_str().unwrap().to_string()
     }
 
-    /// Polls until the run leaves `running`, within `secs`.
-    async fn settle(&self, import: &str, run: &str, secs: u32) -> Value {
-        let path = format!("/api/v1/ontology/imports/{import}/runs/{run}");
-        for _ in 0..secs * 10 {
-            let (s, r) = self.call("GET", &path, None).await;
-            // The answer of a busy database, during the bulk write of a whole file.
-            if s == 503 {
-                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-                continue;
-            }
-            assert_eq!(s, 200, "{r}");
-            if r["run"]["state"] != "running" {
-                return r;
-            }
-            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-        }
-        panic!("run {run} never settled");
+    /// The org pipeline `name` writing objects from the Table `table` with `mapping`.
+    async fn pipeline(&self, name: &str, table: &str, mapping: &str, snapshot: bool) -> String {
+        let document = common::objects_pipeline(table, mapping, snapshot);
+        common::create_pipeline(self.server, self.token, self.org, name, &document).await
     }
 
-    async fn run(&self, import: &str, secs: u32) -> Value {
-        let (s, r) = self
-            .call(
-                "POST",
-                &format!("/api/v1/ontology/imports/{import}/runs"),
-                None,
-            )
-            .await;
-        assert_eq!(s, 202, "{r}");
-        self.settle(import, r["id"].as_str().unwrap(), secs).await
+    async fn run(&self, ctx: &loco_rs::app::AppContext, id: &str) -> Value {
+        common::run_org_pipeline(self.server, ctx, self.token, self.org, id).await
     }
 }
 
@@ -252,38 +232,23 @@ async fn an_edit_survives_until_the_source_changes_that_value() {
             .await;
         assert_eq!(s, 201, "{e}");
 
+        let worker = common::spawn_pipeline_worker();
         let dataset = api.dataset("partners").await;
         api.load_partners(&dataset, V1).await;
-        // A mapping that belongs to another source, a dataset of nobody: refused.
-        let input = |source_url: &str, mapping: &str| {
-            json!({ "name": "partners", "mapping": mapping, "source": "dataset",
-                    "source_url": source_url, "mode": "snapshot" })
-        };
-        let imports = "/api/v1/ontology/imports";
-        let other = uuid::Uuid::new_v4().to_string();
-        let (s, e) = api.call("POST", imports, Some(input(&other, MAPPING))).await;
-        assert_eq!(s, 400, "{e}");
-        assert_eq!(e["errors"]["fields"]["source_url"], "invalid", "{e}");
-        let stepped = format!("{MAPPING}steps:\n  - {{ step: file_download }}\n");
-        let (s, e) = api.call("POST", imports, Some(input(&dataset, &stepped))).await;
-        assert_eq!(s, 400, "{e}");
-
-        let (s, imp) = api.call("POST", imports, Some(input(&dataset, MAPPING))).await;
-        assert_eq!(s, 201, "{imp}");
-        let id = imp["id"].as_str().unwrap().to_string();
+        let id = api.pipeline("partners", "partners", MAPPING, true).await;
         let acme = "732829320";
         let beta = "552100554";
 
-        // First run: no reference, it applies. Sibling rows merge into one link.
-        let r = api.run(&id, 30).await;
-        assert_eq!(r["run"]["state"], "applied", "{r}");
+        // First run: no base, it applies. Sibling rows merge into one link.
+        let r = api.run(&ctx, &id).await;
+        assert_eq!(r["state"], "done", "{r}");
         assert_eq!(scopes(db).await, [format!("{beta}=preparation"), format!("{acme}=both")]);
         let (org_id, version, nda, title) = org_of(db, acme).await.unwrap();
         assert_eq!((nda.as_deref(), title.as_str()), (Some("11111111111"), "Acme"));
 
         // Same transaction: nothing to do.
-        let r = api.run(&id, 30).await;
-        assert_eq!(r["run"]["state"], "applied", "{r}");
+        let r = api.run(&ctx, &id).await;
+        assert_eq!(r["state"], "done", "{r}");
         assert_eq!(org_of(db, acme).await.unwrap().1, version);
 
         // A person edits the number and the title in the ontology.
@@ -299,16 +264,16 @@ async fn an_edit_survives_until_the_source_changes_that_value() {
 
         // Reloaded as is, a new transaction: the edit stays.
         api.load_partners(&dataset, V1).await;
-        let r = api.run(&id, 30).await;
-        assert_eq!(r["run"]["state"], "applied", "{r}");
+        let r = api.run(&ctx, &id).await;
+        assert_eq!(r["state"], "done", "{r}");
         let (_, _, nda, title) = org_of(db, acme).await.unwrap();
         assert_eq!((nda.as_deref(), title.as_str()), (Some("99999999999"), "Acme edited"));
 
         // Another entity changes: only it moves, the edit stays.
         let v2 = String::from_utf8_lossy(V1).replace("22222222222", "33333333333");
         api.load_partners(&dataset, v2.as_bytes()).await;
-        let r = api.run(&id, 30).await;
-        assert_eq!(r["run"]["state"], "applied", "{r}");
+        let r = api.run(&ctx, &id).await;
+        assert_eq!(r["state"], "done", "{r}");
         assert_eq!(org_of(db, beta).await.unwrap().2.as_deref(), Some("33333333333"));
         assert_eq!(org_of(db, acme).await.unwrap().2.as_deref(), Some("99999999999"));
 
@@ -317,8 +282,8 @@ async fn an_edit_survives_until_the_source_changes_that_value() {
 73282932000074;Acme;44444444444;RS1;F\n\
 73282932000082;Acme;44444444444;RS1;A\n\
 55210055400013;Beta;33333333333;RS1;F\n").await;
-        let r = api.run(&id, 30).await;
-        assert_eq!(r["run"]["state"], "applied", "{r}");
+        let r = api.run(&ctx, &id).await;
+        assert_eq!(r["state"], "done", "{r}");
         let (_, _, nda, title) = org_of(db, acme).await.unwrap();
         assert_eq!((nda.as_deref(), title.as_str()), (Some("44444444444"), "Acme edited"));
 
@@ -327,8 +292,8 @@ async fn an_edit_survives_until_the_source_changes_that_value() {
 73282932000074;Acme;44444444444;RS1;F\n\
 55210055400013;Beta;33333333333;RS1;F\n\
 44306184100047;Gamma;55555555555;RS1;F\n").await;
-        let r = api.run(&id, 30).await;
-        assert_eq!(r["run"]["state"], "applied", "{r}");
+        let r = api.run(&ctx, &id).await;
+        assert_eq!(r["state"], "done", "{r}");
         assert_eq!(
             scopes(db).await,
             ["443061841=preparation".to_string(), format!("{beta}=preparation"), format!("{acme}=preparation")]
@@ -342,69 +307,37 @@ async fn an_edit_survives_until_the_source_changes_that_value() {
 73282932000074;Acme;44444444444;RS1;F\n\
 55210055400013;Beta;33333333333;RS1;F\n\
 44306184100047;Gamma;55555555555;RS1;F\n").await;
-        let r = api.run(&id, 30).await;
-        assert_eq!(r["run"]["state"], "applied", "{r}");
+        let r = api.run(&ctx, &id).await;
+        assert_eq!(r["state"], "done", "{r}");
         assert!(org_of(db, "443061841").await.is_none());
 
         // All the rows of an entity go: it closes. The mapping stays valid.
         api.load_partners(&dataset, b"siret;name;nda;code;scope\n\
 73282932000074;Acme;44444444444;RS1;F\n\
 44306184100047;Gamma;55555555555;RS1;F\n").await;
-        let r = api.run(&id, 30).await;
-        assert_eq!(r["run"]["state"], "applied", "{r}");
+        let r = api.run(&ctx, &id).await;
+        assert_eq!(r["state"], "done", "{r}");
         assert!(org_of(db, beta).await.is_none());
         // Compared for real this time, and the archived one is still not back.
         assert!(org_of(db, "443061841").await.is_none());
 
         // Most of what it holds gone at once: refused, nothing written.
         api.load(&dataset, b"siret;name;nda;code;scope\n73282932000074;Acme;44444444444;RS1;F\n").await;
-        let r = api.run(&id, 30).await;
-        assert_eq!(r["run"]["state"], "refused", "{r}");
-        assert_eq!(r["run"]["state_code"], "ingest-suspicious-closures", "{r}");
+        let r = api.run(&ctx, &id).await;
+        assert_eq!(r["state"], "failed", "{r}");
+        assert_eq!(r["code"], "ingest-suspicious-closures", "{r}");
         let fillers = sql(db, "SELECT 1 AS x FROM objects WHERE type_key = 'organization' \
             AND valid_to IS NULL AND properties ->> 'siren' LIKE '1000%'").await;
         assert_eq!(fillers.len(), 30);
-        api.load_partners(&dataset, b"siret;name;nda;code;scope\n73282932000074;Acme;44444444444;RS1;F\n44306184100047;Gamma;55555555555;RS1;F\n").await;
 
-        // Mapping changed: no reference, a run stops at a preview showing what it
-        // overwrites, and a preview whose source moved is stale.
-        let (_, current) = api.call("GET", &format!("{imports}/{id}"), None).await;
-        let (s, updated) = api
-            .call(
-                "PUT",
-                &format!("{imports}/{id}"),
-                Some(json!({ "name": "partners", "source": "dataset", "mode": "snapshot",
-                    "mapping": format!("{MAPPING}description: changed\n"),
-                    "expected_version": current["version"] })),
-            )
-            .await;
-        assert_eq!(s, 200, "{updated}");
-        let r = api.run(&id, 30).await;
-        assert_eq!(r["run"]["state"], "preview", "{r}");
-        api.load_partners(&dataset, b"siret;name;nda;code;scope\n73282932000074;Acme;44444444444;RS1;F\n44306184100047;Gamma;55555555555;RS1;A\n").await;
-        let apply = format!("{imports}/{id}/apply");
-        let body = json!({ "run_id": r["run"]["id"], "expected_version": updated["version"] });
-        let (s, e) = api.call("POST", &apply, Some(body)).await;
-        assert_eq!(s, 409, "{e}");
-        assert_eq!(e["error"], "import-run-stale", "{e}");
-        let (s, p) = api.call("POST", &format!("{imports}/{id}/dry-run"), None).await;
-        assert_eq!(s, 202, "{p}");
-        let r = api.settle(&id, p["id"].as_str().unwrap(), 30).await;
-        assert_eq!(r["run"]["state"], "preview", "{r}");
-        let body = json!({ "run_id": r["run"]["id"], "expected_version": updated["version"] });
-        let (s, p) = api.call("POST", &apply, Some(body)).await;
-        assert_eq!(s, 202, "{p}");
-        let r = api.settle(&id, r["run"]["id"].as_str().unwrap(), 30).await;
-        assert_eq!(r["run"]["state"], "applied", "{r}");
-
-        // The dataset is gone: the run says so.
+        // The Table is gone: the run fails.
         let store = pnex_backend::services::datasets::store_of(&ctx.config).unwrap();
         pnex_backend::services::datasets::delete(db, &store, org, dataset.parse().unwrap())
             .await
             .unwrap();
-        let r = api.run(&id, 30).await;
-        assert_eq!(r["run"]["state"], "failed", "{r}");
-        assert_eq!(r["run"]["state_code"], "dataset-not-found", "{r}");
+        let r = api.run(&ctx, &id).await;
+        worker.abort();
+        assert_eq!(r["state"], "failed", "{r}");
     })
     .await;
 }
@@ -429,18 +362,10 @@ async fn what_waited_for_an_object_is_written_when_it_appears() {
         let csv = "siret;name;nda;code;scope\n73282932000074;Acme;11111111111;RS9;F\n";
         api.load(&dataset, csv.as_bytes()).await;
         let mapping = MAPPING.replace("create: false", "create: false\n    missing: skip");
-        let (s, imp) = api
-            .call(
-                "POST",
-                "/api/v1/ontology/imports",
-                Some(json!({ "name": "partners", "mapping": mapping, "source": "dataset",
-                             "source_url": dataset, "mode": "incremental" })),
-            )
-            .await;
-        assert_eq!(s, 201, "{imp}");
-        let id = imp["id"].as_str().unwrap().to_string();
-        let r = api.run(&id, 30).await;
-        assert_eq!(r["run"]["state"], "applied", "{r}");
+        let worker = common::spawn_pipeline_worker();
+        let id = api.pipeline("partners", "partners", &mapping, false).await;
+        let r = api.run(&ctx, &id).await;
+        assert_eq!(r["state"], "done", "{r}");
         assert!(scopes(db).await.is_empty());
 
         // Same table, the object now exists: the link opens at once.
@@ -452,8 +377,8 @@ async fn what_waited_for_an_object_is_written_when_it_appears() {
             )
             .await;
         assert_eq!(s, 201, "{e}");
-        let r = api.run(&id, 30).await;
-        assert_eq!(r["run"]["state"], "applied", "{r}");
+        let r = api.run(&ctx, &id).await;
+        assert_eq!(r["state"], "done", "{r}");
         assert_eq!(scopes(db).await, ["732829320=preparation"]);
 
         // Written once: the edit of a person is not undone by the next run.
@@ -467,9 +392,10 @@ async fn what_waited_for_an_object_is_written_when_it_appears() {
             )
             .await;
         assert_eq!(s, 200, "{e}");
-        let r = api.run(&id, 30).await;
-        assert_eq!(r["run"]["state"], "applied", "{r}");
+        let r = api.run(&ctx, &id).await;
+        assert_eq!(r["state"], "done", "{r}");
         assert_eq!(org_of(db, "732829320").await.unwrap().2.as_deref(), Some("99999999999"));
+        worker.abort();
 
         // The same file again is no new version; another one is.
         let committed = format!(
@@ -496,22 +422,21 @@ async fn a_table_of_dated_values_becomes_series() {
             .json::<Value>()["orgs"][0]["id"]
             .as_i64()
             .unwrap();
-        let api = Api { server: &server, token: &alice, org };
+        let api = Api {
+            server: &server,
+            token: &alice,
+            org,
+        };
         let db = &ctx.db;
-        api.call("POST", "/api/v1/ontology/packs/quali_watch/install", None).await;
+        api.call("POST", "/api/v1/ontology/packs/quali_watch/install", None)
+            .await;
         let partners = api.dataset("partners").await;
         api.load(&partners, V1).await;
-        let (s, imp) = api
-            .call(
-                "POST",
-                "/api/v1/ontology/imports",
-                Some(json!({ "name": "partners", "mapping": MAPPING.replace("create: false", "create: false\n    missing: skip"),
-                             "source": "dataset", "source_url": partners, "mode": "incremental" })),
-            )
-            .await;
-        assert_eq!(s, 201, "{imp}");
-        let r = api.run(imp["id"].as_str().unwrap(), 30).await;
-        assert_eq!(r["run"]["state"], "applied", "{r}");
+        let worker = common::spawn_pipeline_worker();
+        let mapping = MAPPING.replace("create: false", "create: false\n    missing: skip");
+        let id = api.pipeline("partners", "partners", &mapping, false).await;
+        let r = api.run(&ctx, &id).await;
+        assert_eq!(r["state"], "done", "{r}");
 
         let accounts = api.dataset("accounts").await;
         api.load(
@@ -523,19 +448,11 @@ async fn a_table_of_dated_values_becomes_series() {
               999999999;revenue;EUR;2025-01-01;2025-12-31;42\n",
         )
         .await;
-        let mapping = "key: accounts\nname: Accounts\n\
-                       observations: { type: organization, property: siren }\n";
-        let (s, imp) = api
-            .call(
-                "POST",
-                "/api/v1/ontology/imports",
-                Some(json!({ "name": "accounts", "mapping": mapping, "source": "dataset",
-                             "source_url": accounts, "mode": "incremental" })),
-            )
-            .await;
-        assert_eq!(s, 201, "{imp}");
-        let r = api.run(imp["id"].as_str().unwrap(), 30).await;
-        assert_eq!(r["run"]["state"], "applied", "{r}");
+        let mapping = "observations: { type: organization, property: siren }\n";
+        let id = api.pipeline("accounts", "accounts", mapping, false).await;
+        let r = api.run(&ctx, &id).await;
+        worker.abort();
+        assert_eq!(r["state"], "done", "{r}");
         let values: Vec<f64> = sql(
             db,
             "SELECT m.value FROM market_observations m JOIN objects o ON o.id = m.object_id \
@@ -547,28 +464,16 @@ async fn a_table_of_dated_values_becomes_series() {
         .collect();
         assert_eq!(values, [1_500_000.0, 1_750_000.5]);
         // The run counts what it stored, not the row naming no object.
-        assert_eq!(r["run"]["counts"]["observations"], 2, "{r}");
-
-        // Elsewhere the key comes from the run: outside a table or a pipeline, refused.
-        let (s, e) = api
-            .call(
-                "POST",
-                "/api/v1/ontology/imports",
-                Some(json!({ "name": "api", "mapping": mapping, "source": "api",
-                             "source_url": "https://example.com/x.json", "mode": "incremental" })),
-            )
-            .await;
-        assert_eq!(s, 400, "{e}");
-        assert_eq!(e["errors"]["fields"]["mapping.observations"], "invalid");
+        assert_eq!(common::written(&r)["observations"], 2, "{r}");
     })
     .await;
 }
 
-/// A table anyone with `datasets:write` can load does not write with the rights of
-/// the import's author; the table of an import's steps cannot be loaded at all.
+/// The Table an import still fills, until the import becomes a pipeline at boot,
+/// cannot be loaded, declared or deleted (D1050).
 #[tokio::test]
 #[serial]
-async fn a_table_does_not_lend_the_rights_of_the_author() {
+async fn the_table_of_an_import_left_is_reserved() {
     with_app(|server, alice, ctx| async move {
         let org = server
             .get("/api/v1/user-info")
@@ -577,67 +482,18 @@ async fn a_table_does_not_lend_the_rights_of_the_author() {
             .json::<Value>()["orgs"][0]["id"]
             .as_i64()
             .unwrap();
-        let api = Api { server: &server, token: &alice, org };
-        let (s, e) = api
-            .call(
-                "POST",
-                "/api/v1/ontology/types",
-                Some(json!({ "def": {
-                    "key": "vault", "name": "Vault", "write_role": "admin",
-                    "properties": [{ "key": "code", "name": "Code", "kind": "text", "unique": true }]
-                } })),
-            )
-            .await;
-        assert_eq!(s, 201, "{e}");
+        let api = Api {
+            server: &server,
+            token: &alice,
+            org,
+        };
         let dataset = api.dataset("vaults").await;
         api.load(&dataset, b"code\nA1\n").await;
-        let mapping = "key: vaults\nname: Vaults\nobjects:\n  - as: v\n    type: vault\n    key: code\n    properties:\n      code: { from: code }\n";
-        let (s, imp) = api
-            .call(
-                "POST",
-                "/api/v1/ontology/imports",
-                Some(json!({ "name": "vaults", "mapping": mapping, "source": "dataset",
-                             "source_url": dataset, "mode": "incremental" })),
-            )
-            .await;
-        assert_eq!(s, 201, "{imp}");
-        // A sensitive value does not enter a table any viewer can read.
-        let (s, e) = api
-            .call(
-                "POST",
-                "/api/v1/ontology/types",
-                Some(json!({ "def": {
-                    "key": "patient", "name": "Patient",
-                    "properties": [{ "key": "code", "name": "Code", "kind": "text", "unique": true,
-                                     "classification": "sensitive" }]
-                } })),
-            )
-            .await;
-        assert_eq!(s, 201, "{e}");
-        let (s, e) = api
-            .call(
-                "POST",
-                "/api/v1/ontology/imports",
-                Some(json!({ "name": "patients", "source": "dataset", "source_url": dataset,
-                    "mode": "incremental",
-                    "mapping": mapping.replace("type: vault", "type: patient") })),
-            )
-            .await;
-        assert_eq!(s, 400, "{e}");
-        assert_eq!(e["errors"]["fields"]["mapping"], "invalid", "{e}");
-
-        // Alice owns the org: as its author, her role would be enough.
-        let r = api.run(imp["id"].as_str().unwrap(), 30).await;
-        assert_eq!(r["run"]["state"], "failed", "{r}");
-        assert_eq!(r["run"]["state_code"], "ontology-write-forbidden", "{r}");
-
-        // Owned by an import: no load, whoever asks.
-        let id: uuid::Uuid = imp["id"].as_str().unwrap().parse().unwrap();
         ctx.db
             .execute_raw(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
-                "UPDATE datasets SET import_id = $1 WHERE id = $2::uuid",
-                [id.into(), dataset.clone().into()],
+                "UPDATE datasets SET import_id = gen_random_uuid() WHERE id = $1::uuid",
+                [dataset.clone().into()],
             ))
             .await
             .unwrap();
@@ -650,10 +506,16 @@ async fn a_table_does_not_lend_the_rights_of_the_author() {
         assert_eq!(res.status_code().as_u16(), 409, "{}", res.text());
         assert_eq!(res.json::<Value>()["error"], "dataset-reserved");
         let (s, e) = api
-            .call("PUT", &format!("/api/v1/datasets/{dataset}/identity"), Some(json!({ "columns": [] })))
+            .call(
+                "PUT",
+                &format!("/api/v1/datasets/{dataset}/identity"),
+                Some(json!({ "columns": [] })),
+            )
             .await;
         assert_eq!(s, 409, "{e}");
-        let (s, e) = api.call("DELETE", &format!("/api/v1/datasets/{dataset}"), None).await;
+        let (s, e) = api
+            .call("DELETE", &format!("/api/v1/datasets/{dataset}"), None)
+            .await;
         assert_eq!(s, 409, "{e}");
     })
     .await;
@@ -773,117 +635,6 @@ async fn an_erasure_reaches_what_the_worker_computed() {
     .await;
 }
 
-/// Erasing a person reaches the rows of a dataset through the identity columns its
-/// mapping declares by itself.
-#[tokio::test]
-#[serial]
-async fn the_mapping_declares_the_columns_erasure_reaches() {
-    with_app(|server, alice, ctx| async move {
-        let org = server
-            .get("/api/v1/user-info")
-            .add_header("Authorization", format!("Bearer {alice}"))
-            .await
-            .json::<Value>()["orgs"][0]["id"]
-            .as_i64()
-            .unwrap();
-        let api = Api {
-            server: &server,
-            token: &alice,
-            org,
-        };
-        let (s, e) = api
-            .call(
-                "POST",
-                "/api/v1/ontology/types",
-                Some(json!({ "def": {
-                    "key": "member",
-                    "name": "Member",
-                    "title_classification": "personal",
-                    "properties": [{ "key": "email", "name": "Email", "kind": "text",
-                                     "unique": true, "classification": "personal" }]
-                } })),
-            )
-            .await;
-        assert_eq!(s, 201, "{e}");
-        let dataset = api.dataset("people").await;
-        api.load(
-            &dataset,
-            b"name;mail\nAnn Smith;ann@example.com\nBob Jones;bob@example.com\n",
-        )
-        .await;
-        let mapping = r#"
-key: people
-name: People
-objects:
-  - as: p
-    type: member
-    key: email
-    title: { from: name, convert: [trim] }
-    properties:
-      email: { from: mail, convert: [trim] }
-"#;
-        let (s, imp) = api
-            .call(
-                "POST",
-                "/api/v1/ontology/imports",
-                Some(
-                    json!({ "name": "people", "mapping": mapping, "source": "dataset",
-                             "source_url": dataset, "mode": "incremental" }),
-                ),
-            )
-            .await;
-        assert_eq!(s, 201, "{imp}");
-        let (_, d) = api
-            .call("GET", &format!("/api/v1/datasets/{dataset}"), None)
-            .await;
-        assert_eq!(d["identity"].as_array().unwrap().len(), 2, "{d}");
-        assert_eq!(d["identity"][0]["column"], "mail", "{d}");
-        assert_eq!(d["identity"][1]["property"], "$title", "{d}");
-        let r = api.run(imp["id"].as_str().unwrap(), 30).await;
-        assert_eq!(r["run"]["state"], "applied", "{r}");
-
-        api.load(&dataset, b"name;mail\nAnn Smith;ann@example.com\nBob Jones;bob@example.com\nCarl Fox;carl@example.com\n").await;
-        let (s, p) = api
-            .call("POST", &format!("/api/v1/ontology/imports/{}/dry-run", imp["id"].as_str().unwrap()), None)
-            .await;
-        assert_eq!(s, 202, "{p}");
-        let held = api.settle(imp["id"].as_str().unwrap(), p["id"].as_str().unwrap(), 30).await;
-        assert_eq!(held["run"]["state"], "preview", "{held}");
-        assert!(held.to_string().contains("carl@example.com"), "{held}");
-
-        let ann = sql(
-            &ctx.db,
-            "SELECT id::text AS id FROM objects WHERE title = 'Ann Smith' AND type_key = 'member'",
-        )
-        .await;
-        let ann: String = ann[0].try_get("", "id").unwrap();
-        let (s, e) = api
-            .call(
-                "POST",
-                &format!("/api/v1/ontology/objects/{ann}/erase"),
-                None,
-            )
-            .await;
-        assert_eq!(s, 200, "{e}");
-        // A preview kept for review held her too: it is gone with the erasure.
-        let r2 = api.call("GET", &format!("/api/v1/ontology/imports/{}/runs/{}", imp["id"].as_str().unwrap(), held["run"]["id"].as_str().unwrap()), None).await.1;
-        assert_eq!(r2["run"]["state"], "stale", "{r2}");
-        assert!(!r2.to_string().contains("carl@example.com"), "{r2}");
-        let store = pnex_backend::services::datasets::store_of(&ctx.config).unwrap();
-        pnex_backend::services::datasets::erasure::erase_pass(&ctx.db, &store)
-            .await
-            .unwrap();
-        let (_, v) = api
-            .call("GET", &format!("/api/v1/datasets/{dataset}/sample"), None)
-            .await;
-        assert_eq!(
-            v["rows"],
-            json!([["Bob Jones", "bob@example.com"], ["Carl Fox", "carl@example.com"]])
-        );
-    })
-    .await;
-}
-
 fn peak_rss_mb() -> u64 {
     std::fs::read_to_string("/proc/self/status")
         .unwrap()
@@ -924,51 +675,26 @@ async fn all_of_the_france_competences_partners() {
         let api = Api { server: &server, token: &alice, org };
         let db = &ctx.db;
         api.call("POST", "/api/v1/ontology/packs/quali_watch/install", None).await;
-        let import = |name: &str, dataset: &str, mapping: &str| {
-            json!({ "name": name, "mapping": mapping, "source": "dataset",
-                    "source_url": dataset, "mode": "snapshot" })
-        };
-        let imports = "/api/v1/ontology/imports";
+        let worker = common::spawn_pipeline_worker();
 
         let sheets = api.dataset("sheets").await;
         api.load(&sheets, &file(&dir, "_Standard_")).await;
-        let (s, imp) = api
-            .call(
-                "POST",
-                imports,
-                Some(import(
-                    "sheets",
-                    &sheets,
-                    r#"
-key: sheets
-name: Sheets
+        let sheets_mapping = r#"
 objects:
   - as: cert
     type: certification
     key: code
     properties:
       code: { from: Numero_Fiche, convert: [trim, upper] }
-"#,
-                )),
-            )
-            .await;
-        assert_eq!(s, 201, "{imp}");
-        let r = api.run(imp["id"].as_str().unwrap(), 600).await;
-        assert_eq!(r["run"]["state"], "applied", "{}", r["run"]);
+"#;
+        let id = api.pipeline("sheets", "sheets", sheets_mapping, true).await;
+        let r = api.run(&ctx, &id).await;
+        assert_eq!(r["state"], "done", "{r}");
 
         let partners = api.dataset("partners").await;
         let csv = file(&dir, "_Partenaires_");
         api.load(&partners, &csv).await;
-        let (s, imp) = api
-            .call(
-                "POST",
-                imports,
-                Some(import(
-                    "partners",
-                    &partners,
-                    r#"
-key: partners
-name: Partners
+        let partners_mapping = r#"
 objects:
   - as: org
     type: organization
@@ -991,21 +717,17 @@ links:
       declared_fc: { value: true }
       source: { value: france_competences }
     on_conflict: { scope: both }
-"#,
-                )),
-            )
-            .await;
-        assert_eq!(s, 201, "{imp}");
-        let id = imp["id"].as_str().unwrap();
+"#;
+        let id = api.pipeline("partners", "partners", partners_mapping, true).await;
 
         let start_rss = peak_rss_mb();
         let begin = std::time::Instant::now();
-        let r = api.run(id, 3600).await;
+        let r = api.run(&ctx, &id).await;
         println!(
-            "first sync: {:?}, {:?}, peak memory {} → {} MB",
-            begin.elapsed(), r["run"]["counts"], start_rss, peak_rss_mb()
+            "first run: {:?}, {:?}, peak memory {} → {} MB",
+            begin.elapsed(), common::written(&r), start_rss, peak_rss_mb()
         );
-        assert_eq!(r["run"]["state"], "applied", "{}", r["run"]);
+        assert_eq!(r["state"], "done", "{r}");
         let count = |q: &'static str| async move { sql(db, q).await.len() };
         assert_eq!(
             count("SELECT 1 AS x FROM objects WHERE type_key = 'organization' AND valid_to IS NULL").await,
@@ -1033,13 +755,14 @@ links:
         let (fewer, _) = text.split_at(last + 1);
         api.load(&partners, fewer.as_bytes()).await;
         let begin = std::time::Instant::now();
-        let r = api.run(id, 3600).await;
+        let r = api.run(&ctx, &id).await;
+        worker.abort();
         println!(
             "one row less: {:?}, {:?}, peak memory {} MB",
-            begin.elapsed(), r["run"]["counts"], peak_rss_mb()
+            begin.elapsed(), common::written(&r), peak_rss_mb()
         );
-        assert_eq!(r["run"]["state"], "applied", "{}", r["run"]);
-        let c = &r["run"]["counts"];
+        assert_eq!(r["state"], "done", "{r}");
+        let c = &common::written(&r);
         assert_eq!((&c["created"], &c["updated"]), (&json!(0), &json!(0)), "{c}");
         assert!(c["closed"].as_u64().unwrap() <= 2, "{c}");
         let (_, o) = api.call("GET", &path, None).await;
@@ -1048,106 +771,20 @@ links:
     .await;
 }
 
-/// pipelines.md D1050, step 3: a Table import becomes an org pipeline reading
-/// its Table, with the base of its last applied run, so an edit made by hand
-/// survives its first run. What it wrote is the pipeline's; the Table is
-/// freed. A pack's import becomes the pack's copy.
+/// pipelines.md D1050, step 5: once the boot conversion emptied the table of
+/// imports, migration 000173 drops it, and the conversion finds nothing to do.
 #[tokio::test]
 #[serial]
-async fn imports_become_org_pipelines() {
-    with_app(|server, alice, ctx| async move {
-        let org = server
-            .get("/api/v1/user-info")
-            .add_header("Authorization", format!("Bearer {alice}"))
-            .await
-            .json::<Value>()["orgs"][0]["id"]
-            .as_i64()
-            .unwrap();
-        let api = Api { server: &server, token: &alice, org };
+async fn imports_once_dropped_leave_nothing_to_convert() {
+    with_app(|_server, _alice, ctx| async move {
         let db = &ctx.db;
-        let (s, e) = api.call("POST", "/api/v1/ontology/packs/quali_watch/install", None).await;
-        assert_eq!(s, 200, "{e}");
-        let (s, e) = api
-            .call(
-                "POST",
-                "/api/v1/ontology/objects",
-                Some(json!({ "type_key": "certification", "title": "RS1", "properties": { "code": "RS1" } })),
-            )
-            .await;
-        assert_eq!(s, 201, "{e}");
-        let dataset = api.dataset("partners").await;
-        api.load_partners(&dataset, V1).await;
-        let (s, imp) = api
-            .call(
-                "POST",
-                "/api/v1/ontology/imports",
-                Some(json!({ "name": "partners", "mapping": MAPPING, "source": "dataset",
-                             "source_url": dataset, "mode": "snapshot" })),
-            )
-            .await;
-        assert_eq!(s, 201, "{imp}");
-        let r = api.run(imp["id"].as_str().unwrap(), 30).await;
-        assert_eq!(r["run"]["state"], "applied", "{r}");
-        let acme = "732829320";
-        let (acme_id, version, _, _) = org_of(db, acme).await.unwrap();
-        let (s, e) = api
-            .call(
-                "PUT",
-                &format!("/api/v1/ontology/objects/{acme_id}"),
-                Some(json!({ "title": "Acme edited", "expected_version": version,
-                             "properties": { "siren": acme, "nda": "99999999999" } })),
-            )
-            .await;
-        assert_eq!(s, 200, "{e}");
-        // A pack import of an org installed before D1050.
-        let pack = pnex_backend::services::ontology::packs::shipped()
-            .into_iter()
-            .find(|p| p.key == "quali_watch")
-            .unwrap();
-        let shipped = pack.imports.iter().find(|i| i.name == "France Compétences · certifiers").unwrap();
-        db.execute_raw(Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            "INSERT INTO object_imports (id, org_id, name, mapping_yaml, pack_key) \
-             VALUES (gen_random_uuid(), $1, $2, $3, 'quali_watch')",
-            vec![org.into(), shipped.name.clone().into(), serde_saphyr::to_string(&shipped.mapping).unwrap().into()],
-        ))
-        .await
-        .unwrap();
-
+        let left = sql(db, "SELECT to_regclass('object_imports') IS NULL AS gone").await;
+        assert!(left[0].try_get::<bool>("", "gone").unwrap());
         let store = pnex_backend::services::datasets::store_of(&ctx.config).unwrap();
-        let n = pnex_backend::services::ontology::imports::migrate_to_pipelines(db, Some(&store)).await.unwrap();
-        assert_eq!(n, 2);
-        let left = sql(db, &format!("SELECT 1 FROM object_imports WHERE org_id = {org}")).await;
-        assert!(left.is_empty());
-        let row = &sql(db, &format!(
-            "SELECT p.id::text AS id, p.pack, v.author_id FROM pipelines p JOIN pipeline_versions v ON v.pipeline_id = p.id \
-             WHERE p.org_id = {org} AND p.name = 'partners'")).await[0];
-        let id: String = row.try_get("", "id").unwrap();
-        assert_eq!(row.try_get::<Option<String>>("", "pack").unwrap(), None);
-        // Beta, never edited (Acme's edit made it `manual`).
-        let beta = org_of(db, "552100554").await.unwrap().0;
-        let source: String = sql(db, &format!("SELECT source_ref FROM objects WHERE id = '{beta}'")).await[0]
-            .try_get("", "source_ref").unwrap();
-        assert_eq!(source, format!("pipeline:{id}"));
-        let freed = sql(db, &format!("SELECT 1 FROM datasets WHERE id = '{dataset}' AND import_id IS NULL")).await;
-        assert_eq!(freed.len(), 1);
-        let copy = &sql(db, &format!(
-            "SELECT p.pack, v.author_id FROM pipelines p JOIN pipeline_versions v ON v.pipeline_id = p.id \
-             WHERE p.org_id = {org} AND p.name = 'France Compétences · certifiers'")).await[0];
-        assert_eq!(copy.try_get::<Option<String>>("", "pack").unwrap().as_deref(), Some("quali_watch"));
-        assert_eq!(copy.try_get::<Option<i64>>("", "author_id").unwrap(), None);
-
-        // Its first run reads the same Table: the edit stays.
-        let worker = common::spawn_pipeline_worker();
-        let runs = format!("/api/v1/pipelines/{id}/runs");
-        let (s, r) = api.call("POST", &runs, None).await;
-        assert_eq!(s, 202, "{r}");
-        assert!(pnex_backend::services::pipelines::run_next(&ctx).await.unwrap());
-        let (_, done) = api.call("GET", &format!("{runs}/{}", r["id"].as_str().unwrap()), None).await;
-        worker.abort();
-        assert_eq!(done["state"], "done", "{done}");
-        let (_, _, nda, title) = org_of(db, acme).await.unwrap();
-        assert_eq!((nda.as_deref(), title.as_str()), (Some("99999999999"), "Acme edited"));
+        let n = pnex_backend::services::ontology::imports::migrate_to_pipelines(db, Some(&store))
+            .await
+            .unwrap();
+        assert_eq!(n, 0);
     })
     .await;
 }

@@ -16,6 +16,7 @@ struct Env {
     alice: String,
     bob: String,
     db: DatabaseConnection,
+    ctx: loco_rs::app::AppContext,
 }
 
 async fn with_app<F, Fut>(f: F)
@@ -50,6 +51,7 @@ where
                     alice,
                     bob,
                     db: ctx.db.clone(),
+                    ctx: ctx.clone(),
                 },
             )
             .await;
@@ -1015,19 +1017,8 @@ async fn an_import_does_not_bring_back_an_erased_address() {
         )
         .await;
         assert_eq!(st, 200);
-        let (st, import) = call(
-            &server,
-            "POST",
-            "/api/v1/ontology/imports",
-            &env.alice,
-            org,
-            Some(common::pack_import_body(
-                "Trade show or association list (file)",
-            )),
-        )
-        .await;
-        assert_eq!(st, 201, "{import}");
-        let id = import["id"].as_str().unwrap().to_string();
+        let name = "Trade show or association list (file)";
+        let id = common::pack_pipeline(&server, &env.alice, org, name).await;
 
         let lee = object(
             &server,
@@ -1052,43 +1043,29 @@ async fn an_import_does_not_bring_back_an_erased_address() {
         let csv = "list,name,company,job_title,city,postal_code,email\n\
                    Fair,Lee Roe,Gamma,,,,lee@gamma.test\n\
                    Fair,Ann Vale,Vale,,,,ann@vale.test\n";
-        let res = server
-            .post(&format!(
-                "/api/v1/ontology/imports/{id}/dry-run?filename=fair.csv"
-            ))
-            .add_header("Authorization", format!("Bearer {}", env.alice))
-            .add_header("X-Org-Id", org.to_string())
-            .add_header("Content-Type", "application/octet-stream")
-            .bytes(csv.as_bytes().to_vec().into())
-            .await;
-        assert_eq!(res.status_code().as_u16(), 202, "{}", res.text());
-        let run = res.json::<Value>()["id"].as_str().unwrap().to_string();
-        let settled = |run: String, id: String| {
-            let (server, token) = (&server, env.alice.clone());
-            async move {
-                for _ in 0..100 {
-                    let (st, r) = call(
-                        server,
-                        "GET",
-                        &format!("/api/v1/ontology/imports/{id}/runs/{run}"),
-                        &token,
-                        org,
-                        None,
-                    )
-                    .await;
-                    assert_eq!(st, 200, "{r}");
-                    if r["run"]["state"] != "running" {
-                        return r;
-                    }
-                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-                }
-                panic!("run never settled");
-            }
-        };
-        let p = settled(run.clone(), id.clone()).await;
-        assert_eq!(p["run"]["state"], "preview", "{p}");
-        // Shown left out from the preview on, so both count the same.
-        let warned: Vec<_> = p["diff"]["warnings"]
+        common::load_table(&server, &env.alice, org, name, csv.as_bytes()).await;
+        let worker = common::spawn_pipeline_worker();
+        // The probe leaves the address out already, so both count the same.
+        let (_, p) = call(
+            &server,
+            "GET",
+            &format!("/api/v1/pipelines/{id}"),
+            &env.alice,
+            org,
+            None,
+        )
+        .await;
+        let (st, p) = call(
+            &server,
+            "POST",
+            "/api/v1/pipelines/probe",
+            &env.alice,
+            org,
+            Some(json!({ "document": p["document"], "step": "rows", "pipeline_id": id })),
+        )
+        .await;
+        assert_eq!(st, 200, "{p}");
+        let warned: Vec<_> = p["objects"]["warnings"]
             .as_array()
             .unwrap()
             .iter()
@@ -1096,24 +1073,19 @@ async fn an_import_does_not_bring_back_an_erased_address() {
             .map(|w| w["row"].clone())
             .collect();
         assert!(!warned.is_empty(), "{p}");
-        assert!(warned.iter().all(|r| r == 2), "only Lee's row: {p}");
+        assert!(warned.iter().all(|r| r == 1), "only Lee's row: {p}");
         let before = objects_holding(&env.db, org, "").await.len();
-        let (st, r) = call(
-            &server,
-            "POST",
-            &format!("/api/v1/ontology/imports/{id}/apply"),
-            &env.alice,
-            org,
-            Some(json!({"run_id": run, "expected_version": import["version"]})),
-        )
-        .await;
-        assert_eq!(st, 202, "{r}");
-        let done = settled(run.clone(), id.clone()).await;
-        assert_eq!(done["run"]["state"], "applied", "{done}");
-        assert_eq!(done["run"]["counts"], p["run"]["counts"], "{done}");
+        let done = common::run_org_pipeline(&server, &env.ctx, &env.alice, org, &id).await;
+        worker.abort();
+        assert_eq!(done["state"], "done", "{done}");
+        assert_eq!(
+            common::written(&done)["created"],
+            p["objects"]["counts"]["created"],
+            "{done}"
+        );
         let after = objects_holding(&env.db, org, "").await.len();
         assert_eq!(
-            done["run"]["counts"]["created"].as_u64().unwrap() as usize,
+            common::written(&done)["created"].as_u64().unwrap() as usize,
             after - before,
             "the count is what was written: {done}"
         );
@@ -1141,10 +1113,8 @@ async fn a_network_export_makes_one_person_per_profile() {
             .unwrap();
         let (st, e) = call(&server, "POST", "/api/v1/ontology/packs/crm/install", &env.alice, org, None).await;
         assert_eq!(st, 200, "{e}");
-        let body = common::pack_import_body("Network profiles export (file)");
-        let (st, import) = call(&server, "POST", "/api/v1/ontology/imports", &env.alice, org, Some(body)).await;
-        assert_eq!(st, 201, "{import}");
-        let id = import["id"].as_str().unwrap().to_string();
+        let name = "Network profiles export (file)";
+        let id = common::pack_pipeline(&server, &env.alice, org, name).await;
 
         let gone = "https://www.linkedin.com/in/lee-roe";
         let lee = object(&server, &env.alice, org, "person", "Lee Roe", json!({"profile_url": gone})).await;
@@ -1154,49 +1124,15 @@ async fn a_network_export_makes_one_person_per_profile() {
         let csv = "First Name,Last Name,Job Title,LinkedIn Profile URL,Company Name,Location\n\
                    Lee,Roe,CEO,https://www.linkedin.com/in/lee-roe,Gamma,Paris\n\
                    Ann,Vale,Plant manager, https://www.linkedin.com/in/ann-vale ,Mecaworks,\"Amboise, Centre-Val de Loire, France\"\n";
-        let version = import["version"].clone();
+        common::load_table(&server, &env.alice, org, name, csv.as_bytes()).await;
+        let worker = common::spawn_pipeline_worker();
         let mut counts = Vec::new();
         for _ in 0..2 {
-            let res = server
-                .post(&format!("/api/v1/ontology/imports/{id}/dry-run?filename=export.csv"))
-                .add_header("Authorization", format!("Bearer {}", env.alice))
-                .add_header("X-Org-Id", org.to_string())
-                .add_header("Content-Type", "application/octet-stream")
-                .bytes(csv.as_bytes().to_vec().into())
-                .await;
-            assert_eq!(res.status_code().as_u16(), 202, "{}", res.text());
-            let run = res.json::<Value>()["id"].as_str().unwrap().to_string();
-            let mut p = Value::Null;
-            for _ in 0..100 {
-                let (st, r) = call(&server, "GET", &format!("/api/v1/ontology/imports/{id}/runs/{run}"), &env.alice, org, None).await;
-                assert_eq!(st, 200, "{r}");
-                if r["run"]["state"] != "running" {
-                    p = r;
-                    break;
-                }
-                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-            }
-            assert_eq!(p["run"]["state"], "preview", "{p}");
-            let (st, r) = call(
-                &server,
-                "POST",
-                &format!("/api/v1/ontology/imports/{id}/apply"),
-                &env.alice,
-                org,
-                Some(json!({"run_id": run, "expected_version": version})),
-            )
-            .await;
-            assert_eq!(st, 202, "{r}");
-            for _ in 0..100 {
-                let (_, r) = call(&server, "GET", &format!("/api/v1/ontology/imports/{id}/runs/{run}"), &env.alice, org, None).await;
-                if r["run"]["state"] != "running" {
-                    assert_eq!(r["run"]["state"], "applied", "{r}");
-                    counts.push(r["run"]["counts"]["created"].as_u64().unwrap_or(0));
-                    break;
-                }
-                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-            }
+            let r = common::run_org_pipeline(&server, &env.ctx, &env.alice, org, &id).await;
+            assert_eq!(r["state"], "done", "{r}");
+            counts.push(common::written(&r)["created"].as_u64().unwrap_or(0));
         }
+        worker.abort();
         assert_eq!(counts, vec![1, 0], "Ann once, Lee never");
         assert!(objects_holding(&env.db, org, "lee-roe").await.is_empty(), "the erased profile stays out");
         let ann = objects_holding(&env.db, org, "https://www.linkedin.com/in/ann-vale").await;

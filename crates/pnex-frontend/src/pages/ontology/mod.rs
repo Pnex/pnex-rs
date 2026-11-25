@@ -5,7 +5,6 @@
 //! types and link here through their object page.
 
 mod chart;
-pub mod imports;
 pub mod object;
 mod observations;
 pub mod packs;
@@ -51,7 +50,6 @@ pub fn Ontology(tab: String, type_key: String) -> Element {
         ("schema", t!("onto-tab-schema")),
         ("links", t!("onto-link-types")),
         ("packs", t!("onto-tab-packs")),
-        ("imports", t!("onto-tab-imports")),
     ];
     let bar = rsx! {
         div { class: TAB_BAR, role: "tablist",
@@ -85,8 +83,6 @@ pub fn Ontology(tab: String, type_key: String) -> Element {
                 schema::LinkTypesTab { tabs: bar }
             } else if tab == "packs" {
                 packs::PacksTab { tabs: bar }
-            } else if tab == "imports" {
-                imports::ImportsTab { tabs: bar }
             } else {
                 ObjectsTab { initial_type: type_key, tabs: bar }
             }

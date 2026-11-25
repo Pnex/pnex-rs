@@ -72,7 +72,10 @@ pub mod as_of;
 /// pipeline `document`), its flows to `/pipelines/{id}/flows`; a pipeline
 /// and its check carry `rule`; `site-recipes:*` gives way to `pipelines:*`
 /// and `browse:use`.
-pub const CONTRACT: u32 = 14;
+/// 15 (2026-11-25, pipelines.md D1050): imports are gone: `/ontology/imports*`
+/// and its schemas, `BuildTargetKind::import`, a build step's `retries` and a
+/// table's `import_name`. An import is an org pipeline that writes objects.
+pub const CONTRACT: u32 = 15;
 
 /// Routes under this prefix act on the org of their `{id}`, which must also be
 /// the `X-Org-Id` (SEC-75): generated clients send the path org there instead

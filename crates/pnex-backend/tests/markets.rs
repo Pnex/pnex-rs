@@ -250,8 +250,14 @@ async fn primary_sources_keep_what_was_known_when() {
             .json::<Value>()["orgs"][0]["id"]
             .as_i64()
             .unwrap();
-        let api = Api { server: &server, token, org };
-        let (st, r) = api.call("POST", "/api/v1/ontology/packs/markets/install", None).await;
+        let api = Api {
+            server: &server,
+            token,
+            org,
+        };
+        let (st, r) = api
+            .call("POST", "/api/v1/ontology/packs/markets/install", None)
+            .await;
         assert_eq!(st, 200, "{r}");
 
         // No declared contact: refused, nothing read.
@@ -265,31 +271,45 @@ async fn primary_sources_keep_what_was_known_when() {
         .await;
         let agents = Arc::new(Mutex::new(Vec::new()));
         let base = mock_sources(agents.clone()).await;
-        for host in ["https://www.sec.gov", "https://data.sec.gov", "https://fred.stlouisfed.org"] {
-            pnex_backend::services::pipeline_engine::store::route_for_tests(host.trim_start_matches("https://"), &base);
-            db.execute_raw(Statement::from_string(
-                sea_orm::DatabaseBackend::Postgres,
-                format!(
-                    "UPDATE object_imports SET source_url = replace(source_url, '{host}', '{base}') \
-                     WHERE org_id = {org}"
-                ),
-            ))
-            .await
-            .unwrap();
+        for host in [
+            "https://www.sec.gov",
+            "https://data.sec.gov",
+            "https://fred.stlouisfed.org",
+        ] {
+            pnex_backend::services::pipeline_engine::store::route_for_tests(
+                host.trim_start_matches("https://"),
+                &base,
+            );
         }
 
         // Only the followed ticker becomes a company.
         let r = api.run("Companies followed (SEC)").await;
         assert_eq!(r["state"], "done", "{r}");
-        let acme = object_id(&db, org, "organization", "cik", "0000000042").await.expect("followed");
-        assert!(object_id(&db, org, "organization", "cik", "0000000043").await.is_none());
+        let acme = object_id(&db, org, "organization", "cik", "0000000042")
+            .await
+            .expect("followed");
+        assert!(object_id(&db, org, "organization", "cik", "0000000043")
+            .await
+            .is_none());
 
         // Its result filing, with the document address; the insider form stays out.
         let r = api.run("Filings (SEC EDGAR)").await;
         assert_eq!(r["state"], "done", "{r}");
-        let filing = object_id(&db, org, "filing", "accession", "0000000042-26-000001").await.expect("10-K");
-        assert!(object_id(&db, org, "filing", "accession", "0000000042-26-000002").await.is_none());
-        let (_, links) = api.call("GET", &format!("/api/v1/ontology/objects/{filing}/links"), None).await;
+        let filing = object_id(&db, org, "filing", "accession", "0000000042-26-000001")
+            .await
+            .expect("10-K");
+        assert!(
+            object_id(&db, org, "filing", "accession", "0000000042-26-000002")
+                .await
+                .is_none()
+        );
+        let (_, links) = api
+            .call(
+                "GET",
+                &format!("/api/v1/ontology/objects/{filing}/links"),
+                None,
+            )
+            .await;
         assert!(links.to_string().contains("filed_by"), "{links}");
 
         // A figure restated in a later filing: each date reads its own truth.
@@ -303,7 +323,10 @@ async fn primary_sources_keep_what_was_known_when() {
         assert_eq!(before.len(), 1, "{before:?}");
         assert_eq!(value(before), Some(100.0));
         // Not yet known during the day it was filed.
-        assert!(api.observations(&acme, "as_of=2026-02-01T20:00:00Z").await.is_empty());
+        assert!(api
+            .observations(&acme, "as_of=2026-02-01T20:00:00Z")
+            .await
+            .is_empty());
         let stored = db
             .query_one_raw(Statement::from_string(
                 sea_orm::DatabaseBackend::Postgres,
@@ -320,11 +343,17 @@ async fn primary_sources_keep_what_was_known_when() {
         // kept out of a past-dated reading; its revision is a real one.
         let r = api.run("Macroeconomic series (FRED)").await;
         assert_eq!(r["state"], "done", "{r}");
-        let series = object_id(&db, org, "macro_series", "code", "TESTCPI").await.expect("created");
+        let series = object_id(&db, org, "macro_series", "code", "TESTCPI")
+            .await
+            .expect("created");
         let first = api.observations(&series, "").await;
         assert_eq!(first[0]["backfilled"], true, "{first:?}");
-        let later = (chrono::Utc::now() + chrono::Duration::hours(1)).to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
-        assert!(api.observations(&series, &format!("as_of={later}")).await.is_empty());
+        let later = (chrono::Utc::now() + chrono::Duration::hours(1))
+            .to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+        assert!(api
+            .observations(&series, &format!("as_of={later}"))
+            .await
+            .is_empty());
         api.run("Macroeconomic series (FRED)").await;
         let revised = api.observations(&series, &format!("as_of={later}")).await;
         assert_eq!(revised.len(), 1, "{revised:?}");
@@ -333,11 +362,18 @@ async fn primary_sources_keep_what_was_known_when() {
 
         // Every request declared the contact.
         let agents = agents.lock().unwrap().clone();
-        assert!(!agents.is_empty() && agents.iter().all(|a| a.contains(CONTACT)), "{agents:?}");
+        assert!(
+            !agents.is_empty() && agents.iter().all(|a| a.contains(CONTACT)),
+            "{agents:?}"
+        );
 
         // Unknown object: not found.
         let (st, _) = api
-            .call("GET", "/api/v1/ontology/objects/00000000-0000-0000-0000-000000000000/observations", None)
+            .call(
+                "GET",
+                "/api/v1/ontology/objects/00000000-0000-0000-0000-000000000000/observations",
+                None,
+            )
             .await;
         assert_eq!(st, 404);
     })
@@ -470,15 +506,9 @@ async fn prices_with_a_vault_key_and_the_reaction_to_a_filing() {
 
         let seen = Arc::new(Mutex::new(Vec::new()));
         let base = mock_keyed_sources(seen.clone()).await;
-        let sql = |q: String| {
-            db.execute_raw(Statement::from_string(sea_orm::DatabaseBackend::Postgres, q))
-        };
         for host in ["https://www.sec.gov", "https://data.sec.gov", "https://api.tiingo.com",
                      "https://data-api.ecb.europa.eu", "https://filings.xbrl.org", "https://stats.bis.org"] {
             pnex_backend::services::pipeline_engine::store::route_for_tests(host.trim_start_matches("https://"), &base);
-            sql(format!("UPDATE object_imports SET source_url = replace(source_url, '{host}', '{base}') WHERE org_id = {org}"))
-                .await
-                .unwrap();
         }
         // The key's host is the shipped pipeline's own (pipelines.md D942):
         // no address an org edits can carry it elsewhere.
@@ -871,15 +901,6 @@ async fn abnormal_sessions_and_their_window() {
             "fred.stlouisfed.org",
             &base,
         );
-        db.execute_raw(Statement::from_string(
-            sea_orm::DatabaseBackend::Postgres,
-            format!(
-                "UPDATE object_imports SET source_url = replace(source_url, \
-                 'https://fred.stlouisfed.org', '{base}') WHERE org_id = {org}"
-            ),
-        ))
-        .await
-        .unwrap();
         let events = format!(
             "SELECT count(*) AS n FROM objects WHERE org_id = {org} AND type_key = 'market_event'"
         );
@@ -1309,16 +1330,10 @@ async fn verified_events_confirm_leads_and_reach_the_map() {
             "https://ucdp.uu.se",
             "https://acleddata.com",
         ] {
-            pnex_backend::services::pipeline_engine::store::route_for_tests(host.trim_start_matches("https://"), &base);
-            db.execute_raw(Statement::from_string(
-                sea_orm::DatabaseBackend::Postgres,
-                format!(
-                    "UPDATE object_imports SET source_url = replace(source_url, '{host}', '{base}') \
-                     WHERE org_id = {org}"
-                ),
-            ))
-            .await
-            .unwrap();
+            pnex_backend::services::pipeline_engine::store::route_for_tests(
+                host.trim_start_matches("https://"),
+                &base,
+            );
         }
 
         // The GED download needs no token: the history of the watched
@@ -1328,9 +1343,15 @@ async fn verified_events_confirm_leads_and_reach_the_map() {
         let old = object_id(&db, org, "geo_event", "ref", "ucdp:UA:attack:2015-02-01")
             .await
             .expect("2015 history");
-        assert!(object_id(&db, org, "geo_event", "ref", "ucdp:RU:armed_conflict:2015-02-01")
-            .await
-            .is_none());
+        assert!(object_id(
+            &db,
+            org,
+            "geo_event",
+            "ref",
+            "ucdp:RU:armed_conflict:2015-02-01"
+        )
+        .await
+        .is_none());
         let (_, o) = api
             .call("GET", &format!("/api/v1/ontology/objects/{old}"), None)
             .await;
@@ -1368,7 +1389,11 @@ async fn verified_events_confirm_leads_and_reach_the_map() {
             ("world_events_acled_password", "pw"),
         ] {
             let (st, r) = api
-                .call("POST", "/api/v1/secrets", Some(json!({"name": name, "value": value})))
+                .call(
+                    "POST",
+                    "/api/v1/secrets",
+                    Some(json!({"name": name, "value": value})),
+                )
                 .await;
             assert!(st == 200 || st == 201, "{r}");
         }
@@ -1379,11 +1404,15 @@ async fn verified_events_confirm_leads_and_reach_the_map() {
         let ucdp = object_id(&db, org, "geo_event", "ref", &ucdp_ref)
             .await
             .expect("UA event");
-        assert!(
-            object_id(&db, org, "geo_event", "ref", &format!("ucdp:RU:armed_conflict:{day}"))
-                .await
-                .is_none()
-        );
+        assert!(object_id(
+            &db,
+            org,
+            "geo_event",
+            "ref",
+            &format!("ucdp:RU:armed_conflict:{day}")
+        )
+        .await
+        .is_none());
         let (_, o) = api
             .call("GET", &format!("/api/v1/ontology/objects/{ucdp}"), None)
             .await;
@@ -1403,15 +1432,22 @@ async fn verified_events_confirm_leads_and_reach_the_map() {
         assert_eq!(o["properties"]["status"], "confirmed", "{o}");
         assert_eq!(o["properties"]["confirmed_with"], ucdp_ref.as_str());
         assert_eq!(o["title"], "Kharkiv lead", "the title stays");
-        assert_eq!(o["properties"]["kind"], "attack", "the other properties stay");
+        assert_eq!(
+            o["properties"]["kind"], "attack",
+            "the other properties stay"
+        );
 
         let r = api.run("Verified events (ACLED, your account)").await;
         assert_eq!(r["state"], "done", "{r}");
-        assert!(
-            object_id(&db, org, "geo_event", "ref", &format!("acled:UA:attack:{day}"))
-                .await
-                .is_some()
-        );
+        assert!(object_id(
+            &db,
+            org,
+            "geo_event",
+            "ref",
+            &format!("acled:UA:attack:{day}")
+        )
+        .await
+        .is_some());
         let seen = seen.lock().unwrap().clone();
         assert!(seen.contains(&"ucdp:u-123".to_string()), "{seen:?}");
         assert!(seen.contains(&"token:true".to_string()), "{seen:?}");
@@ -1962,15 +1998,6 @@ async fn fred_first_releases_date_the_moves() {
         );
         tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         pnex_backend::services::pipeline_engine::store::route_for_tests("api.stlouisfed.org", &base);
-        db.execute_raw(Statement::from_string(
-            sea_orm::DatabaseBackend::Postgres,
-            format!(
-                "UPDATE object_imports SET source_url = replace(source_url, 'https://api.stlouisfed.org', '{base}') \
-                 WHERE org_id = {org}"
-            ),
-        ))
-        .await
-        .unwrap();
         pnex_backend::services::markets::allow_test_host(&base);
         let name = "Watched series first releases (ALFRED)";
 
@@ -2566,12 +2593,6 @@ END:VCALENDAR\r\n".to_string())
         pnex_backend::services::pipeline_engine::store::route_for_tests("publicreporting.cftc.gov", &base);
         for host in ["https://ec.europa.eu", "https://services9.arcgis.com", "https://publicreporting.cftc.gov", "https://api.eia.gov"] {
             pnex_backend::services::pipeline_engine::store::route_for_tests(host.trim_start_matches("https://"), &base);
-            db.execute_raw(Statement::from_string(
-                sea_orm::DatabaseBackend::Postgres,
-                format!("UPDATE object_imports SET source_url = replace(source_url, '{host}', '{base}') WHERE org_id = {org}"),
-            ))
-            .await
-            .unwrap();
         }
         let r = api.run("European statistics (Eurostat)").await;
         assert_eq!(r["state"], "done", "{r}");
@@ -2680,12 +2701,6 @@ async fn open_prices_give_one_series_per_shop() {
         tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         pnex_backend::services::markets::allow_test_host(&base);
         pnex_backend::services::pipeline_engine::store::route_for_tests("prices.openfoodfacts.org", &base);
-        db.execute_raw(Statement::from_string(
-            sea_orm::DatabaseBackend::Postgres,
-            format!("UPDATE object_imports SET source_url = replace(source_url, 'https://prices.openfoodfacts.org', '{base}') WHERE org_id = {org}"),
-        ))
-        .await
-        .unwrap();
         let r = api.run("Product prices (Open Prices)").await;
         assert_eq!(r["state"], "done", "{r}");
         let (q, ua) = asked.lock().unwrap()[0].clone();

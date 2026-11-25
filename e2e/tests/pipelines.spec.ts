@@ -325,45 +325,6 @@ test.describe('pipelines', { tag: '@pipelines' }, () => {
     await api.delete(`/datasets/${table.id}`);
   });
 
-  test('the CLI follows a run and reports how it ended', async ({ api, tokens, runState, prefix }) => {
-    test.skip(!CLI, 'PNEX_E2E_CLI not set');
-    test.setTimeout(120_000);
-    const slug = prefix.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
-    const typeKey = `${slug}_thing`.slice(0, 40);
-    await api.post('/ontology/types', { def: { key: typeKey, name: typeKey, properties: [{ key: 'code', name: 'Code', kind: 'text', max_len: 16, required: true, unique: true }] } });
-    const table = await api.post<any>('/datasets', { name: `${slug}_cli` });
-    await api.upload(`/datasets/${table.id}/transactions/csv`, Buffer.from('code\nA\nB\n'), 'text/csv');
-    const mapping = `key: ${slug}_cli\nname: CLI\nobjects:\n  - as: t\n    type: ${typeKey}\n    key: code\n    title: { from: code }\n    properties:\n      code: { from: code }\n`;
-    const imp = await api.post<any>('/ontology/imports', { name: `${prefix} cli`, mapping, source: 'dataset', source_url: table.id, mode: 'incremental' });
-
-    // A session of its own, gone with the test.
-    const home = mkdtempSync(path.join(tmpdir(), 'pnex-cli-'));
-    mkdirSync(path.join(home, 'pnex'));
-    writeFileSync(
-      path.join(home, 'pnex', 'session.json'),
-      JSON.stringify({ url: BASE_URL, org: runState.orgId, access_token: tokens.access, refresh_token: 'unused', expires_at: Math.floor(Date.now() / 1000) + 3600 }),
-      { mode: 0o600 },
-    );
-    const pnex = (...args: string[]) =>
-      spawnSync(CLI!, args, { env: { ...process.env, XDG_CONFIG_HOME: home }, encoding: 'utf8', timeout: 90_000 });
-    try {
-      expect(pnex('import', 'run', imp.id, '--wait').stderr).toContain('--yes');
-
-      const ok = pnex('import', 'run', imp.id, '--wait', '--yes');
-      expect(ok.status, ok.stderr).toBe(0);
-      expect(JSON.parse(ok.stdout).state).toBe('applied');
-
-      // Its table gone, the run fails: the exit code and the message say so.
-      await api.delete(`/datasets/${table.id}`);
-      const bad = pnex('import', 'run', imp.id, '--wait', '--yes');
-      expect(bad.status).toBe(1);
-      expect(bad.stderr).toContain('dataset-not-found');
-    } finally {
-      rmSync(home, { recursive: true, force: true });
-      await api.delete(`/ontology/imports/${imp.id}`);
-    }
-  });
-
   test('the CLI loads a file over what a proxy lets through in one request', async ({ api, tokens, runState, prefix }) => {
     test.skip(!CLI, 'PNEX_E2E_CLI not set');
     test.setTimeout(300_000);

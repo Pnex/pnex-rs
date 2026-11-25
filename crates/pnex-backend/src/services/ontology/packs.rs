@@ -236,10 +236,10 @@ pub async fn list(db: &DatabaseConnection, org_id: i64) -> Result<Vec<PackView>>
     Ok(out)
 }
 
-/// The pack's functions, flows and imports the org edited since the pack
+/// The pack's functions, flows and import copies the org edited since the pack
 /// wrote them (D368, D424): they keep the org's version at an upgrade. One
 /// of the same name the pack never wrote is the org's own, not listed.
-/// Imports come with what differs from the pack's version.
+/// The copies of its imports come with the fields the org changed (D1050).
 async fn edited(
     db: &DatabaseConnection,
     org_id: i64,
@@ -355,7 +355,7 @@ pub async fn take(
             return Err(invalid(format!("names.{i}"), FIELD_INVALID));
         }
     }
-    super::imports::install_from_pack(db, org_id, user_id, &pack, &input.names).await?;
+    super::imports::install_copies(db, org_id, &pack, &input.names).await?;
     install_automation(db, org_id, user_id, &pack, &input.names).await?;
     list(db, org_id)
         .await?
@@ -841,7 +841,7 @@ async fn install_locked(
     for l in &pack.link_types {
         install_link(db, org_id, &s, &pack.key, l).await?;
     }
-    super::imports::install_from_pack(db, org_id, user_id, pack, &[]).await?;
+    super::imports::install_copies(db, org_id, pack, &[]).await?;
     install_automation(db, org_id, user_id, pack, &[]).await?;
     drop_unshipped_flows(db, org_id, pack).await?;
     for app in &pack.apps {
