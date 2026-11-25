@@ -10,6 +10,7 @@ mod migrate;
 pub(crate) use migrate::imports_left;
 pub use migrate::run as migrate_to_pipelines;
 mod sync;
+pub use sync::declare_identity;
 
 use std::collections::HashSet;
 use std::time::Duration;

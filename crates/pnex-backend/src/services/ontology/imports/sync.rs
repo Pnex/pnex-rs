@@ -3,9 +3,11 @@
 //! which seeds the base of an import converted into a pipeline.
 
 use futures_util::TryStreamExt;
+use pnex_core::datasets::IDENTITY_TITLE;
 use pnex_core::err_codes;
 use pnex_core::markets::PlannedObservation;
-use pnex_core::ontology::import::{Mapping, Schema};
+use pnex_core::ontology::import::{Convert, FieldSpec, Mapping, Schema};
+use sea_orm::ConnectionTrait;
 use serde_json::Value;
 
 use super::diff::Planned;
@@ -17,6 +19,81 @@ use crate::services::datasets::{parquet, ViewFile};
 // shortcut: bounds two whole plans held in the server, plan in the worker if a real
 // source needs more (see §9.6 for what was measured).
 const PLANNED_MAX: usize = 5_000_000;
+
+/// The column read as is, up to what erasure ignores anyway: another conversion
+/// leaves a stored value the column does not hold, so it cannot identify a row.
+fn identity_column(f: &FieldSpec) -> Option<&str> {
+    let plain = f.convert.iter().all(|c| {
+        matches!(
+            c,
+            Convert::Trim | Convert::Upper | Convert::Lower | Convert::Email
+        )
+    });
+    f.from.as_deref().filter(|_| plain && f.concat.is_empty())
+}
+
+/// Erasing an object must reach its rows (§3.11): the mapping says which
+/// columns hold its personal values, as `datasets_identity_set` would. Only
+/// the columns the Table `table` has; adds, never removes.
+pub async fn declare_identity<C: ConnectionTrait>(
+    db: &C,
+    org_id: i64,
+    table: &str,
+    m: &Mapping,
+) -> Result<()> {
+    let Some(row) = db
+        .query_one_raw(super::stmt(
+            "SELECT id, schema FROM datasets WHERE org_id = $1 AND name = $2",
+            vec![org_id.into(), table.into()],
+        ))
+        .await?
+    else {
+        return Ok(());
+    };
+    let id: uuid::Uuid = row.try_get("", "id")?;
+    let columns: Value = row.try_get("", "schema")?;
+    let has = |c: &str| {
+        columns
+            .as_array()
+            .is_some_and(|a| a.iter().any(|f| f["name"] == c))
+    };
+    let s = super::schema(db, org_id).await?;
+    for o in m.objects.iter().filter(|o| o.each.is_none()) {
+        let Some(def) = s.object_type(&o.type_key) else {
+            continue;
+        };
+        let title = o
+            .title
+            .as_ref()
+            .filter(|_| def.title_classification.is_personal())
+            .and_then(identity_column)
+            .map(|c| (c, IDENTITY_TITLE));
+        let properties = o.properties.iter().filter_map(|(k, f)| {
+            def.properties
+                .iter()
+                .any(|p| p.key == *k && p.classification.is_personal())
+                .then(|| identity_column(f).map(|c| (c, k.as_str())))
+                .flatten()
+        });
+        for (column, property) in title.into_iter().chain(properties) {
+            if !has(column) {
+                continue;
+            }
+            db.execute_raw(super::stmt(
+                "INSERT INTO dataset_identity_columns (dataset_id, column_name, type_key, property) \
+                 VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING",
+                vec![
+                    id.into(),
+                    column.into(),
+                    o.type_key.clone().into(),
+                    property.into(),
+                ],
+            ))
+            .await?;
+        }
+    }
+    Ok(())
+}
 
 /// A table row as the mapping reads it. `column` holds JSON
 /// (a pipeline's `json` column): its object, or each object of its array,

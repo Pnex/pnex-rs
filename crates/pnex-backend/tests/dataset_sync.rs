@@ -595,6 +595,80 @@ async fn a_member_loaded_table_writes_at_the_members_role() {
     .await;
 }
 
+/// D1050: saving a pipeline declares on the Table it reads the columns of
+/// personal values its mapping reads, as an import's mapping did (§3.11):
+/// erasing the object reaches the Table's row.
+#[tokio::test]
+#[serial]
+async fn saving_a_pipeline_declares_its_tables_identity() {
+    with_app(|server, alice, ctx| async move {
+        let org = server
+            .get("/api/v1/user-info")
+            .add_header("Authorization", format!("Bearer {alice}"))
+            .await
+            .json::<Value>()["orgs"][0]["id"]
+            .as_i64()
+            .unwrap();
+        let api = Api {
+            server: &server,
+            token: &alice,
+            org,
+        };
+        let (s, e) = api
+            .call(
+                "POST",
+                "/api/v1/ontology/types",
+                Some(json!({ "def": {
+                    "key": "contact", "name": "Contact",
+                    "properties": [
+                        { "key": "code", "name": "Code", "kind": "text", "unique": true },
+                        { "key": "email", "name": "Email", "kind": "text", "classification": "personal" }
+                    ]
+                } })),
+            )
+            .await;
+        assert_eq!(s, 201, "{e}");
+        let worker = common::spawn_pipeline_worker();
+        let dataset = api.dataset("contacts").await;
+        api.load(&dataset, b"code;email;city\nC1;ann@example.com;Lyon\n")
+            .await;
+        let mapping = "objects:\n  - {as: c, type: contact, key: code, properties: {code: {from: code}, email: {from: email, convert: [trim]}}}\n";
+        let id = api.pipeline("contacts", "contacts", mapping, false).await;
+        let (_, d) = api
+            .call("GET", &format!("/api/v1/datasets/{dataset}"), None)
+            .await;
+        assert_eq!(
+            d["identity"],
+            json!([{ "column": "email", "type_key": "contact", "property": "email" }]),
+            "{d}"
+        );
+
+        let done = api.run(&ctx, &id).await;
+        assert_eq!(done["state"], "done", "{done}");
+        let contact = sql(&ctx.db, &format!(
+            "SELECT id::text AS id FROM objects WHERE org_id = {org} AND type_key = 'contact'"
+        ))
+        .await[0]
+            .try_get::<String>("", "id")
+            .unwrap();
+        let (s, e) = api
+            .call(
+                "POST",
+                &format!("/api/v1/ontology/objects/{contact}/erase"),
+                Some(json!({})),
+            )
+            .await;
+        assert_eq!(s, 200, "{e}");
+        let queued = sql(&ctx.db, &format!(
+            "SELECT 1 AS x FROM dataset_erasures WHERE dataset_id = '{dataset}' AND column_name = 'email'"
+        ))
+        .await;
+        assert_eq!(queued.len(), 1);
+        worker.abort();
+    })
+    .await;
+}
+
 /// Worker in between: a column derived under another form loses the person too,
 /// its history included. Needs `PNEX_WORKER_BIN`.
 #[tokio::test]

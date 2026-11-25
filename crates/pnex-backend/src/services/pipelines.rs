@@ -444,8 +444,47 @@ pub async fn create(
         vec![id.into(), document.into(), author.into()],
     ))
     .await?;
+    declare_identity(&tx, org_id, id, &doc).await?;
     tx.commit().await?;
     get(db, org_id, id).await
+}
+
+/// The Tables a `write: objects` step reads through a `sql` step learn
+/// from its mapping what erasure reaches (§3.11, D1050), as an import's
+/// mapping declared on its Table.
+async fn declare_identity<C: ConnectionTrait>(
+    db: &C,
+    org_id: i64,
+    id: Uuid,
+    doc: &Document,
+) -> Result<(), PipelineError> {
+    use pnex_core::pipeline::doc::Step;
+    let failed = |e: crate::services::ontology::OntologyError| {
+        PipelineError::Db(DbErr::Custom(e.to_string()))
+    };
+    let schema = crate::services::ontology::schema(db, org_id).await?;
+    let key = id.to_string();
+    for (from, target) in doc.steps.iter().filter_map(|s| match s {
+        Step::Write(w) => w.objects.as_ref().map(|o| (w.from.as_str(), o)),
+        _ => None,
+    }) {
+        // shortcut: the columns are not traced through the query; each Table
+        // it reads declares those of the mapping it has.
+        let Some(Step::Sql(q)) = doc.steps.iter().find(|s| s.output() == Some(from)) else {
+            continue;
+        };
+        let Some(m) =
+            crate::services::pipeline_engine::store::objects_mapping(&key, target, &schema)
+        else {
+            continue;
+        };
+        for table in q.tables.values() {
+            crate::services::ontology::imports::declare_identity(db, org_id, table, &m)
+                .await
+                .map_err(failed)?;
+        }
+    }
+    Ok(())
 }
 
 pub async fn get(
@@ -540,6 +579,7 @@ pub async fn update(
         ],
     ))
     .await?;
+    declare_identity(&tx, org_id, id, &doc).await?;
     tx.commit().await?;
     get(db, org_id, id).await
 }

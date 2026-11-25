@@ -376,7 +376,7 @@ flowchart LR
   a -->|oui| d[Tables aval sans déclaration : versions supprimées, recalcul]
 ```
 
-Une ligne de table n'a aucun lien avec un objet sans déclaration. `PUT /datasets/{id}/identity` dit quelle colonne identifie quel type d'objet. La file garde seulement l'empreinte de la valeur (sha256 de la forme pliée), et la garde après la passe. Tout chargement ultérieur écarte donc la personne. Une table aval recalculée répond 410 jusqu'au recalcul. Le worker ne prend aucun run d'une org qui a un effacement en attente.
+Une ligne de table n'a aucun lien avec un objet sans déclaration. `PUT /datasets/{id}/identity` dit quelle colonne identifie quel type d'objet. L'enregistrement d'un pipeline fait aussi cette déclaration. Une étape `write objects` qui lit les lignes d'une étape `sql` déclare, sur chaque Table que cette étape lit, les colonnes des valeurs personnelles de son mapping. Seules les colonnes que la Table a déjà sont déclarées. L'enregistrement ajoute des colonnes, il n'en retire jamais. La file garde seulement l'empreinte de la valeur (sha256 de la forme pliée), et la garde après la passe. Tout chargement ultérieur écarte donc la personne. Une table aval recalculée répond 410 jusqu'au recalcul. Le worker ne prend aucun run d'une org qui a un effacement en attente.
 
 ### 3.12 Envoi par parties
 
@@ -807,7 +807,7 @@ tests:
 - Une étape à la fois par exécution enchaînée.
 - Retrait des imports (D1050) : fait (2026-11-25). Suites :
   - `dataset.synced` n'a plus d'émetteur : le nœud `dataset_trigger` avec `on: synced` ne part plus. Choix de Shan (2026-11-25) : une exécution dont une étape `write objects` lit une Table publie `synced` pour cette Table, avec les objets changés. À coder.
-  - Une étape `write objects` ne déclare pas les colonnes d'identité de la Table qu'elle lit, comme le mapping d'un import le faisait (§3.11). Choix de Shan (2026-11-25) : l'enregistrement du pipeline déclare ces colonnes sur la Table lue. À coder.
+  - Colonnes d'identité d'une Table lue par une étape `write objects` (§3.11) : fait (2026-11-25). L'enregistrement du pipeline les déclare.
   - Rôle d'écriture d'une étape `write objects` (SEC-93) : fait (2026-11-25). L'étape écrit avec le plus bas rôle entre l'auteur de la version et le dernier membre qui a chargé chaque Table lue.
   - Un pipeline d'org ne refuse pas à l'enregistrement un mapping qui nomme une propriété inconnue ou une valeur sensible.
   - La vérification (D431) d'un pipeline d'org porte l'id du pipeline, pas son nom.
