@@ -24,6 +24,8 @@ use crate::services::ontology::{self, Actor, OntologyError};
 pub const NETWORKS: &[&str] = &["linkedin"];
 /// Column and alias of the member's person in the mapping of a share.
 const MEMBER: &str = "share_member";
+/// Step name of a share's writes, which keys their last base.
+const STEP: &str = "share";
 
 fn stmt(sql: &str, values: Vec<sea_orm::Value>) -> Statement {
     Statement::from_sql_and_values(DatabaseBackend::Postgres, sql, values)
@@ -160,6 +162,13 @@ async fn stop<C: ConnectionTrait>(
     network: &str,
     person: Uuid,
 ) -> ontology::Result<()> {
+    // Without its last base, the next share writes every pair again: a
+    // `knows` closed here opens anew when the share is back on.
+    db.execute_raw(stmt(
+        "DELETE FROM pipeline_object_bases WHERE org_id = $1 AND pipeline = $2 AND step = $3",
+        vec![org_id.into(), source_ref(network).into(), STEP.into()],
+    ))
+    .await?;
     let s = ontology::schema(db, org_id).await?;
     let Some(knows) = s.link_key(roles::KNOWS) else {
         return Ok(());
@@ -368,7 +377,7 @@ async fn write_share(
     let writer = ontology::imports::RowsWriter {
         org_id,
         pipeline: &source,
-        step: "share",
+        step: STEP,
         source_ref: &source,
         author: None,
         reads: &[],
