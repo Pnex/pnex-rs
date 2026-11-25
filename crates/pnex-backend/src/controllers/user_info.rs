@@ -103,6 +103,7 @@ pub async fn user_info(State(ctx): State<AppContext>, auth: AuthUser) -> Result<
             "name": org.name,
             "role": crate::controllers::orgs::api_role(membership.role),
             "subscription_tier": tier,
+            "personal": org.personal_of == Some(user.id),
         }));
     }
 

@@ -649,6 +649,9 @@ pub const ONTOLOGY_ACTION_UNKNOWN: &str = "ontology-action-unknown";
 pub const MEDIA_DIFF_UNSUPPORTED: &str = "media-diff-unsupported";
 /// A proof waits for a browser agent of the org to be online (D308).
 pub const EXT_NO_AGENT: &str = "ext-no-agent";
+/// A member's connections are not shared into their own personal org:
+/// nobody receives them there (crm.md D999).
+pub const CONNECTION_SHARE_PERSONAL_ORG: &str = "connection-share-personal-org";
 /// The site refused the crawler (401, 403 or 429): the crawl stopped (D307).
 pub const CRAWL_BLOCKED: &str = "crawl-blocked";
 /// The site's robots.txt forbids the crawl (D307): nothing is read.
@@ -1910,6 +1913,7 @@ pub const ALL: &[&str] = &[
     TIME_RANGE_SCOPE_UNKNOWN,
     // Pages
     DOC_COMMENT_NOT_AUTHOR,
+    CONNECTION_SHARE_PERSONAL_ORG,
 ];
 
 /// True when the code is registered (translatable through `err-<kebab>`).

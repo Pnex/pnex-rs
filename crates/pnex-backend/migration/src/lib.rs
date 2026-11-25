@@ -168,6 +168,7 @@ mod m20261125_000173_imports_dropped;
 mod m20261125_000174_dataset_loaders;
 mod m20261125_000175_dataset_syncs;
 mod m20261125_000176_session_summary_rules;
+mod m20261125_000177_personal_orgs;
 
 pub struct Migrator;
 
@@ -332,6 +333,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20261125_000174_dataset_loaders::Migration),
             Box::new(m20261125_000175_dataset_syncs::Migration),
             Box::new(m20261125_000176_session_summary_rules::Migration),
+            Box::new(m20261125_000177_personal_orgs::Migration),
         ]
     }
 }

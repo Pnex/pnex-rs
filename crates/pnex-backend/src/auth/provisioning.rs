@@ -238,6 +238,7 @@ where
     let org = organizations::ActiveModel {
         name: Set(name),
         subscription_tier_id: Set(tier_id),
+        personal_of: Set(Some(user.id)),
         ..Default::default()
     }
     .insert(db)

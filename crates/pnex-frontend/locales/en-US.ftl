@@ -5004,6 +5004,7 @@ err-import-run-stale = This preview is out of date (already applied, or the impo
 err-import-org-busy = Another import of the organization kept writing for more than 10 minutes: this run wrote nothing, it goes again at its next time.
 err-import-preview-required = The mapping changed or a version was purged since the last run: open the preview and apply it.
 err-dataset-unchanged = Same content as the current version of the table: nothing new.
+err-connection-share-personal-org = Your connections already live in your personal organization: share them from a team organization.
 err-dataset-reserved = This table is filled by an import: neither a load nor a pipeline can write it.
 err-dataset-erasure-pending = An erasure is being applied to this table: try again in a few minutes.
 err-import-run-interrupted = The import was interrupted (its server stopped): nothing was written, run it again.

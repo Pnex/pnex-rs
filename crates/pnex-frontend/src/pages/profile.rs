@@ -20,6 +20,9 @@ pub fn Profile() -> Element {
         return rsx! {};
     };
     let profile = user.profile.clone().unwrap_or_default();
+    // Nobody receives a share in the member's personal org (D999).
+    let org_id = crate::state::org::current();
+    let personal = user.orgs.iter().any(|m| m.personal && Some(m.id) == org_id);
 
     // Current server (version + contract) — public meta endpoint, same call
     // as the boot compatibility gate.
@@ -208,7 +211,9 @@ pub fn Profile() -> Element {
                             button { class: BTN_PRIMARY, r#type: "submit", {t!("common-save")} }
                         }
                     }
-                    ConnectionShareCard {}
+                    if !personal {
+                        ConnectionShareCard {}
+                    }
                 }
 
                 // Account actions.

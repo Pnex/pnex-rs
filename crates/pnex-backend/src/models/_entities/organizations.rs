@@ -17,6 +17,8 @@ pub struct Model {
     /// Assistant conversation retention of the org (days, D145), at most
     /// the platform value; NULL follows the platform.
     pub ai_retention_days: Option<i32>,
+    /// The user this org was made for at sign-up (their personal org).
+    pub personal_of: Option<i64>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

@@ -546,11 +546,12 @@ fn Signed(session: Signal<Session>) -> Element {
         Some(Ok(orgs)) => orgs.clone(),
         _ => Vec::new(),
     };
-    // The saved org, else the first one (the personal org).
+    // The saved org, else the personal org, else the first one.
     let org = session
         .read()
         .org
         .filter(|id| orgs.iter().any(|o| o.id == *id))
+        .or_else(|| orgs.iter().find(|o| o.personal).map(|o| o.id))
         .or_else(|| orgs.first().map(|o| o.id));
     // Recordings go to this org: keep it in the session.
     use_effect(use_reactive((&org,), move |(resolved,)| {

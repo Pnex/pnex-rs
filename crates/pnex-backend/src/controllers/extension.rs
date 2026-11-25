@@ -1654,7 +1654,8 @@ async fn connection_share(
     responses(
         (status = 200, body = pnex_core::browser_agent::ConnectionShare),
         (status = 404, description = "`ontology-not-found`: the org has no person type", body = crate::openapi::ErrorDetail),
-        (status = 400, description = "`network`: unknown network", body = crate::openapi::ErrorDetail)
+        (status = 400, description = "`network`: unknown network", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "`connection-share-personal-org`: the org is the caller's personal org", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
 )]
@@ -1665,6 +1666,14 @@ async fn set_connection_share(
     Json(input): Json<pnex_core::browser_agent::ConnectionShareInput>,
 ) -> Result<Response> {
     use crate::services::connection_shares;
+    if input.shared && org.org.personal_of == Some(org.auth.user.id) {
+        return Err(crate::controllers::coded_error(
+            StatusCode::CONFLICT,
+            pnex_core::err_codes::CONNECTION_SHARE_PERSONAL_ORG,
+            "Nobody receives a share in your personal organization",
+            None,
+        ));
+    }
     let hide = match crate::controllers::ontology::redaction(&ctx, &org).await {
         Ok(h) => h,
         Err(e) => return crate::controllers::ontology::onto_error(e),

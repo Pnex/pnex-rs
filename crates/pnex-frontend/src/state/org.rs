@@ -25,8 +25,8 @@ pub fn set(id: i64) {
 }
 
 /// Restores the org at boot: the last selected one if the user is
-/// still a member, otherwise their first org where they are not a viewer (the
-/// JIT personal org in practice — the backend lists orgs by increasing id).
+/// still a member, otherwise their personal org, else their first org where
+/// they are not a viewer.
 /// A viewer can neither create nor see much: avoiding these orgs on
 /// fallback prevents landing on an empty shell (observation O1).
 pub fn restore(memberships: &[pnex_core::OrgMembership]) {
@@ -37,7 +37,12 @@ pub fn restore(memberships: &[pnex_core::OrgMembership]) {
     let chosen = stored.or_else(|| {
         memberships
             .iter()
-            .find(|m| m.role != pnex_core::OrgRole::Viewer)
+            .find(|m| m.personal)
+            .or_else(|| {
+                memberships
+                    .iter()
+                    .find(|m| m.role != pnex_core::OrgRole::Viewer)
+            })
             .map(|m| m.id)
             .or_else(|| memberships.first().map(|m| m.id))
     });

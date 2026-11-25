@@ -18676,6 +18676,10 @@
           "name": {
             "type": "string"
           },
+          "personal": {
+            "description": "The user's personal org, made for them at sign-up: nobody else\nreceives what they share there.",
+            "type": "boolean"
+          },
           "role": {
             "$ref": "#/components/schemas/OrgRole"
           },
@@ -59569,6 +59573,16 @@
               }
             },
             "description": "`ontology-not-found`: the org has no person type"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`connection-share-personal-org`: the org is the caller's personal org"
           }
         },
         "security": [

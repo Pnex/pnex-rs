@@ -188,6 +188,10 @@ pub struct OrgMembership {
     pub role: OrgRole,
     #[serde(default)]
     pub subscription_tier: Option<TierInfo>,
+    /// The user's personal org, made for them at sign-up: nobody else
+    /// receives what they share there.
+    #[serde(default)]
+    pub personal: bool,
 }
 
 /// Subscription tier of an org (quotas).

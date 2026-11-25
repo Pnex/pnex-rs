@@ -2292,6 +2292,13 @@ async fn a_member_shares_their_own_connections_with_a_team_org_and_stops() {
         assert_eq!(s, 403);
         let (s, _) = call(&server, "PUT", "/api/v1/extension/connection-shares/x", &env.alice, team, Some(json!({ "shared": true }))).await;
         assert_eq!(s, 400);
+        // Nobody receives a share in her personal org: refused, and user-info says which one it is.
+        let (s, e) = call(&server, "PUT", share, &env.alice, mine, Some(json!({ "shared": true }))).await;
+        assert_eq!((s, e["error"].as_str()), (409, Some("connection-share-personal-org")), "{e}");
+        let info: Value = server.get("/api/v1/user-info").add_header("Authorization", format!("Bearer {}", env.alice)).await.json();
+        let personal: Vec<(i64, bool)> = info["orgs"].as_array().unwrap().iter()
+            .map(|o| (o["id"].as_i64().unwrap(), o["personal"].as_bool().unwrap())).collect();
+        assert_eq!(personal, vec![(mine, true), (team, false)], "{info}");
 
         // On: Alice's person is found by her e-mail; her connections land with `knows`.
         let (s, c) = call(&server, "PUT", share, &env.alice, team, Some(json!({ "shared": true }))).await;

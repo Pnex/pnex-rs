@@ -5003,6 +5003,7 @@ err-import-run-stale = Cet aperçu n'est plus à jour (déjà appliqué, ou l'im
 err-import-org-busy = Un autre import de l'organisation a écrit pendant plus de 10 minutes : cette exécution n'a rien écrit, elle repasse à sa prochaine échéance.
 err-import-preview-required = Depuis la dernière exécution, la correspondance a changé ou une version a été purgée : ouvrez l'aperçu et appliquez-le.
 err-dataset-unchanged = Même contenu que la version courante de la table : rien de nouveau.
+err-connection-share-personal-org = Vos relations sont déjà dans votre organisation personnelle : partagez-les depuis une organisation d'équipe.
 err-dataset-reserved = Cette table est remplie par un import : ni un chargement ni un pipeline ne peuvent l'écrire.
 err-dataset-erasure-pending = Un effacement est en cours sur cette table : réessayez dans quelques minutes.
 err-import-run-interrupted = L'import a été interrompu (son serveur s'est arrêté) : rien n'a été écrit, relancez-le.
