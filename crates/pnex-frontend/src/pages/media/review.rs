@@ -14,11 +14,12 @@ use pnex_core::media_review::{
 
 use crate::api;
 use crate::app::Route;
-use crate::components::crud::layout::ListLayout;
+use crate::components::editor_shell::{EditorShell, EditorStatus, StatusTone};
+use crate::components::gerbe::Gerbe;
 use crate::components::timeline::axis::Scale;
 use crate::components::timeline::{Body, Item, ItemKind, Lane, TimeBase, Timeline};
 use crate::components::transport::{seek_media, MediaPlayer};
-use crate::components::ui::{BTN_SECONDARY_SM, INPUT, PANEL};
+use crate::components::ui::{BTN_GHOST, BTN_SECONDARY_SM, INPUT};
 
 pub(crate) const PLAYER: &str = "media-review-player";
 const CANVAS: &str = "media-review-frise";
@@ -377,128 +378,252 @@ pub fn MediaReview(id: String) -> Element {
     let has_lanes = !lanes_now.is_empty();
     let speaker_turns = data.clone();
 
+    let status = match &data {
+        _ if failed => EditorStatus::new(StatusTone::Red, t!("media-review-status-failed")),
+        None => EditorStatus::new(StatusTone::Slate, t!("media-review-status-loading")),
+        Some(t) if t.unavailable => {
+            EditorStatus::new(StatusTone::Amber, t!("media-review-status-unavailable"))
+        }
+        Some(t) if t.segments.is_empty() => {
+            EditorStatus::new(StatusTone::Slate, t!("media-review-status-empty"))
+        }
+        Some(_) => EditorStatus::new(
+            StatusTone::Green,
+            t!("media-review-status-ready", n : all.len()),
+        ),
+    };
+    // The block under the playhead, shown large on the audio stage.
+    let list = data
+        .as_ref()
+        .map(|t| blocks(&t.segments))
+        .unwrap_or_default();
+    let current = block_at(&list, pos).map(|i| list[i].clone());
+    let stage_color = current
+        .as_ref()
+        .and_then(|b| b.speaker.as_deref())
+        .map(|l| speaker_color(&all, l))
+        .unwrap_or("#64748b")
+        .to_string();
+    let stage_who = current.as_ref().and_then(|b| {
+        block_person(b, &attributions)
+            .map(|(_, name)| name)
+            .or_else(|| b.speaker.clone())
+    });
+    let back_id = id.clone();
+    let run_chips = data.as_ref().filter(|t| t.runs.len() > 1).map(|t| {
+        rsx! {
+            RunPicker {
+                runs: t.runs.clone(),
+                current: t.run.map(|r| r.to_string()),
+                on_pick: move |r| run.set(Some(r)),
+            }
+        }
+    });
+
     rsx! {
-        ListLayout {
-            title: t!("media-review-title", name : name.clone()).to_string(),
+        EditorShell {
             on_back: move |_| {
+                crate::state::media::OPEN_MEDIA.with_mut(|v| *v = Some(back_id.clone()));
                 navigator
                     .push(Route::Media {
                         label: String::new(),
                     });
             },
-            can_write,
-            if let Some(t) = data.as_ref().filter(|t| t.runs.len() > 1) {
-                RunPicker {
-                    runs: t.runs.clone(),
-                    current: t.run.map(|r| r.to_string()),
-                    on_pick: move |r| run.set(Some(r)),
-                }
-            }
-            div { class: "grid gap-4 lg:grid-cols-5",
-                div { class: "lg:col-span-3 space-y-3",
-                    if !has_file {
-                        p { class: "rounded-md bg-gray-50 px-3 py-2 text-sm text-gray-600",
-                            {t!("media-review-no-file")}
-                        }
-                    } else if let Some(url) = blob() {
-                        MediaPlayer {
-                            id: PLAYER,
-                            src: url,
-                            video,
-                            on_time: move |(p, d): (f64, f64)| {
-                                pos_ms.set((p * 1000.0) as i64);
-                                dur_ms.set((d * 1000.0) as i64);
-                            },
-                            overlay: shown.map(|f| rsx! {
-                                BoxOverlay { frame: f }
-                            }),
-                        }
-                    }
-                }
-                TranscriptPanel {
-                    asset_id: id.clone(),
-                    can_write,
-                    data: data.clone(),
-                    failed,
-                    speakers: all.clone(),
-                    attributions: attributions.clone(),
-                    pos,
-                    on_seek: seek,
-                }
-            }
-            if has_lanes {
-                div {
-                    class: "mt-4 {PANEL} outline-none",
-                    tabindex: "0",
-                    onkeydown: on_key,
-                    Timeline {
-                        canvas: CANVAS,
-                        scale: Scale::linear((0, end)),
-                        base: TimeBase::Media,
-                        cursor: pos,
-                        lanes: lanes_now,
-                        header: t!("media-review-speakers").to_string(),
-                        on_seek: seek,
-                        on_create: move |(_, from, to): (String, i64, i64)| {
-                            if to > from {
-                                picked.set(None);
-                                selection
-                                    .set(
-                                        vec![
-                                            MediaSpan {
-                                                start_ms: from,
-                                                end_ms: to,
-                                            },
-                                        ],
-                                    );
+            title: name.clone(),
+            status,
+            extra_chips: run_chips,
+            actions: rsx! {},
+            canvas: rsx! {
+                div { class: "flex h-full flex-col overflow-y-auto bg-ground lg:overflow-hidden",
+                    div { class: "flex flex-col lg:min-h-0 lg:flex-1 lg:flex-row",
+                        div { class: "flex min-w-0 flex-col lg:flex-1",
+                            if !has_file {
+                                p { class: "m-4 rounded-md border border-line bg-surface px-3 py-2 text-sm text-slate",
+                                    {t!("media-review-no-file")}
+                                }
+                            } else if let Some(url) = blob() {
+                                if !video {
+                                    Stage {
+                                        block: current.clone(),
+                                        color: stage_color.clone(),
+                                        who: stage_who.clone(),
+                                        pos,
+                                        on_seek: seek,
+                                    }
+                                }
+                                div { class: if video { "p-4" } else { "px-4 pb-4 lg:px-12 lg:pb-8" },
+                                    MediaPlayer {
+                                        id: PLAYER,
+                                        src: url,
+                                        video,
+                                        on_time: move |(p, d): (f64, f64)| {
+                                            pos_ms.set((p * 1000.0) as i64);
+                                            dur_ms.set((d * 1000.0) as i64);
+                                        },
+                                        overlay: shown.map(|f| rsx! {
+                                            BoxOverlay { frame: f }
+                                        }),
+                                    }
+                                }
+                            } else {
+                                div { class: "flex flex-1 items-center justify-center py-12",
+                                    Gerbe { size: 36 }
+                                }
                             }
-                        },
-                        on_title: move |lane: String| {
-                            let Some(label) = lane.strip_prefix("s:") else {
-                                return;
-                            };
-                            let Some(t) = speaker_turns.as_ref() else {
-                                return;
-                            };
-                            picked.set(None);
-                            selection
-                                .set(
-                                    turns_of(t, label)
-                                        .into_iter()
-                                        .map(|(start_ms, end_ms)| MediaSpan { start_ms, end_ms })
-                                        .collect(),
-                                );
-                        },
-                        on_item: move |(_, item): (String, String)| {
-                            selection.set(Vec::new());
-                            picked.set(item.parse().ok());
-                        },
-                    }
-                    if can_write && !selection().is_empty() {
-                        SelectionBar {
-                            spans: selection(),
-                            palette: palette.clone(),
-                            on_pick: attribute.clone(),
-                            on_cancel: move |_| selection.set(Vec::new()),
+                        }
+                        div { class: "flex max-h-[60vh] flex-col border-t border-line bg-surface lg:max-h-none lg:w-[28rem] lg:border-t-0 lg:border-l",
+                            TranscriptPanel {
+                                asset_id: id.clone(),
+                                can_write,
+                                data: data.clone(),
+                                failed,
+                                speakers: all.clone(),
+                                attributions: attributions.clone(),
+                                pos,
+                                on_seek: seek,
+                            }
                         }
                     }
-                    if let Some(a) = picked_one {
-                        PickedBar {
-                            asset_id: id.clone(),
-                            attribution: a,
-                            can_write,
-                            on_done: move |e: Option<String>| {
-                                picked.set(None);
-                                error.set(e);
-                                reload += 1;
-                            },
+                    if has_lanes {
+                        div {
+                            class: "shrink-0 border-t border-line bg-surface outline-none lg:max-h-[40%] lg:overflow-y-auto",
+                            tabindex: "0",
+                            onkeydown: on_key,
+                            Timeline {
+                                canvas: CANVAS,
+                                scale: Scale::linear((0, end)),
+                                base: TimeBase::Media,
+                                cursor: pos,
+                                lanes: lanes_now,
+                                header: t!("media-review-speakers").to_string(),
+                                on_seek: seek,
+                                on_create: move |(_, from, to): (String, i64, i64)| {
+                                    if to > from {
+                                        picked.set(None);
+                                        selection
+                                            .set(
+                                                vec![
+                                                    MediaSpan {
+                                                        start_ms: from,
+                                                        end_ms: to,
+                                                    },
+                                                ],
+                                            );
+                                    }
+                                },
+                                on_title: move |lane: String| {
+                                    let Some(label) = lane.strip_prefix("s:") else {
+                                        return;
+                                    };
+                                    let Some(t) = speaker_turns.as_ref() else {
+                                        return;
+                                    };
+                                    picked.set(None);
+                                    selection
+                                        .set(
+                                            turns_of(t, label)
+                                                .into_iter()
+                                                .map(|(start_ms, end_ms)| MediaSpan { start_ms, end_ms })
+                                                .collect(),
+                                        );
+                                },
+                                on_item: move |(_, item): (String, String)| {
+                                    selection.set(Vec::new());
+                                    picked.set(item.parse().ok());
+                                },
+                            }
+                            if can_write && !selection().is_empty() {
+                                SelectionBar {
+                                    spans: selection(),
+                                    palette: palette.clone(),
+                                    on_pick: attribute.clone(),
+                                    on_cancel: move |_| selection.set(Vec::new()),
+                                }
+                            }
+                            if let Some(a) = picked_one {
+                                PickedBar {
+                                    asset_id: id.clone(),
+                                    attribution: a,
+                                    can_write,
+                                    on_done: move |e: Option<String>| {
+                                        picked.set(None);
+                                        error.set(e);
+                                        reload += 1;
+                                    },
+                                }
+                            }
+                            if let Some(e) = error() {
+                                p { class: "border-t border-line px-3 py-2 text-sm text-alarm",
+                                    {crate::api::error_i18n::localize_code(&e, None, &e)}
+                                }
+                            }
                         }
                     }
-                    if let Some(e) = error() {
-                        p { class: "border-t border-line px-3 py-2 text-sm text-red-700",
-                            {crate::api::error_i18n::localize_code(&e, None, &e)}
-                        }
+                }
+            },
+        }
+    }
+}
+
+/// Index of the block under `pos`: the last one started at or before it.
+fn block_at(list: &[Block], pos: i64) -> Option<usize> {
+    list.iter().rposition(|b| b.start_ms <= pos)
+}
+
+/// Words of a long block shown on the stage, around the playhead.
+const STAGE_WORDS: usize = 30;
+
+/// The block under the playhead in large type: said words in ink, the
+/// current one in signal, the rest still to come in grey. An audio file
+/// has no picture: this is what the stage shows instead.
+#[component]
+fn Stage(
+    block: Option<Block>,
+    color: String,
+    who: Option<String>,
+    pos: i64,
+    on_seek: EventHandler<i64>,
+) -> Element {
+    let Some(b) = block else {
+        return rsx! {
+            div { class: "flex flex-1 items-center px-6 py-10 lg:px-12",
+                p { class: "max-w-xl text-base text-slate", {t!("media-review-stage-idle")} }
+            }
+        };
+    };
+    let clock = TimeBase::Media.clock(b.start_ms);
+    let now = b.words.iter().rposition(|w| w.1 <= pos).unwrap_or(0);
+    let from = now.saturating_sub(STAGE_WORDS);
+    let to = (now + STAGE_WORDS).min(b.words.len());
+    let (cut_before, cut_after) = (from > 0, to < b.words.len());
+    rsx! {
+        div {
+            class: "flex flex-1 flex-col justify-center gap-4 px-6 py-10 lg:px-12",
+            "data-testid": "media-review-stage",
+            div { class: "flex items-center gap-2 text-sm",
+                span {
+                    class: "h-2.5 w-2.5 shrink-0 rounded-sm",
+                    style: "background: {color}",
+                }
+                if let Some(who) = who {
+                    span { class: "min-w-0 truncate font-medium text-ink", "{who}" }
+                }
+                span { class: "font-mono text-xs text-slate tabular-nums", "{clock}" }
+            }
+            p { class: "max-w-3xl text-2xl leading-snug break-words",
+                if cut_before {
+                    span { class: "text-gray-500", "… " }
+                }
+                for (j, (word, s, e)) in b.words[from..to].iter().cloned().enumerate() {
+                    span {
+                        key: "{j}",
+                        class: if pos >= s && pos < e { "cursor-pointer rounded bg-signal-soft text-signal-700" } else if e <= pos { "cursor-pointer text-ink" } else { "cursor-pointer text-gray-500" },
+                        onclick: move |_| on_seek.call(s),
+                        "{word} "
                     }
+                }
+                if cut_after {
+                    span { class: "text-gray-500", "…" }
                 }
             }
         }
@@ -796,10 +921,10 @@ fn RunPicker(
 ) -> Element {
     let current = current.unwrap_or_default();
     rsx! {
-        label { class: "mb-3 flex items-center gap-2 text-sm text-gray-700",
-            {t!("media-review-run")}
+        label { class: "flex items-center gap-2 text-sm text-slate",
+            span { class: "hidden sm:inline", {t!("media-review-run")} }
             select {
-                class: "{INPUT} max-w-sm",
+                class: "{INPUT} w-36! sm:w-56!",
                 "data-testid": "media-review-run",
                 onchange: move |e| on_pick.call(e.value()),
                 for r in runs.iter() {
@@ -827,16 +952,18 @@ pub(crate) fn TranscriptPanel(
 ) -> Element {
     let body = match &data {
         None if failed => rsx! {
-            p { class: "text-sm text-red-700", {t!("media-review-failed")} }
+            p { class: "p-4 text-sm text-alarm", {t!("media-review-failed")} }
         },
         None => rsx! {
-            p { class: "text-sm text-gray-500", {t!("media-review-loading")} }
+            div { class: "flex justify-center py-10",
+                Gerbe { size: 28 }
+            }
         },
         Some(t) if t.unavailable => rsx! {
-            p { class: "text-sm text-gray-600", {t!("media-review-unavailable")} }
+            p { class: "p-4 text-sm text-slate", {t!("media-review-unavailable")} }
         },
         Some(t) if t.segments.is_empty() => rsx! {
-            p { class: "text-sm text-gray-600", {t!("media-review-empty")} }
+            p { class: "p-4 text-sm text-slate", {t!("media-review-empty")} }
         },
         Some(t) => {
             let list = blocks(&t.segments);
@@ -859,12 +986,15 @@ pub(crate) fn TranscriptPanel(
             }
         }
     };
+    // Sized by the caller: it fills a column and scrolls inside it.
     rsx! {
         section {
-            class: "lg:col-span-2 {PANEL} max-h-[520px] overflow-y-auto p-3 space-y-3",
+            class: "flex min-h-0 flex-1 flex-col",
             "data-testid": "media-review-transcript",
-            h3 { class: "text-sm font-semibold text-gray-700", {t!("media-review-transcript")} }
-            {body}
+            h3 { class: "border-b border-line px-4 py-2.5 text-sm font-semibold text-ink",
+                {t!("media-review-transcript")}
+            }
+            div { class: "min-h-0 flex-1 divide-y divide-line overflow-y-auto", {body} }
         }
     }
 }
@@ -934,33 +1064,34 @@ fn BlockView(
         .map(|l| speaker_color(&speakers, l))
         .unwrap_or("#64748b");
     let start = block.start_ms;
+    let stop = block.words.last().map_or(start, |w| w.2);
     let clock = TimeBase::Media.clock(start);
     rsx! {
-        div { class: "space-y-1",
-            div { class: "flex items-center gap-2 text-xs",
+        // The speaker's colour as a rule on the left edge; the block under
+        // the playhead takes the signal tint.
+        div {
+            class: if pos >= start && pos < stop { "space-y-1.5 bg-signal-soft px-4 py-3" } else { "space-y-1.5 px-4 py-3" },
+            style: "box-shadow: inset 3px 0 0 {color}",
+            div { class: "flex min-w-0 items-center gap-2 text-xs",
                 if let Some(label) = block.speaker.clone() {
-                    span {
-                        class: "rounded px-1.5 py-0.5 font-medium text-white",
-                        style: "background: {color}",
-                        "{label}"
-                    }
+                    span { class: "min-w-0 truncate font-medium text-slate", "{label}" }
                 }
                 if let Some((_, name)) = person.clone() {
                     span {
-                        class: "font-medium text-gray-900",
+                        class: "min-w-0 truncate font-medium text-ink",
                         "data-testid": "media-review-person-name",
                         "{name}"
                     }
                 }
                 button {
-                    class: "font-mono text-gray-500 hover:text-signal-600",
+                    class: "shrink-0 rounded font-mono text-slate tabular-nums hover:text-signal focus-visible:outline-2 focus-visible:outline-signal",
                     r#type: "button",
                     onclick: move |_| on_seek.call(start),
                     "{clock}"
                 }
                 if can_write && created().is_none() {
                     button {
-                        class: "ml-auto text-gray-500 hover:text-signal-600",
+                        class: "{BTN_GHOST} ml-auto",
                         r#type: "button",
                         "data-testid": "media-review-statement",
                         onclick: make_statement,
@@ -969,17 +1100,17 @@ fn BlockView(
                 }
                 if let Some(oid) = created() {
                     Link {
-                        class: "ml-auto text-signal-600 hover:underline",
+                        class: "{BTN_GHOST} ml-auto",
                         to: Route::OntologyObject { id: oid },
                         {t!("media-review-statement-open")}
                     }
                 }
             }
-            p { class: "text-sm leading-relaxed text-gray-900",
+            p { class: "text-sm leading-relaxed break-words text-ink",
                 for (j, (word, from, to)) in block.words.into_iter().enumerate() {
                     span {
                         key: "{j}",
-                        class: if pos >= from && pos < to { "cursor-pointer rounded bg-signal-100 text-signal-900" } else { "cursor-pointer hover:bg-gray-100" },
+                        class: if pos >= from && pos < to { "cursor-pointer rounded bg-signal-100 text-signal-900" } else { "cursor-pointer rounded hover:bg-gray-100" },
                         onclick: move |_| on_seek.call(from),
                         "{word} "
                     }
@@ -1001,6 +1132,21 @@ mod tests {
             end_ms: s + 400,
             speaker: spk.map(str::to_string),
         }
+    }
+
+    #[test]
+    fn block_at_takes_the_last_started_block() {
+        let b = |start_ms| Block {
+            speaker: None,
+            start_ms,
+            words: Vec::new(),
+        };
+        let list = [b(0), b(1_000), b(5_000)];
+        assert_eq!(block_at(&list, 0), Some(0));
+        assert_eq!(block_at(&list, 4_999), Some(1));
+        assert_eq!(block_at(&list, 9_000), Some(2));
+        assert_eq!(block_at(&[], 10), None);
+        assert_eq!(block_at(&[b(500)], 10), None);
     }
 
     #[test]

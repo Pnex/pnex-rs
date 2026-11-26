@@ -202,15 +202,17 @@ pub fn StreamReview(id: String) -> Element {
                         p { class: "text-sm text-gray-600", {t!("streams-review-pick")} }
                     }
                 }
-                TranscriptPanel {
-                    asset_id: String::new(),
-                    can_write: false,
-                    data: as_transcript.clone(),
-                    failed,
-                    speakers: all.clone(),
-                    attributions: Vec::new(),
-                    pos: pos_ms(),
-                    on_seek: seek.clone(),
+                div { class: "flex max-h-[520px] flex-col overflow-hidden lg:col-span-2 {PANEL}",
+                    TranscriptPanel {
+                        asset_id: String::new(),
+                        can_write: false,
+                        data: as_transcript.clone(),
+                        failed,
+                        speakers: all.clone(),
+                        attributions: Vec::new(),
+                        pos: pos_ms(),
+                        on_seek: seek.clone(),
+                    }
                 }
             }
             if !lanes_now.is_empty() {

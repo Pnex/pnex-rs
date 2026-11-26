@@ -185,9 +185,44 @@ pub(super) fn snippet_parts(snippet: &str) -> Vec<(String, bool)> {
     parts
 }
 
+/// Text preview of a stored file, from its file name: the server keeps
+/// Markdown and HTML as opaque bytes (R12), so the type cannot tell.
+#[derive(Clone, Copy, PartialEq)]
+pub(super) enum TextKind {
+    Markdown,
+    Html,
+}
+
+pub(super) fn text_kind(filename: &str) -> Option<TextKind> {
+    let ext = filename.rsplit_once('.')?.1.to_ascii_lowercase();
+    match ext.as_str() {
+        "md" | "markdown" => Some(TextKind::Markdown),
+        "html" | "htm" => Some(TextKind::Html),
+        _ => None,
+    }
+}
+
+/// File name of version `n` among the loaded versions.
+pub(super) fn version_filename(
+    rows: &[crate::api::media::MediaVersion],
+    n: Option<i64>,
+) -> Option<String> {
+    rows.iter()
+        .find(|v| Some(v.version_number) == n)
+        .map(|v| v.filename.clone())
+}
+
 #[cfg(test)]
 mod tests {
-    use super::snippet_parts;
+    use super::{snippet_parts, text_kind, TextKind};
+
+    #[test]
+    fn text_kind_from_extension() {
+        assert!(text_kind("page.MD") == Some(TextKind::Markdown));
+        assert!(text_kind("a.b.html") == Some(TextKind::Html));
+        assert!(text_kind("x.pdf").is_none());
+        assert!(text_kind("md").is_none());
+    }
 
     #[test]
     fn snippet_parts_splits_on_markers() {

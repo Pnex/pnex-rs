@@ -14,7 +14,21 @@ pub(super) fn MediaPreview(
     asset: MediaAsset,
     version_override: Option<i64>,
     show_hd_overlay: bool,
+    filename: Option<String>,
 ) -> Element {
+    let text_kind = filename.as_deref().and_then(text_kind);
+    let text_asset_id = asset.id.clone();
+    let text = use_resource(move || {
+        let id = text_asset_id.clone();
+        async move {
+            text_kind?;
+            let bytes = match version_override {
+                Some(n) => api::media::version_content_bytes(&id, n).await,
+                None => api::media::content_bytes(&id).await,
+            };
+            bytes.ok().map(|b| String::from_utf8_lossy(&b).into_owned())
+        }
+    });
     let mut blob_url = use_signal(|| None::<String>);
     let mut preview_done = use_signal(|| false);
     let mut mount_ok = use_signal(|| true);
@@ -150,7 +164,19 @@ pub(super) fn MediaPreview(
                     "{version_pill_text}"
                 }
             }
-            if is_image {
+            if let Some(kind) = text_kind {
+                match text.cloned().flatten() {
+                    Some(body) => rsx! {
+                        TextPreview { body, kind, title: asset.name.clone() }
+                    },
+                    None if text.finished() => rsx! {
+                        span { class: "text-sm text-gray-300", {t!("media-preview-unavailable")} }
+                    },
+                    None => rsx! {
+                        Gerbe { size: 36, inherit: true }
+                    },
+                }
+            } else if is_image {
                 match blob_url() {
                     Some(url) => rsx! {
                         // `relative w-full` container: the img fills the
@@ -276,6 +302,33 @@ pub(super) fn MediaPreview(
                     span { class: "text-sm text-gray-300", {t!("media-preview-unavailable")} }
                 }
             }
+        }
+    }
+}
+
+/// Markdown rendered by the sanitizing converter (raw HTML and images
+/// dropped). HTML in a sandboxed iframe: opaque origin, no script, no
+/// remote load, so never on the app origin (R11).
+#[component]
+fn TextPreview(body: String, kind: TextKind, title: String) -> Element {
+    if kind == TextKind::Html {
+        let doc = format!(
+            "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; style-src 'unsafe-inline'; img-src data:\">{body}"
+        );
+        return rsx! {
+            iframe {
+                class: "h-[560px] w-full bg-white",
+                "sandbox": "",
+                srcdoc: "{doc}",
+                title: "{title}",
+            }
+        };
+    }
+    let html = crate::components::markdown::to_html(&body);
+    rsx! {
+        div {
+            class: "ai-md max-h-[560px] w-full overflow-auto bg-white p-6 text-left text-sm text-gray-900",
+            dangerous_inner_html: "{html}",
         }
     }
 }

@@ -134,6 +134,15 @@ pub(super) fn MediaDetail(
             Some(Err(err)) => (Vec::new(), Some(err.message.clone())),
             None => (Vec::new(), None),
         };
+    // File name of the previewed version: picks the text preview, which
+    // remounts once when the versions arrive (other kinds do not).
+    let preview_filename = detail().as_ref().and_then(|a| {
+        version_filename(
+            &versions_rows,
+            viewing_version().or(a.current_version_number),
+        )
+    });
+    let preview_is_text = preview_filename.as_deref().and_then(text_kind).is_some();
     let crumb_name = detail()
         .as_ref()
         .map(|a| a.name.clone())
@@ -189,10 +198,11 @@ pub(super) fn MediaDetail(
                             // and the 360 viewer start from zero (the blob
                             // use_effect is not reactive by itself).
                             MediaPreview {
-                                key: "pv-v{asset.current_version_number.clone().unwrap_or(0)}-{viewing_version().unwrap_or(0)}",
+                                key: "pv-v{asset.current_version_number.clone().unwrap_or(0)}-{viewing_version().unwrap_or(0)}-{preview_is_text}",
                                 asset: asset.clone(),
                                 version_override: viewing_version(),
                                 show_hd_overlay: hd_running() && viewing_version().is_none(),
+                                filename: preview_filename.clone(),
                             }
                             // Previewing a non-current version — explicit
                             // banner + way back (the kind/current pills live
