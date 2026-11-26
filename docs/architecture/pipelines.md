@@ -834,3 +834,12 @@ tests:
 - Elasticsearch : attendre un besoin réel.
 - Q-CN2 : un `POST` en lecture (API de recherche), drapeau à ouvrir au premier besoin.
 - Jeton OAuth2 non rafraîchi pendant un run. Erreur de statut REST sans le code HTTP dans `args`.
+
+**Veille (pack `watch`, §3.14) :**
+
+- Salons : le pack a le type `show` et les liens `exhibits_at` et `organized_by`. Aucun pipeline livré ne les remplit. Besoin générique :
+  - Calendrier : un pipeline livré lit l'agenda d'un organisateur ou d'un annuaire de salons (flux, page, plan de site) et écrit des `show` (titre, dates, lieu, ville, pays, site). La clé est l'adresse du salon. Une relecture tous les N jours (D1000) suit les changements de date.
+  - Exposants : un pipeline livré lit la liste des exposants d'un `show` (page ou fichier du site du salon) et donne une ligne par exposant (nom, stand, site, pays). Un flow rapproche chaque exposant d'une `organization` (`org_resolve`). Un rapprochement certain écrit le lien `exhibits_at` avec son stand. Un rapprochement douteux donne une proposition (D972). Un exposant sans rapprochement ne crée pas d'`organization`.
+  - Hôtes : les sites des salons sont des adresses tenues par les objets de l'org. `object_hosts` doit donc lire aussi `show.url` (D975).
+  - Rencontre sur place : un membre rencontre une personne ou une société à un salon. Le lien `met_at` part seulement d'une piste ou d'une opportunité (pack `crm`). Choix de Shan : étendre `met_at` à `person` et `organization`, ou toujours passer par une piste.
+  - Lecture par une application externe : par `POST /api/v1/ontology/query` (D974), sans route dédiée. Exemples : les salons à venir par pays ou par ville, les exposants d'un salon et leur stand.
