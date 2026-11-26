@@ -199,11 +199,13 @@ mod tests {
             outputs: BTreeMap::from([("patch".into(), "art1".into())]),
             recipe_id: None,
             extracts: BTreeMap::new(),
+            texts: BTreeMap::from([("questions".into(), "Which status code?".into())]),
             ts_ms: 1,
         };
         let body = body_of(&ev);
         let run = serde_json::to_value(&body["run"]).unwrap();
         assert_eq!(run["outputs"]["patch"], "art1");
+        assert_eq!(run["texts"]["questions"], "Which status code?");
         assert_eq!(serde_json::to_value(&body["chain_id"]).unwrap(), "c1");
         assert_eq!(serde_json::to_value(&body["topic"]).unwrap(), "succeeded");
     }

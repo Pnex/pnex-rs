@@ -354,7 +354,7 @@ Règles d'une chaîne :
 - Le sujet est une clé libre de 200 caractères, tenue par la chaîne active (index unique partiel). Un départ sur un sujet tenu ne lance rien : le nœud répond `joined`, la route HTTP rend 409 `agent-subject-taken` avec `args.chain_id`.
 - Un humain libère le sujet par `POST /agent-chains/{id}/close` (`agents:stop`).
 
-Entrées d'une exécution lancée par un flow : `inputs` lit un id d'artifact dans le message. `texts` lit un texte du message (64 Kio au plus), par exemple la description d'un ticket. Le serveur garde ce texte comme artifact d'entrée, écrit au nom de la personne qui a déployé le flow (D1052).
+Entrées d'une exécution lancée par un flow : `inputs` lit un id d'artifact dans le message. `texts` lit un texte du message (64 Kio au plus), par exemple la description d'un ticket. Le serveur garde ce texte comme artifact d'entrée, écrit au nom de la personne qui a déployé le flow (D1052). Dans l'autre sens, le message de fin d'exécution donne `texts` : le texte de chaque sortie UTF-8 de 64 Kio au plus. Un flow peut ainsi poster le rapport ou les questions d'un agent sans lire l'artifact (D1053). Le droit de lire un artifact est au niveau membre, comme le déploiement d'un flow : `texts` n'ouvre aucun accès nouveau.
 
 Droits d'un flow (D768) : le déploiement retient `flows.deployed_by` et exige `agents:run` pour chaque nœud `agent_run`. À chaque message, le backend relit le graphe déployé et revérifie `agents:run` de cette personne. Si elle perd ce droit, le flow ne lance plus rien. La fin d'un run est publiée une fois (`agent_runs.finished_event_at`), après la projection `agent_ops`.
 
@@ -556,12 +556,13 @@ classDiagram
   agent_environment <-- agent_run : run_in_environment
   agent_file --> agent_run : file_produced_by
   agent_run --> agent_file : run_read_file
+  agent_merge_request --> agent_run : merge_request_of_run
   software_image <-- software_bom
   software_image --> software_vulnerability : image_exposed_to
   software_bom --> software_component
 ```
 
-Les tables restent la source de vérité des états. Le service projette l'objet à la fin de chaque job et à l'arrêt. Les deux packs s'installent au premier usage. Une étape ou un appel d'outil n'est pas un objet : l'objet `agent_run` porte le résumé et renvoie au journal O2.
+Les tables restent la source de vérité des états. Le service projette l'objet à la fin de chaque job et à l'arrêt. Les deux packs s'installent au premier usage. Une étape ou un appel d'outil n'est pas un objet : l'objet `agent_run` porte le résumé et renvoie au journal O2. Ce résumé donne le début, la fin, la durée, les appels au modèle et les tokens. Chaque demande de fusion ouverte par le run devient un objet `agent_merge_request`, relié au run. La demande de fusion est ouverte avant la projection, donc la projection la voit (pack 1.1.0).
 
 ### 3.17 Recette locale (D760)
 
@@ -744,7 +745,7 @@ flowchart LR
 | D705 | Secrets du run en variables par un Secret Kubernetes par run, masqués dans les journaux | ✅ |
 | D706 | Un contrat d'exécution pour Kubernetes et VM | ✅ |
 | D707 | Entrées et sorties d'un run par PneX. Seul git est un accès direct à un tiers | 🟡 pas de déclencheur Jira ni mail |
-| D708 | Pack `agent_ops` pour les faits durables, étapes dans O2 | 🟡 sans version d'environnement, `started_by`, registre, demande de fusion |
+| D708 | Pack `agent_ops` pour les faits durables, étapes dans O2 | 🟡 sans version d'environnement, `started_by`, registre |
 | D709 | Audit LLM : empreintes dès le départ, contenu chiffré plus tard | 🟡 niveau `metadata` seul |
 | D710 | Une clé LLM par agent, au coffre | ✅ |
 | D711 | Compétences stockées dans PneX : build, dépôt git, saisie | 🟡 saisie seule (D770) |
@@ -774,6 +775,7 @@ flowchart LR
 | D752 | Démonstration : dépôt GitHub privé avec un test rouge. GitHub en V1 | ✅ |
 | D1051 | Demande de fusion GitLab : tout hôte `https` autre que `github.com`, projet avec sous-groupes, jeton `PRIVATE-TOKEN` | ✅ |
 | D1052 | Nœud `agent_run` : `texts` donne un texte du message comme artifact d'entrée | ✅ |
+| D1053 | Fin d'exécution : `texts` donne le texte des sorties UTF-8 de 64 Kio au plus | ✅ |
 | D753 | Recette de bout en bout dans `pnex-agents-test` | ✅ |
 | D754 | Egress : adresses au claim, plages publiées, proxy par nom plus tard | ✅ |
 | D755 | Limites en réglages `settings.agents.*`, édités dans la page Système | ✅ |

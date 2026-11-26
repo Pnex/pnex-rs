@@ -108,6 +108,8 @@ const COUPLED: &[(&str, &[&str], &str)] = &[
             "run_in_environment",
             "file_produced_by",
             "run_read_file",
+            "agent_merge_request",
+            "merge_request_of_run",
         ],
         "the fabric projects its ended runs into its own pack (agents.md D708, D761)",
     ),

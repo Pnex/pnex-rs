@@ -306,6 +306,9 @@ pub struct AgentRunFinishedEvent {
     /// Extract name → text, for a rule run.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub extracts: BTreeMap<String, String>,
+    /// Output name → its text, for the outputs that are short UTF-8 text (D1053).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub texts: BTreeMap<String, String>,
     pub ts_ms: i64,
 }
 
@@ -451,6 +454,7 @@ mod tests {
             outputs: BTreeMap::new(),
             recipe_id: None,
             extracts: BTreeMap::new(),
+            texts: BTreeMap::new(),
             ts_ms: 0,
         };
         assert!(ev.matches(&AgentRunFinishedConfig::default()));

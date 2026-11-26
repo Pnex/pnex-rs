@@ -242,6 +242,7 @@ pub async fn claim_finished<C: ConnectionTrait>(
         outputs,
         recipe_id: None,
         extracts: BTreeMap::new(),
+        texts: BTreeMap::new(),
         ts_ms: chrono::Utc::now().timestamp_millis(),
     }))
 }
@@ -252,14 +253,50 @@ pub async fn claim_finished<C: ConnectionTrait>(
 pub async fn publish_finished(
     db: &DatabaseConnection,
     valkey: Option<redis::aio::ConnectionManager>,
+    store: Option<&crate::services::artifact_store::S3Store>,
     org_id: i64,
     job: Uuid,
 ) -> Result<(), DbErr> {
-    let Some(event) = claim_finished(db, org_id, job).await? else {
+    let Some(mut event) = claim_finished(db, org_id, job).await? else {
         return Ok(());
     };
+    if let Some(store) = store {
+        event.texts = output_texts(store, org_id, &event).await;
+    }
     publish_event(valkey, org_id, &event).await;
     Ok(())
+}
+
+/// Largest output a flow receives as text (D1053), as the `texts` of an `agent_run` node.
+const OUTPUT_TEXT_MAX: u64 = 64 * 1024;
+
+/// The outputs of the run that are short UTF-8 text, read from the store (D1053). An
+/// output that is larger, binary or unreadable stays an artifact id only.
+async fn output_texts(
+    store: &crate::services::artifact_store::S3Store,
+    org_id: i64,
+    event: &AgentRunFinishedEvent,
+) -> BTreeMap<String, String> {
+    let run = Uuid::parse_str(&event.run_id).ok();
+    let mut texts = BTreeMap::new();
+    for (name, id) in &event.outputs {
+        let Ok(id) = Uuid::parse_str(id) else {
+            continue;
+        };
+        let key = crate::services::agent_artifacts::storage_key(org_id, run, id);
+        if !matches!(store.size(&key).await, Ok(Some(n)) if n <= OUTPUT_TEXT_MAX) {
+            continue;
+        }
+        if let Some(text) = store.get_bytes(&key).await.ok().flatten().and_then(as_text) {
+            texts.insert(name.clone(), text);
+        }
+    }
+    texts
+}
+
+/// UTF-8 without NUL: a tar output has NUL bytes in its headers.
+fn as_text(bytes: Vec<u8>) -> Option<String> {
+    String::from_utf8(bytes).ok().filter(|t| !t.contains('\0'))
 }
 
 /// Publishes one claimed run end on the org channel; a failure is logged.
@@ -465,4 +502,19 @@ pub async fn run_node(
         }
     };
     Ok(refused(code, args))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::as_text;
+
+    #[test]
+    fn only_utf8_without_nul_is_text() {
+        assert_eq!(
+            as_text(b"Which status code?".to_vec()).as_deref(),
+            Some("Which status code?")
+        );
+        assert_eq!(as_text(vec![0xff, 0xfe]), None);
+        assert_eq!(as_text(b"report\0\0ustar".to_vec()), None);
+    }
 }

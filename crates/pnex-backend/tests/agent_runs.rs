@@ -759,6 +759,13 @@ async fn artifacts_go_in_checked_and_out_once_through_pnex_only() {
                     .await
             }
         };
+        // As the forge left it before the end: the projection records it (D1053).
+        db.execute_unprepared(&format!(
+            "UPDATE agent_runs SET merge_requests = '[\"https://forge.test/demo/app/-/merge_requests/1\"]' \
+             WHERE id = '{id}'"
+        ))
+        .await
+        .unwrap();
         assert_eq!(finish(job_id.clone()).await.status_code().as_u16(), 204);
         let (_, list) = call(&server, &env.alice, org, "GET", &outputs, None).await;
         let state = |name: &str| {
@@ -804,15 +811,28 @@ async fn artifacts_go_in_checked_and_out_once_through_pnex_only() {
                AND r.properties->>'run_id' = '{id}' AND f.properties->>'artifact_id' = '{}'",
             input["id"].as_str().unwrap()
         );
-        let mut seen = (0, 0);
+        // Its merge request points back to it, and it keeps when it ran.
+        let opened = format!(
+            "SELECT count(*) AS n FROM resource_edges e JOIN objects m ON m.id = e.source_object_id \
+             JOIN objects r ON r.id = e.target_object_id \
+             WHERE e.org_id = {org} AND e.relation = 'merge_request_of_run' AND e.valid_to IS NULL \
+               AND r.properties->>'run_id' = '{id}' \
+               AND m.properties->>'url' = 'https://forge.test/demo/app/-/merge_requests/1' \
+               AND r.properties->>'started_at' IS NOT NULL AND r.properties->>'duration_s' IS NOT NULL"
+        );
+        let mut seen = (0, 0, 0);
         for _ in 0..50 {
-            seen = (count(produced.clone()).await, count(read.clone()).await);
-            if seen == (1, 1) {
+            seen = (
+                count(produced.clone()).await,
+                count(read.clone()).await,
+                count(opened.clone()).await,
+            );
+            if seen == (1, 1, 1) {
                 break;
             }
             tokio::time::sleep(std::time::Duration::from_millis(100)).await;
         }
-        assert_eq!(seen, (1, 1), "produced and read links of the run");
+        assert_eq!(seen, (1, 1, 1), "produced, read and merge request links of the run");
 
         // A required output missing fails a run the agent ended well.
         let (s, run2) = call(
@@ -1674,7 +1694,8 @@ async fn chains_bound_their_runs_hold_a_subject_and_publish_each_end_once() {
         assert_eq!(s, 409, "{b}");
         assert!(b.to_string().contains("agent-chain-busy"), "{b}");
 
-        // Its end is published once, with its outputs by name.
+        // Its end is published once, with its outputs by name and a short text output
+        // as its text (D1053).
         let mut ends = run_ends(org).await;
         let runner = enrol(&server, &env.alice, org).await;
         let job = server
@@ -1682,6 +1703,18 @@ async fn chains_bound_their_runs_hold_a_subject_and_publish_each_end_once() {
             .add_header("Authorization", format!("Bearer {runner}"))
             .await
             .json::<Value>();
+        let transfer = job["sandbox"]["artifacts"]["token"].as_str().unwrap();
+        let res = raw(
+            &server,
+            "PUT",
+            "/api/v1/agent-transfer/outputs/patch",
+            transfer,
+            None,
+            &[("x-pnex-artifact-form", "file")],
+            b"Which status code?",
+        )
+        .await;
+        assert_eq!(res.status_code().as_u16(), 200, "{}", res.text());
         let finish = || async {
             server
                 .post(&format!(
@@ -1702,10 +1735,8 @@ async fn chains_bound_their_runs_hold_a_subject_and_publish_each_end_once() {
         assert_eq!(ev["subject"], "repo#1");
         assert_eq!(ev["state"], "succeeded");
         assert_eq!(ev["exit_code"], 0);
-        assert!(
-            ev["outputs"].as_object().unwrap().is_empty(),
-            "the output never came"
-        );
+        assert!(ev["outputs"]["patch"].is_string(), "{ev}");
+        assert_eq!(ev["texts"]["patch"], "Which status code?", "{ev}");
         finish().await;
         assert!(
             end_of(&mut ends, &first["id"], 2).await.is_none(),

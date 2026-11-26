@@ -20,10 +20,13 @@ const OF_AGENT: &str = "run_of_agent";
 const IN_ENVIRONMENT: &str = "run_in_environment";
 const PRODUCED_BY: &str = "file_produced_by";
 const READ: &str = "run_read_file";
+const MERGE_REQUEST: &str = "agent_merge_request";
+const OPENED_BY: &str = "merge_request_of_run";
 
 async fn schema_with_pack(db: &DatabaseConnection, org_id: i64) -> Result<OrgSchema> {
     let schema = ontology::schema(db, org_id).await?;
-    if schema.object_type(RUN).is_some() {
+    // The newest type of the pack: an org on an older version gets the upgrade.
+    if schema.object_type(MERGE_REQUEST).is_some() {
         return Ok(schema);
     }
     let pack = packs::shipped()
@@ -112,7 +115,10 @@ async fn project_locked(db: &DatabaseConnection, org_id: i64, job: Uuid) -> Resu
     let Some(row) = db
         .query_one_raw(stmt(
             "SELECT a.id, a.agent_id, a.agent_version, a.inputs, a.llm_calls, a.input_tokens, \
-               a.output_tokens, a.error, j.outcome, j.spec->>'image' AS image, \
+               a.output_tokens, a.error, a.merge_requests, j.outcome, j.spec->>'image' AS image, \
+               to_char(j.started_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS started_at, \
+               to_char(j.finished_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS finished_at, \
+               EXTRACT(EPOCH FROM j.finished_at - j.started_at)::float8 AS duration_s, \
                e.id AS environment_id, e.name AS environment_name, g.name AS agent_name \
              FROM agent_runs a JOIN runner_jobs j ON j.id = a.job_id \
              LEFT JOIN environments e ON e.id = a.environment_id \
@@ -169,6 +175,21 @@ async fn project_locked(db: &DatabaseConnection, org_id: i64, job: Uuid) -> Resu
             "error",
             row.try_get::<Option<String>>("", "error")?
                 .map_or(Value::Null, |e| json!(e)),
+        ),
+        (
+            "started_at",
+            row.try_get::<Option<String>>("", "started_at")?
+                .map_or(Value::Null, |t| json!(t)),
+        ),
+        (
+            "finished_at",
+            row.try_get::<Option<String>>("", "finished_at")?
+                .map_or(Value::Null, |t| json!(t)),
+        ),
+        (
+            "duration_s",
+            row.try_get::<Option<f64>>("", "duration_s")?
+                .map_or(Value::Null, |d| json!(d.round())),
         ),
     ]);
     let run_title = format!(
@@ -235,6 +256,22 @@ async fn project_locked(db: &DatabaseConnection, org_id: i64, job: Uuid) -> Resu
         )
         .await?[&agent_key];
         ensure_link(db, &schema, org_id, &actor, (OF_AGENT, run, agent)).await?;
+    }
+
+    let merge_requests: Vec<String> =
+        serde_json::from_value(row.try_get::<Value>("", "merge_requests")?).unwrap_or_default();
+    for url in &merge_requests {
+        let mr = ensure_all(
+            db,
+            &schema,
+            org_id,
+            &actor,
+            (MERGE_REQUEST, "url"),
+            std::slice::from_ref(url),
+            |_| (url.clone(), props(&[("url", json!(url))])),
+        )
+        .await?[url];
+        ensure_link(db, &schema, org_id, &actor, (OPENED_BY, mr, run)).await?;
     }
 
     let file_props = |f: &FileRow| {
@@ -306,18 +343,28 @@ pub fn spawn_projection(ctx: &loco_rs::app::AppContext, org_id: i64, job: Uuid) 
     let config = ctx.config.clone();
     let ring = crate::controllers::secrets::keyring(ctx).ok();
     tokio::spawn(async move {
-        if let Err(e) = project_run(&db, org_id, job).await {
-            tracing::warn!(org_id, %job, error = ?e, "agent run not projected to the ontology");
-        }
-        // Before the end is published: the next step of a chain sees the merge request.
+        // Before the projection, which records them, and before the end is published:
+        // the next step of a chain sees the merge request.
         if let Err(e) =
             crate::services::agent_runs::open_merge_requests(&db, ring.as_ref(), org_id, job).await
         {
             tracing::warn!(org_id, %job, error = %e, "merge requests not recorded");
         }
+        if let Err(e) = project_run(&db, org_id, job).await {
+            tracing::warn!(org_id, %job, error = ?e, "agent run not projected to the ontology");
+        }
         let valkey = crate::services::shared_valkey::conn(&config).await;
-        if let Err(e) =
-            crate::services::agent_chains::publish_finished(&db, valkey, org_id, job).await
+        let store = crate::services::artifact_store::S3Config::from_config(&config)
+            .store()
+            .ok();
+        if let Err(e) = crate::services::agent_chains::publish_finished(
+            &db,
+            valkey,
+            store.as_ref(),
+            org_id,
+            job,
+        )
+        .await
         {
             tracing::warn!(org_id, %job, error = %e, "agent run end not published");
         }

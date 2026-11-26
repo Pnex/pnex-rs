@@ -57,7 +57,7 @@ The Runs tab lists every run of the organization, whatever played it: a hosted a
 - Caches belong to their environment, expire after two weeks without use, and have a size limit.
 
 ## Chains of runs, started by a flow
-- A deployed flow chains short runs: the "Agent run" node starts a run and answers at once; the "Run finished" node receives each run that ends, with its outputs by name, and starts the next step. No flow waits for a run.
+- A deployed flow chains short runs: the "Agent run" node starts a run and answers at once; the "Run finished" node receives each run that ends, with its outputs by name, and starts the next step. An output that is short text (64 KiB at most) also comes as its text, so the flow can post an agent's report or questions. No flow waits for a run.
 - Every run started by a flow belongs to a chain of runs. The chain has one budget: runs at most, model calls of all its runs together, and runs of the same agent (rounds, such as a fix after a review). Each run gets at most what the chain has left.
 - A chain runs one run at a time (`agent-chain-busy`). Past a bound, the next run is refused (`agent-chain-exhausted`): a person takes over.
 - A chain can hold a subject, such as a repository and a ticket. While it is active, the same subject starts no second run: a repeated report joins the chain (`agent-subject-taken` when started by hand).

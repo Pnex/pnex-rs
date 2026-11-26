@@ -6,7 +6,7 @@
 key: agent_ops
 name: Agent operations
 names: {fr: "Opérations des agents"}
-version: "1.0.0"
+version: "1.1.0"
 description: Environments, agents, their runs and the files those runs took and left.
 descriptions: {fr: "Les environnements, les agents, leurs exécutions et les fichiers que ces exécutions ont pris et laissés."}
 types:
@@ -37,6 +37,9 @@ types:
       - { key: input_tokens, name: Input tokens, names: {fr: "Jetons d'entrée"}, kind: number }
       - { key: output_tokens, name: Output tokens, names: {fr: "Jetons de sortie"}, kind: number }
       - { key: error, name: Error, names: {fr: "Erreur"}, kind: text, max_len: 100 }
+      - { key: started_at, name: Started at, names: {fr: "Début"}, kind: date_time, indexed: true }
+      - { key: finished_at, name: Finished at, names: {fr: "Fin"}, kind: date_time }
+      - { key: duration_s, name: Duration, names: {fr: "Durée"}, kind: number, unit: s }
   - key: agent_file
     name: Run file
     names: {fr: "Fichier d'exécution"}
@@ -47,6 +50,12 @@ types:
       - { key: sha256, name: SHA-256, names: {fr: "SHA-256"}, kind: text, max_len: 80, indexed: true }
       - { key: size, name: Size, names: {fr: "Taille"}, kind: number }
       - { key: file_state, name: State, names: {fr: "État"}, kind: text, max_len: 16 }
+  - key: agent_merge_request
+    name: Merge request
+    names: {fr: "Demande de fusion"}
+    icon: workflow
+    properties:
+      - { key: url, name: URL, names: {fr: "URL"}, kind: text, max_len: 600, required: true, unique: true, indexed: true }
 link_types:
   - key: run_of_agent
     name: is a run of
@@ -76,3 +85,10 @@ link_types:
     inverse_names: {fr: "a été lu par"}
     from_types: [agent_run]
     to_types: [agent_file]
+  - key: merge_request_of_run
+    name: was opened by
+    names: {fr: "a été ouverte par"}
+    inverse_name: opened
+    inverse_names: {fr: "a ouvert"}
+    from_types: [agent_merge_request]
+    to_types: [agent_run]
