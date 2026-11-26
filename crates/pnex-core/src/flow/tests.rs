@@ -3550,3 +3550,31 @@ fn an_inject_gets_a_run_now_companion_wired_like_it() {
     assert_eq!(now["pnex_flow_id"], 54);
     assert_eq!(now["pnex_org_id"], 3);
 }
+
+#[test]
+fn agent_run_entry_keeps_texts() {
+    // D1052: without `texts` in the runtime entry the node never reads the ticket.
+    let n: FlowNode = serde_json::from_value(serde_json::json!({
+        "id": "run", "kind": "agent_run", "outputs": [],
+        "config": {"agent_id": "34ae1939-50a6-4fc9-a638-d207e5672102", "inputs": {},
+                   "texts": {"ticket": "payload.ticket"}, "subject_from": "payload.subject"}
+    }))
+    .expect("agent_run node");
+    let meta = FlowArtifactMeta {
+        flow_id: 3,
+        version_number: 1,
+        org_id: 1,
+        o2_org: String::new(),
+    };
+    let red = to_red_flows_json(&FlowGraph { nodes: vec![n] }, &meta);
+    let entry = red
+        .as_array()
+        .expect("entries")
+        .iter()
+        .find(|e| e["type"] == "pnex-agent-run")
+        .expect("agent run entry");
+    assert_eq!(
+        entry["texts"],
+        serde_json::json!({"ticket": "payload.ticket"})
+    );
+}

@@ -322,6 +322,7 @@ pub fn to_red_flows_json_with(
                 serde_json::json!({
                     "type": "pnex-agent-run",
                     "inputs": config.inputs,
+                    "texts": config.texts,
                     "subject_from": config.subject_from,
                     "pnex_node_id": n.id,
                     "pnex_flow_id": meta.flow_id,
