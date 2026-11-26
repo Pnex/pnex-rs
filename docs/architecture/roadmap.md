@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Statut** | Vue de pilotage, revue le 2026-11-24. Les docs de domaine font foi pour le détail. |
-| **Numérotation** | Entrées **P0.1…P2.39** (§2), registre des décisions produit **#1…#27** (§4). Le code et les docs citent ces numéros. |
+| **Numérotation** | Entrées **P0.1…P2.41** (§2), registre des décisions produit **#1…#27** (§4). Le code et les docs citent ces numéros. |
 
 ## Résumé
 
@@ -117,7 +117,7 @@ PE8 est le dernier lot du moteur de pipelines (`pipelines.md` §7). OP10 dépend
 | Dossiers | C0–C7, espace de travail, argent, chaînes causales. | `cases.md` §7 | Enquête média, navigation et argent | P2.19 |
 | Création assistée | D225–D237, C1 livré. | `assisted-creation.md` | C2 → C7 | P2.22 |
 | Assistant IA | Registre fermé d'outils (`ai-assistant.md` §4), D142–D145. | `ai-assistant.md` | Suit chaque fonctionnalité (D142) | — |
-| Agents, environnements | D700–D720, U1–U5, porte OP9 livrés. | `agents.md` §7 | U4b, forge GitLab et Forgejo | P1.6, P2.7, P2.29 |
+| Agents, environnements | D700–D720, U1–U5, porte OP9 livrés. Traces, évaluations, reprise, boucle, budget proposés (D1031–D1037). | `agents.md` §7 | U4b, forge GitLab et Forgejo, AE1 → AE7 | P1.6, P2.7, P2.29, P2.41 |
 | Agents navigateur | v2 codée (L0–L5, D254–D284). | `browser-agents.md` §7 | Campagne de test réelle, publication, D268 | P2.1 |
 | Analyse | AN1–AN4 et la règle qui propose (D829) livrés. | `analysis.md` §7 | D827 (choix de Shan) | P2.36 |
 | Propositions | P0–P4 codés. | `proposals.md` | Acceptation automatique (D377) | — |
@@ -129,6 +129,7 @@ PE8 est le dernier lot du moteur de pipelines (`pipelines.md` §7). OP10 dépend
 | Marché du travail | LM0 et pack `labor_market_fr` (BMO, tension). Aucune source d'offres. | `labor-market.md` §7 | LM1, LM3 → LM5. LM2 bloqué. | — |
 | Pièces et documentation | PD0, PD1a–PD1d codés (D960–D971). | `parts-docs.md` §7 | PD2 → PD5 | P2.39 |
 | Chaîne de livraison | PRD proposé (D850–D866), rien de codé. | `software-delivery.md` §7 | SD0 → SD1 → SD3 → SD4 après Q-SD1 | P2.23, P2.24, P2.38 |
+| Exploitation IT et sécurité | PRD proposé (D1001–D1016), rien de codé. | `it-operations.md` | IT0 → IT3, puis IT4 et IT5 en parallèle, après Q-IT1 | P2.23, P2.40 |
 | Due diligence | PRD proposé (D468–D483), rien de codé. | `due-diligence.md` §7 | DD0 → DD2 | P2.32 |
 | Recherche juridique | PRD proposé (D485–D505), rien de codé. | `legal-research.md` §7 | LR0, puis LR1 → LR5 | P2.33 |
 | Analyse du discours | PRD proposé (DA1–DA10), rien de codé. | `discourse-analysis.md` §7 | Option A d'abord (choix de Shan) | — |
@@ -173,7 +174,7 @@ PE8 est le dernier lot du moteur de pipelines (`pipelines.md` §7). OP10 dépend
 | P2.20 | Calendrier GMAO | Premier lot livré. | `ontology.md` annexe B |
 | P2.21 | Éditeur de flows lisible | À cadrer. | `flow-engine.md` §7 |
 | P2.22 | Création assistée (D225–D237) | C1 livré. | `assisted-creation.md` §7 |
-| P2.23 | Observabilité IT (OTLP, Prometheus, syslog) | Rien de codé. Jointure prévue par SD8. | `software-delivery.md` |
+| P2.23 | Observabilité IT (OTLP, Prometheus, syslog) | Rien de codé. Repris par P2.40, jointure aux déploiements par SD8. | `it-operations.md`, `software-delivery.md` |
 | P2.24 | Sécurité logicielle et qualité | Repris par P2.38. | `software-delivery.md` |
 | P2.25 | IAM (D285–D299) | I4, I5 à faire. | `iam.md` §16 |
 | P2.26 | Veille de réseaux de partenaires | Codé, reste au §7 du doc. | `partners.md` §7 |
@@ -190,6 +191,8 @@ PE8 est le dernier lot du moteur de pipelines (`pipelines.md` §7). OP10 dépend
 | P2.37 | Audit du 2026-11-06 | Constats corrigés le 2026-11-07 (SEC-67 à SEC-79). | `docs/journal/audit-2026-11-06.md` |
 | P2.38 | Chaîne de livraison logicielle | PRD proposé. | `software-delivery.md` §7 |
 | P2.39 | Pièces et documentation | PD0–PD1d codés. | `parts-docs.md` §7 |
+| P2.40 | Exploitation IT et sécurité : topologie, impact, exposition | PRD proposé. Q-IT2, Q-IT3 tranchées, Q-IT1 et Q-IT4–Q-IT7 à trancher. | `it-operations.md` |
+| P2.41 | Agents : traces, évaluations, reprise, boucle, budget | Proposé (D1031–D1037). | `agents.md` §3.19 |
 
 **P3 — Horizons.** Rien n'y est engagé. Chaque entrée demande une décision explicite :
 

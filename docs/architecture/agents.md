@@ -628,6 +628,52 @@ Principes retenus par la proposition :
 - Le plancher GPU est Vulkan, pas CUDA.
 - La fabric enregistre et route. Elle ne provisionne pas l'infrastructure (pas de fleet manager). La livraison logicielle est un produit distinct (D562).
 
+### 3.19 Traces, évaluations, reprise, boucle, budget (proposition non construite, D1031–D1037)
+
+Le benchmark du 2026-11-24 (`docs/journal/bench/agents-ops-correlation.md`) compare PneX aux outils d'agents connus. Le lancement planifié avec harnais, compétences et secrets existe déjà : un flow avec `inject` périodique et le nœud `agent_run`. Les manques ci-dessous sont retenus par Shan le 2026-11-24, après dix fiches détaillées. Un organigramme d'agents a été écarté le même jour : un rôle n'est qu'une compétence, la délégation est un flow, le budget existe par chaîne et par run.
+
+```mermaid
+---
+config:
+  layout: elk
+---
+flowchart LR
+  run[run] --> tr[trace en arbre]
+  tr --> o2[(O2)]
+  tr --> otlp[export OTLP de l'org]
+  cas[Table de cas] --> camp[campagne d'évaluation]
+  camp --> run
+  run --> ev[évaluateurs : règle, LLM-juge, humain]
+  ev --> sc[scores par version]
+  run --> ck[checkpoint par étape]
+```
+
+- **Trace en arbre (D1031)** : un run devient une trace. Chaque appel au modèle, chaque outil, chaque passage de la porte et chaque run enfant devient une étape. Les noms suivent les conventions OpenTelemetry GenAI. Le contenu reste hors du journal, comme D709. La page du run montre l'arbre, la durée et les tokens de chaque étape.
+- **Export OTLP (D1032)** : une org peut envoyer ses traces vers son propre collecteur OTLP. L'adresse passe R8 et le jeton vient du coffre. Le contenu n'est jamais exporté sans un réglage explicite de l'org.
+- **Évaluation (D1033, précise D399)** : un jeu de cas est une Table (entrée, attendu). Une campagne joue une version d'agent ou de compétence sur chaque cas. Il y a trois évaluateurs :
+  - une règle, qui est une fonction JS ou Starlark existante
+  - un LLM-juge, qui est un agent interne comme le validateur (D836)
+  - un humain, par la boîte « À valider ».
+
+  Les scores se comparent entre versions et entre modèles (taux de réussite, coût, latence P50 et P95, répétitions). Chaque résultat garde une copie de l'entrée et de l'attendu du moment, donc un ancien résultat reste lisible. L'échantillonnage est déterministe (empreinte de la cible), et l'identifiant d'une évaluation vient de (évaluateur, cible), donc rien n'est payé deux fois. Le juge rend un score typé et sa justification, en sortie structurée. Un juge ne juge jamais un autre juge. Une campagne peut rejouer des sorties d'outil enregistrées, en plus des runs réels. Une correction humaine peut ajouter un cas à la Table. Une activation de compétence peut exiger une campagne réussie.
+- **Reprise (D1034, précise D397)** : le moteur `internal_llm` enregistre chaque étape avant de lancer la suivante, jamais en différé. Un bail empêche deux backends de reprendre le même run. Les règles sont les suivantes :
+  - Chaque appel d'outil a un identifiant fixe : l'empreinte de (run, étape, rang). Une contrainte d'unicité sur les propositions empêche une double écriture.
+  - Un outil coupé en cours n'est jamais rejoué. Il reçoit l'erreur « interrompu », puis le modèle décide de la suite.
+  - Une pause humaine se place entre deux étapes. C'est une proposition en attente, et le run dort.
+  - La décision nomme chaque appel (`call_id`). Une réponse incomplète, en double ou périmée est refusée.
+  - Un refus revient au modèle avec sa raison, pour qu'il change d'approche.
+  - Le moteur `sandbox` reste relancé depuis le début, car le harnais tient son propre état.
+- **Boucle (D1035)** : la boucle interne suit les règles suivantes :
+  - Au dernier pas, le modèle ne reçoit plus d'outils. Il doit conclure, et le run ne finit pas sur un simple dépassement.
+  - Le deuxième appel identique est refusé comme une erreur d'outil. Le troisième garde l'échec `agent-loop-detected`.
+  - D'autres motifs d'agent bloqué s'ajoutent : même erreur trois fois, alternance A-B, messages sans action.
+  - Un résultat d'outil est plafonné à 15 % du contexte. Le reste devient un artefact du run, et le modèle reçoit un aperçu et l'ordre de filtrer.
+  - À 85 % du contexte, la boucle résume les anciennes étapes. Le journal garde tout, seule la vue envoyée au modèle rétrécit.
+  - Le modèle voit le nom et la description des compétences. Il lit le texte d'une compétence à la demande.
+  - Une source indisponible est citée au modèle avec son erreur, pour qu'il dise « intégration absente » au lieu d'inventer.
+- **Budget en argent et file (D1036)** : un run réserve son budget en argent avant de partir. La réservation est revérifiée avant le premier appel au modèle. Un modèle sans prix connu est refusé, il ne compte jamais comme gratuit. Une alerte part à 80 %. À 100 %, l'arrêt est dur, et reprendre demande une décision humaine. Un frein par org coupe les runs automatiques après trop d'échecs ou de refus du fournisseur. Il ne coupe jamais un run lancé par une personne. Dans la file, un run humain passe d'abord, et un départ sur quatre va au run qui attend depuis le plus longtemps.
+- **Porte des agents hébergés (D1037)** : une demande de permission du harnais tiers devient une proposition de la porte, comme une écriture d'agent interne. Le runner branche cette demande sur PneX quand le harnais l'accepte. Avant le validateur, un étage déterministe classe le risque par règles. Le risque déclaré par le modèle ne suffit jamais, car une injection peut le baisser.
+
 ## 4. Exigences
 
 1. Un run doit avoir une seule forme (`runner_jobs` + `agent_runs`), quel que soit son moteur.
@@ -726,6 +772,8 @@ Principes retenus par la proposition :
 | D750 | Harnais au choix de l'org, aucun livré. Protocoles Anthropic et OpenAI garantis | ✅ |
 | D751 | Clés LLM de test saisies dans l'UI, au coffre de l'org de recette | en vigueur |
 | D752 | Démonstration : dépôt GitHub privé avec un test rouge. GitHub en V1 | ✅ |
+| D1051 | Demande de fusion GitLab : tout hôte `https` autre que `github.com`, projet avec sous-groupes, jeton `PRIVATE-TOKEN` | ✅ |
+| D1052 | Nœud `agent_run` : `texts` donne un texte du message comme artifact d'entrée | ✅ |
 | D753 | Recette de bout en bout dans `pnex-agents-test` | ✅ |
 | D754 | Egress : adresses au claim, plages publiées, proxy par nom plus tard | ✅ |
 | D755 | Limites en réglages `settings.agents.*`, édités dans la page Système | ✅ |
@@ -767,13 +815,18 @@ Principes retenus par la proposition :
 | D838 | Liste serveur d'outils jamais délégables | ✅ |
 | D839 | Disjoncteur du validateur et réarmement | ✅ |
 | D840 | Après une lecture non fiable, pas d'écriture autonome | ✅ |
+| D1031 | Un run = une trace en arbre, conventions OTel GenAI, sans contenu | ⬜ proposée |
+| D1032 | Export OTLP vers le collecteur de l'org | ⬜ proposée |
+| D1033 | Jeux de cas en Table, trois évaluateurs, scores par version (précise D399) | ⬜ proposée |
+| D1034 | Reprise par étape du moteur `internal_llm`, pause humaine (précise D397) | ⬜ proposée |
+| D1035 | Boucle interne : conclusion forcée, refus doux, sorties plafonnées, résumé du contexte | ⬜ proposée |
+| D1036 | Budget en argent réservé, alerte, frein par org, file équitable | ⬜ proposée |
+| D1037 | Porte de validation pour les harnais hébergés, étage déterministe avant le validateur | ⬜ proposée |
 
 Décisions liées, définies ailleurs : D123, D144 (`ai-assistant.md`, `security.md`), D221, D222 (`design-system.md`), D254, D258, D333, D341, D550 (`browser-agents.md`, `crm.md`), D367 (`proposals.md`), D441 (`external-apps.md`), D563, D564, D998 (`operational-platform.md`).
 
 ## 6. Interfaces
 
-| D1051 | Demande de fusion GitLab : tout hôte `https` autre que `github.com`, projet avec sous-groupes, jeton `PRIVATE-TOKEN` | ✅ |
-| D1052 | Nœud `agent_run` : `texts` donne un texte du message comme artifact d'entrée | ✅ |
 ### 6.1 Routes
 
 | Groupe | Routes | Droit |
@@ -839,3 +892,4 @@ Un admin plateforme les remplace dans la carte « Limites des agents hébergés 
 - **D787** : canaux d'un agent. À décider avant de coder : envoi seul ou validé, quotas d'envoi, tenue de D123.
 - **Fabric de workers** (§3.18, choix de Shan) : garder, réduire ou abandonner la proposition (worker GPU, pools, mesh, générateur de script d'installation).
 - **Page des images** : statut et score de scan de chaque image (D728, non prioritaire).
+- **§3.19 (D1031–D1037)** : lots AE1 traces, AE2 export OTLP, AE3 évaluations, AE4 reprise, AE5 boucle, AE6 budget en argent et file, AE7 porte des agents hébergés. Ordre proposé : AE1 → AE5 → AE3 → AE4, puis AE2, AE6, AE7. Fiches : `docs/journal/bench/agents-ops-correlation/`. À trancher : contenu des étapes visible dans la trace (jamais, ou au choix de l'org) et campagne réussie obligatoire avant activation d'une compétence.
