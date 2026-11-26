@@ -22,6 +22,11 @@ from pathlib import Path
 RAW_STR = re.compile(r'(?:b|c)?r(#*)"')
 NUMBER = re.compile(r"[0-9][0-9a-zA-Z_.]*")
 
+# Dioxus's dx from cargo, not deno's `dx` that may come first in PATH
+# ("Unable to choose binary for fmt").
+CARGO_DX = Path.home() / ".cargo" / "bin" / "dx"
+DX = str(CARGO_DX) if CARGO_DX.exists() else "dx"
+
 
 def is_ident_char(ch):
     return ch.isalnum() or ch == "_"
@@ -145,7 +150,7 @@ def tokens(src):
 
 def dx_fmt(src):
     """Format through stdin/stdout: dx never touches the file itself."""
-    res = subprocess.run(["dx", "fmt", "-f", "-"], input=src, capture_output=True, text=True)
+    res = subprocess.run([DX, "fmt", "-f", "-"], input=src, capture_output=True, text=True)
     if res.returncode != 0:
         raise RuntimeError(res.stderr.strip() or "dx fmt failed")
     return res.stdout
