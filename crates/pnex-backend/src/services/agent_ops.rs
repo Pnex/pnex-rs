@@ -22,6 +22,9 @@ const PRODUCED_BY: &str = "file_produced_by";
 const READ: &str = "run_read_file";
 const MERGE_REQUEST: &str = "agent_merge_request";
 const OPENED_BY: &str = "merge_request_of_run";
+const TICKET: &str = "work_item";
+const WORKS_ON: &str = "run_works_on";
+const FOR_TICKET: &str = "merge_request_for";
 
 async fn schema_with_pack(db: &DatabaseConnection, org_id: i64) -> Result<OrgSchema> {
     let schema = ontology::schema(db, org_id).await?;
@@ -258,8 +261,35 @@ async fn project_locked(db: &DatabaseConnection, org_id: i64, job: Uuid) -> Resu
         ensure_link(db, &schema, org_id, &actor, (OF_AGENT, run, agent)).await?;
     }
 
+    // The ticket of the chain (D1055): found by its page, created when no flow wrote it.
+    let ticket = crate::services::agent_chains::ticket_of_run(db, run_id).await?;
+    let work_item = match &ticket {
+        Some(t) => {
+            let item = ensure_all(
+                db,
+                &schema,
+                org_id,
+                &actor,
+                (TICKET, "url"),
+                std::slice::from_ref(&t.url),
+                |_| {
+                    (
+                        format!("{} {}", t.reference, t.title).trim().to_string(),
+                        props(&[("url", json!(t.url)), ("ref", json!(t.reference))]),
+                    )
+                },
+            )
+            .await?[&t.url];
+            ensure_link(db, &schema, org_id, &actor, (WORKS_ON, run, item)).await?;
+            Some(item)
+        }
+        None => None,
+    };
+
     let merge_requests: Vec<String> =
         serde_json::from_value(row.try_get::<Value>("", "merge_requests")?).unwrap_or_default();
+    // Only pushed branches open merge requests: this is the branch of each.
+    let branch = crate::services::forge::run_branch(&run_key, ticket.as_ref());
     for url in &merge_requests {
         let mr = ensure_all(
             db,
@@ -268,10 +298,18 @@ async fn project_locked(db: &DatabaseConnection, org_id: i64, job: Uuid) -> Resu
             &actor,
             (MERGE_REQUEST, "url"),
             std::slice::from_ref(url),
-            |_| (url.clone(), props(&[("url", json!(url))])),
+            |_| {
+                (
+                    url.clone(),
+                    props(&[("url", json!(url)), ("branch", json!(branch))]),
+                )
+            },
         )
         .await?[url];
         ensure_link(db, &schema, org_id, &actor, (OPENED_BY, mr, run)).await?;
+        if let Some(item) = work_item {
+            ensure_link(db, &schema, org_id, &actor, (FOR_TICKET, mr, item)).await?;
+        }
     }
 
     let file_props = |f: &FileRow| {

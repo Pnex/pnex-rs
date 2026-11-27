@@ -38,6 +38,8 @@ struct Paths {
     texts: BTreeMap<String, String>,
     #[serde(default)]
     subject_from: String,
+    #[serde(default)]
+    ticket_from: String,
 }
 
 #[flow_node("pnex-agent-run", red_name = "pnex-agent-run")]
@@ -68,6 +70,17 @@ fn request_of(
         chain_id: msg_string(msg, "chain_id"),
         subject: (!paths.subject_from.is_empty())
             .then(|| msg_string(msg, &paths.subject_from))
+            .flatten(),
+        // Sent as found: the server checks it.
+        ticket: (!paths.ticket_from.is_empty())
+            .then(|| {
+                paths
+                    .ticket_from
+                    .split('.')
+                    .try_fold(msg, |v, k| v.get(k))
+                    .filter(|v| v.is_object())
+                    .cloned()
+            })
             .flatten(),
         params: msg["params"]
             .as_object()
@@ -150,6 +163,7 @@ mod tests {
             ]),
             texts: BTreeMap::from([("spec".into(), "payload.description".into())]),
             subject_from: "payload.key".into(),
+            ticket_from: "payload.work".into(),
         };
         let node = pnex_core::ontology::flow::FlowNodeRef {
             org_id: 1,
@@ -158,7 +172,8 @@ mod tests {
             node_id: "n".into(),
         };
         let msg = serde_json::json!({
-            "payload": { "ticket": "a1", "key": "repo#7", "description": "Add a search" },
+            "payload": { "ticket": "a1", "key": "repo#7", "description": "Add a search",
+                "work": { "ref": "#7", "title": "Add a search", "url": "https://forge.test/r/-/issues/7" } },
             "chain_id": "c1",
             "params": { "code": "RS0101", "n": 3 },
         });
@@ -168,6 +183,7 @@ mod tests {
         assert_eq!(req.texts["spec"], "Add a search");
         assert_eq!(req.chain_id.as_deref(), Some("c1"));
         assert_eq!(req.subject.as_deref(), Some("repo#7"));
+        assert_eq!(req.ticket.as_ref().unwrap()["ref"], "#7");
         assert_eq!(req.params.len(), 1);
         assert_eq!(req.params["code"], "RS0101");
     }

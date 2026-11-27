@@ -200,6 +200,7 @@ mod tests {
             recipe_id: None,
             extracts: BTreeMap::new(),
             texts: BTreeMap::from([("questions".into(), "Which status code?".into())]),
+            merge_requests: Vec::new(),
             ts_ms: 1,
         };
         let body = body_of(&ev);

@@ -354,11 +354,11 @@ Règles d'une chaîne :
 - Le sujet est une clé libre de 200 caractères, tenue par la chaîne active (index unique partiel). Un départ sur un sujet tenu ne lance rien : le nœud répond `joined`, la route HTTP rend 409 `agent-subject-taken` avec `args.chain_id`.
 - Un humain libère le sujet par `POST /agent-chains/{id}/close` (`agents:stop`).
 
-Entrées d'une exécution lancée par un flow : `inputs` lit un id d'artifact dans le message. `texts` lit un texte du message (64 Kio au plus), par exemple la description d'un ticket. Le serveur garde ce texte comme artifact d'entrée, écrit au nom de la personne qui a déployé le flow (D1052). Dans l'autre sens, le message de fin d'exécution donne `texts` : le texte de chaque sortie UTF-8 de 64 Kio au plus. Un flow peut ainsi poster le rapport ou les questions d'un agent sans lire l'artifact (D1053). Le droit de lire un artifact est au niveau membre, comme le déploiement d'un flow : `texts` n'ouvre aucun accès nouveau.
+Entrées d'une exécution lancée par un flow : `inputs` lit un id d'artifact dans le message. `texts` lit un texte du message (64 Kio au plus), par exemple la description d'un ticket. Le serveur garde ce texte comme artifact d'entrée, écrit au nom de la personne qui a déployé le flow (D1052). Dans l'autre sens, le message de fin d'exécution donne `texts` : le texte de chaque sortie UTF-8 de 64 Kio au plus. Un flow peut ainsi poster le rapport ou les questions d'un agent sans lire l'artifact (D1053). Le message donne aussi `merge_requests` : l'URL de chaque demande de fusion ouverte par l'exécution. Un flow peut ainsi relier la demande de fusion à son ticket. Le droit de lire un artifact est au niveau membre, comme le déploiement d'un flow : `texts` n'ouvre aucun accès nouveau.
 
 Droits d'un flow (D768) : le déploiement retient `flows.deployed_by` et exige `agents:run` pour chaque nœud `agent_run`. À chaque message, le backend relit le graphe déployé et revérifie `agents:run` de cette personne. Si elle perd ce droit, le flow ne lance plus rien. La fin d'un run est publiée une fois (`agent_runs.finished_event_at`), après la projection `agent_ops`.
 
-### 3.10 Sortie en branche (D388, D752, D775)
+### 3.10 Sortie en branche (D388, D752, D775, D1054)
 
 ```mermaid
 sequenceDiagram
@@ -377,7 +377,17 @@ sequenceDiagram
 
 Un dépôt peut porter `push_secret_id`, un jeton d'écriture limité à ce dépôt. Seul le sidecar `push-<i>` le reçoit. Git ne tourne jamais dans le `.git` de l'agent : hooks, `credential.helper` ou `url.insteadOf` pourraient détourner le jeton. Les liens symboliques sont stockés comme liens, jamais suivis.
 
-La branche est toujours `pnex/run-<id>`, jamais la branche de base ni une branche choisie par l'agent. La fusion reste un geste humain. `services/forge.rs` parle à GitHub sur `github.com` et à GitLab sur tout autre hôte `https` (D1051). Le jeton va seulement à l'hôte du dépôt, sous la règle de sortie de l'org (R8). Sur micro-VM, le runner lit l'arbre par `debugfs` et lance le même script côté hôte.
+La branche est toujours `pnex/run-<id>`, jamais la branche de base ni une branche choisie par l'agent. La fusion reste un geste humain.
+
+Une chaîne peut porter un ticket `{ref, title, url}` de tout outil de tickets : Jira, GitLab ou GitHub (D1054). Le nœud `agent_run` le lit au chemin `ticket_from`. Une exécution lancée par l'API le donne dans `ticket`. Chaque exécution de la chaîne garde ce ticket. Le serveur écrit alors la référence partout où un outil de tickets la cherche :
+
+| Élément | Sans ticket | Avec le ticket `PROJ-123` |
+|---|---|---|
+| Branche | `pnex/run-<id>` | `pnex/run-<id>-PROJ-123` |
+| Titre de la demande de fusion | `Agent run <8 car.>` | `PROJ-123 <titre du ticket>` |
+| Description | id de l'exécution | `Ticket: <ref> <url>` et l'id de l'exécution |
+
+Si l'URL du ticket est dans le dépôt de la demande de fusion, la description commence par `Closes <ref>`. GitLab et GitHub relient alors la demande de fusion au ticket et le ferment à la fusion. Jira lit la clé dans la branche et le titre, si l'intégration GitLab ou GitHub de Jira est installée. Le préfixe `pnex/run-` reste : le sidecar refuse toute autre branche. `services/forge.rs` parle à GitHub sur `github.com` et à GitLab sur tout autre hôte `https` (D1051). Le jeton va seulement à l'hôte du dépôt, sous la règle de sortie de l'org (R8). Sur micro-VM, le runner lit l'arbre par `debugfs` et lance le même script côté hôte.
 
 ### 3.11 Agent interne (D785)
 
@@ -557,12 +567,17 @@ classDiagram
   agent_file --> agent_run : file_produced_by
   agent_run --> agent_file : run_read_file
   agent_merge_request --> agent_run : merge_request_of_run
+  agent_run --> work_item : run_works_on
+  agent_merge_request --> work_item : merge_request_for
+  work_item_comment --> work_item : comment_on_work_item
   software_image <-- software_bom
   software_image --> software_vulnerability : image_exposed_to
   software_bom --> software_component
 ```
 
 Les tables restent la source de vérité des états. Le service projette l'objet à la fin de chaque job et à l'arrêt. Les deux packs s'installent au premier usage. Une étape ou un appel d'outil n'est pas un objet : l'objet `agent_run` porte le résumé et renvoie au journal O2. Ce résumé donne le début, la fin, la durée, les appels au modèle et les tokens. Chaque demande de fusion ouverte par le run devient un objet `agent_merge_request`, relié au run. La demande de fusion est ouverte avant la projection, donc la projection la voit (pack 1.1.0).
+
+Depuis le pack 1.2.0, le ticket d'une chaîne est un objet `work_item`, identifié par son URL, quel que soit l'outil de tickets (D1055). La projection crée le ticket s'il manque et relie l'exécution (`run_works_on`) et chaque demande de fusion (`merge_request_for`) à lui. L'objet `agent_merge_request` garde sa branche. Un flow qui lit l'outil de tickets tient à jour l'état, le type, l'étape agent et les commentaires (`work_item_comment`). La frise du ticket montre ainsi l'ouverture, les commentaires humains et agents, les exécutions et les demandes de fusion.
 
 ### 3.17 Recette locale (D760)
 
@@ -775,7 +790,9 @@ flowchart LR
 | D752 | Démonstration : dépôt GitHub privé avec un test rouge. GitHub en V1 | ✅ |
 | D1051 | Demande de fusion GitLab : tout hôte `https` autre que `github.com`, projet avec sous-groupes, jeton `PRIVATE-TOKEN` | ✅ |
 | D1052 | Nœud `agent_run` : `texts` donne un texte du message comme artifact d'entrée | ✅ |
-| D1053 | Fin d'exécution : `texts` donne le texte des sorties UTF-8 de 64 Kio au plus | ✅ |
+| D1053 | Fin d'exécution : `texts` donne le texte des sorties UTF-8 de 64 Kio au plus, et `merge_requests` les URL des demandes de fusion | ✅ |
+| D1054 | Ticket d'une chaîne `{ref, title, url}`, tout outil de tickets : sa référence dans la branche, le titre et la description de la demande de fusion | ✅ |
+| D1055 | Pack `agent_ops` 1.2.0 : `work_item`, `work_item_comment` et leurs liens aux exécutions et demandes de fusion | ✅ |
 | D753 | Recette de bout en bout dans `pnex-agents-test` | ✅ |
 | D754 | Egress : adresses au claim, plages publiées, proxy par nom plus tard | ✅ |
 | D755 | Limites en réglages `settings.agents.*`, édités dans la page Système | ✅ |

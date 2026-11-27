@@ -595,6 +595,10 @@ pub async fn sandbox_input(
     let repos: Vec<RunRepo> = serde_json::from_value(row.try_get("", "repos").ok()?).ok()?;
     let services: Vec<RunService> =
         serde_json::from_value(row.try_get("", "services").ok()?).ok()?;
+    let run_id: Uuid = row.try_get("", "id").ok()?;
+    let ticket = crate::services::agent_chains::ticket_of_run(db, run_id)
+        .await
+        .ok()?;
     let mut sandbox_repos = Vec::new();
     for repo in &repos {
         // A token that cannot be read fails the run: a clone without it would only fail later.
@@ -609,9 +613,11 @@ pub async fn sandbox_input(
         let push = match &repo.push_secret_id {
             Some(id) => {
                 let id = Uuid::parse_str(id).ok()?;
-                let run: Uuid = row.try_get("", "id").ok()?;
                 Some(pnex_core::runners::SandboxPush {
-                    branch: crate::services::forge::run_branch(&run.to_string()),
+                    branch: crate::services::forge::run_branch(
+                        &run_id.to_string(),
+                        ticket.as_ref(),
+                    ),
                     token: store::reveal(db, ring?, Some(org_id), id).await.ok()?,
                 })
             }
@@ -681,6 +687,7 @@ pub async fn open_merge_requests(
     };
     let run: Uuid = row.try_get("", "id")?;
     let repos: Vec<RunRepo> = serde_json::from_value(row.try_get("", "repos")?).unwrap_or_default();
+    let ticket = crate::services::agent_chains::ticket_of_run(db, run).await?;
     let mut urls = Vec::new();
     for repo in repos.iter().filter(|r| r.push_secret_id.is_some()) {
         let token = match (ring, repo.push_secret_id.as_deref().map(Uuid::parse_str)) {
@@ -691,16 +698,18 @@ pub async fn open_merge_requests(
             tracing::warn!(org_id, %run, "merge request not opened: write token unreadable");
             continue;
         };
-        let branch = crate::services::forge::run_branch(&run.to_string());
-        let body = format!(
-            "Changes of PneX agent run `{run}`. Review them before merging: merging stays a human act."
+        let branch = crate::services::forge::run_branch(&run.to_string(), ticket.as_ref());
+        let (title, body) = crate::services::forge::merge_request_text(
+            &run.to_string(),
+            &repo.url,
+            ticket.as_ref(),
         );
         match crate::services::forge::open_merge_request(
             &repo.url,
             &repo.git_ref,
             &branch,
             &token,
-            &format!("Agent run {}", &run.to_string()[..8]),
+            &title,
             &body,
         )
         .await

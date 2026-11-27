@@ -100,6 +100,72 @@ pub fn subject_is_valid(subject: &str) -> bool {
         && !subject.chars().any(char::is_control)
 }
 
+/// The ticket a chain works on, as its tracker (Jira, GitLab, GitHub…) names it (D1054).
+/// The server writes `reference` into the branch and the merge request it opens, the way
+/// each tracker ties them to the ticket.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct WorkTicket {
+    /// As written in a commit or a merge request: `#3`, `PROJ-123`.
+    #[serde(rename = "ref")]
+    pub reference: String,
+    #[serde(default)]
+    pub title: String,
+    /// The ticket's page: it identifies the ticket across trackers.
+    pub url: String,
+}
+
+/// Longest ticket reference and title.
+pub const TICKET_REF_MAX: usize = 64;
+pub const TICKET_TITLE_MAX: usize = 300;
+
+impl WorkTicket {
+    /// `(field, token)` of the first problem.
+    pub fn error(&self) -> Option<(&'static str, &'static str)> {
+        let r = &self.reference;
+        if r.is_empty()
+            || r.len() > TICKET_REF_MAX
+            || !r
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || "#-_./".contains(c))
+            || self.slug().is_empty()
+        {
+            return Some(("ticket.ref", "invalid"));
+        }
+        if self.title.chars().count() > TICKET_TITLE_MAX || self.title.chars().any(char::is_control)
+        {
+            return Some(("ticket.title", "invalid"));
+        }
+        let scheme = self.url.starts_with("https://") || self.url.starts_with("http://");
+        if !scheme
+            || self.url.len() > 600
+            || self
+                .url
+                .chars()
+                .any(|c| c.is_whitespace() || c.is_control())
+        {
+            return Some(("ticket.url", "invalid"));
+        }
+        None
+    }
+
+    /// The reference as a branch name part: `#3` → `3`, `PROJ-123` → `PROJ-123`.
+    pub fn slug(&self) -> String {
+        let s: String = self
+            .reference
+            .chars()
+            .map(|c| {
+                if c.is_ascii_alphanumeric() || c == '-' {
+                    c
+                } else {
+                    '-'
+                }
+            })
+            .collect();
+        s.trim_matches('-').to_string()
+    }
+}
+
 /// Closed set of chain states.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -179,6 +245,9 @@ pub struct AgentRunNodeConfig {
     /// Dotted path of the subject key in the message; empty = no subject (D718).
     #[serde(default)]
     pub subject_from: String,
+    /// Dotted path of the ticket `{ref, title, url}` in the message (D1054); empty = none.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub ticket_from: String,
     /// Bounds of the chain this node opens when the message carries no `chain_id`.
     #[serde(default)]
     pub limits: ChainLimits,
@@ -230,6 +299,9 @@ impl AgentRunNodeConfig {
         }
         if !self.subject_from.is_empty() && !path_is_valid(&self.subject_from) {
             return bad("agent_run_invalid", "invalid subject path");
+        }
+        if !self.ticket_from.is_empty() && !path_is_valid(&self.ticket_from) {
+            return bad("agent_run_invalid", "invalid ticket path");
         }
         if self.limits.error().is_some() {
             return bad("agent_run_invalid", "chain bounds out of range");
@@ -309,6 +381,9 @@ pub struct AgentRunFinishedEvent {
     /// Output name → its text, for the outputs that are short UTF-8 text (D1053).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub texts: BTreeMap<String, String>,
+    /// URLs of the merge requests the run opened, so a flow can tie them to its ticket.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub merge_requests: Vec<String>,
     pub ts_ms: i64,
 }
 
@@ -338,6 +413,9 @@ pub struct AgentRunNodeRequest {
     pub chain_id: Option<String>,
     #[serde(default)]
     pub subject: Option<String>,
+    /// The ticket at the node's `ticket_from`, as the message gave it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ticket: Option<serde_json::Value>,
     /// `msg.params`: values of a rule's parameters, over the node's.
     #[serde(default)]
     pub params: BTreeMap<String, String>,
@@ -440,6 +518,33 @@ mod tests {
     }
 
     #[test]
+    fn tickets_check_their_reference_and_url() {
+        let t = |r: &str, url: &str| WorkTicket {
+            reference: r.into(),
+            title: "Add search".into(),
+            url: url.into(),
+        };
+        assert!(t("#3", "https://gitlab.test/demo/app/-/issues/3")
+            .error()
+            .is_none());
+        assert_eq!(t("#3", "x").slug(), "3");
+        assert_eq!(t("PROJ-123", "x").slug(), "PROJ-123");
+        assert_eq!(t("demo/app#3", "x").slug(), "demo-app-3");
+        assert_eq!(
+            t("#", "https://a.test").error(),
+            Some(("ticket.ref", "invalid"))
+        );
+        assert_eq!(
+            t("a b", "https://a.test").error(),
+            Some(("ticket.ref", "invalid"))
+        );
+        assert_eq!(
+            t("#3", "javascript:x").error(),
+            Some(("ticket.url", "invalid"))
+        );
+    }
+
+    #[test]
     fn finished_events_match_agent_and_chain() {
         let ev = AgentRunFinishedEvent {
             run_id: "r".into(),
@@ -455,6 +560,7 @@ mod tests {
             recipe_id: None,
             extracts: BTreeMap::new(),
             texts: BTreeMap::new(),
+            merge_requests: Vec::new(),
             ts_ms: 0,
         };
         assert!(ev.matches(&AgentRunFinishedConfig::default()));

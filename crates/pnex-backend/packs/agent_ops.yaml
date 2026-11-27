@@ -3,12 +3,14 @@
 # ended is an object, linked to its agent and its environment; each file a run took or left
 # is an object, linked to the run that produced it and the runs that read it. This answers
 # "which run produced this file, and which ones read it". Steps and lines stay in O2.
+# Since 1.2.0 (D1055) the ticket a chain works on is an object too, whatever its tracker
+# (Jira, GitLab, GitHub): its runs, its merge requests and its comments link to it.
 key: agent_ops
 name: Agent operations
 names: {fr: "Opérations des agents"}
-version: "1.1.0"
-description: Environments, agents, their runs and the files those runs took and left.
-descriptions: {fr: "Les environnements, les agents, leurs exécutions et les fichiers que ces exécutions ont pris et laissés."}
+version: "1.2.0"
+description: Environments, agents, their runs, the files those runs took and left, the tickets they work on and their merge requests.
+descriptions: {fr: "Les environnements, les agents, leurs exécutions, les fichiers que ces exécutions ont pris et laissés, les tickets qu'elles traitent et leurs demandes de fusion."}
 types:
   - key: agent_environment
     name: Agent environment
@@ -56,6 +58,52 @@ types:
     icon: workflow
     properties:
       - { key: url, name: URL, names: {fr: "URL"}, kind: text, max_len: 600, required: true, unique: true, indexed: true }
+      - { key: branch, name: Branch, names: {fr: "Branche"}, kind: text, max_len: 255, indexed: true }
+  # A ticket of any tracker; its page identifies it (D1055). A flow that reads the tracker
+  # keeps the state, the type and the agent step up to date.
+  - key: work_item
+    name: Ticket
+    names: {fr: "Ticket"}
+    icon: flag
+    times: {event_property: opened_at}
+    properties:
+      - { key: url, name: URL, names: {fr: "URL"}, kind: text, max_len: 600, required: true, unique: true, indexed: true }
+      - { key: ref, name: Reference, names: {fr: "Référence"}, kind: text, max_len: 64, indexed: true }
+      - key: state
+        name: State
+        names: {fr: "État"}
+        kind: enum
+        values: [opened, closed]
+        labels: {opened: {fr: "Ouvert", en: "Open"}, closed: {fr: "Fermé", en: "Closed"}}
+      - key: work_type
+        name: Type
+        names: {fr: "Type"}
+        kind: enum
+        values: [story, bug, task, unknown]
+        labels: {story: {fr: "Story", en: "Story"}, bug: {fr: "Bug", en: "Bug"}, task: {fr: "Tâche", en: "Task"}, unknown: {fr: "Non défini", en: "Not set"}}
+      - key: workflow
+        name: Agent step
+        names: {fr: "Étape agent"}
+        kind: enum
+        values: [none, dev, needs_info, doing, review, rework]
+        labels: {none: {fr: "Aucune", en: "None"}, dev: {fr: "À développer", en: "To develop"}, needs_info: {fr: "Infos à compléter", en: "Needs information"}, doing: {fr: "En cours", en: "In progress"}, review: {fr: "À relire", en: "To review"}, rework: {fr: "À reprendre", en: "To rework"}}
+        history:
+          entered_on: workflow_since
+          funnel: [dev, doing, review]
+      - { key: workflow_since, name: Step since, names: {fr: "Étape depuis"}, kind: date }
+      - { key: labels_text, name: Labels, names: {fr: "Étiquettes"}, kind: text, max_len: 1000 }
+      - { key: opened_at, name: Opened at, names: {fr: "Ouvert le"}, kind: date_time, indexed: true }
+  - key: work_item_comment
+    name: Ticket comment
+    names: {fr: "Commentaire de ticket"}
+    icon: file-text
+    times: {event_property: commented_at}
+    properties:
+      - { key: ref, name: Reference, names: {fr: "Référence"}, kind: text, max_len: 200, required: true, unique: true, indexed: true }
+      - { key: author, name: Author, names: {fr: "Auteur"}, kind: text, max_len: 200, classification: personal }
+      - { key: by_agent, name: Written by an agent, names: {fr: "Écrit par un agent"}, kind: bool }
+      - { key: body, name: Text, names: {fr: "Texte"}, kind: text, max_len: 20000 }
+      - { key: commented_at, name: Written at, names: {fr: "Écrit le"}, kind: date_time, indexed: true }
 link_types:
   - key: run_of_agent
     name: is a run of
@@ -92,3 +140,27 @@ link_types:
     inverse_names: {fr: "a ouvert"}
     from_types: [agent_merge_request]
     to_types: [agent_run]
+  - key: run_works_on
+    name: works on
+    names: {fr: "traite"}
+    inverse_name: is worked on by
+    inverse_names: {fr: "est traité par"}
+    from_types: [agent_run]
+    to_types: [work_item]
+    one_target: true
+  - key: merge_request_for
+    name: is for
+    names: {fr: "est pour"}
+    inverse_name: has as merge request
+    inverse_names: {fr: "a pour demande de fusion"}
+    from_types: [agent_merge_request]
+    to_types: [work_item]
+    one_target: true
+  - key: comment_on_work_item
+    name: comments
+    names: {fr: "commente"}
+    inverse_name: is commented by
+    inverse_names: {fr: "est commenté par"}
+    from_types: [work_item_comment]
+    to_types: [work_item]
+    one_target: true

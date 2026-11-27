@@ -545,8 +545,11 @@ fn chain_of(start: &AgentRunStart) -> Result<Option<ChainPick>, AgentError> {
         let id = Uuid::parse_str(id).map_err(|_| invalid("chain_id", "invalid"))?;
         return Ok(Some(ChainPick::Join(id)));
     }
-    if start.subject.is_none() && start.chain_limits.is_none() {
+    if start.subject.is_none() && start.chain_limits.is_none() && start.ticket.is_none() {
         return Ok(None);
+    }
+    if let Some((field, token)) = start.ticket.as_ref().and_then(|t| t.error()) {
+        return Err(invalid(field, token));
     }
     if let Some(s) = &start.subject {
         if !pnex_core::agent_chains::subject_is_valid(s) {
@@ -560,5 +563,6 @@ fn chain_of(start: &AgentRunStart) -> Result<Option<ChainPick>, AgentError> {
     Ok(Some(ChainPick::Open {
         subject: start.subject.clone(),
         limits,
+        ticket: start.ticket.clone(),
     }))
 }

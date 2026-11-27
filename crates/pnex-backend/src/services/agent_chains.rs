@@ -24,6 +24,26 @@ fn stmt(sql: &str, values: Vec<sea_orm::Value>) -> Statement {
     Statement::from_sql_and_values(DatabaseBackend::Postgres, sql, values)
 }
 
+/// The ticket of the chain `run` belongs to (D1054); none outside a chain.
+pub async fn ticket_of_run<C: ConnectionTrait>(
+    db: &C,
+    run: Uuid,
+) -> Result<Option<pnex_core::agent_chains::WorkTicket>, DbErr> {
+    let row = db
+        .query_one_raw(stmt(
+            "SELECT c.ticket FROM agent_runs a JOIN agent_chains c ON c.id = a.chain_id WHERE a.id = $1",
+            vec![run.into()],
+        ))
+        .await?;
+    Ok(row
+        .and_then(|r| {
+            r.try_get::<Option<serde_json::Value>>("", "ticket")
+                .ok()
+                .flatten()
+        })
+        .and_then(|v| serde_json::from_value(v).ok()))
+}
+
 /// Which chain a new run goes to.
 #[derive(Debug, Clone)]
 pub enum ChainPick {
@@ -31,6 +51,7 @@ pub enum ChainPick {
     Open {
         subject: Option<String>,
         limits: ChainLimits,
+        ticket: Option<pnex_core::agent_chains::WorkTicket>,
     },
 }
 
@@ -46,12 +67,16 @@ pub async fn take<C: ConnectionTrait>(
     llm_calls_max: i32,
 ) -> Result<(Uuid, i32), AgentRunError> {
     match pick {
-        ChainPick::Open { subject, limits } => {
+        ChainPick::Open {
+            subject,
+            limits,
+            ticket,
+        } => {
             let id = Uuid::new_v4();
             let row = txn
                 .query_one_raw(stmt(
-                    "INSERT INTO agent_chains (id, org_id, subject, runs_max, llm_calls_max, rounds_max, created_by) \
-                     VALUES ($1, $2, $3, $4, $5, $6, $7) \
+                    "INSERT INTO agent_chains (id, org_id, subject, runs_max, llm_calls_max, rounds_max, created_by, ticket) \
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8) \
                      ON CONFLICT (org_id, subject) WHERE state = 'active' AND subject IS NOT NULL DO NOTHING \
                      RETURNING id",
                     vec![
@@ -62,6 +87,7 @@ pub async fn take<C: ConnectionTrait>(
                         limits.llm_calls_max.into(),
                         limits.rounds_max.into(),
                         user_id.into(),
+                        ticket.as_ref().map(|t| serde_json::json!(t)).into(),
                     ],
                 ))
                 .await?;
@@ -197,7 +223,7 @@ pub async fn claim_finished<C: ConnectionTrait>(
             "UPDATE agent_runs a SET finished_event_at = now() FROM runner_jobs j \
              WHERE j.id = a.job_id AND a.org_id = $1 AND a.job_id = $2 \
                AND a.finished_event_at IS NULL AND j.state NOT IN ('queued', 'running') \
-             RETURNING a.id, a.agent_id, a.chain_id, a.llm_calls, a.error, j.state, j.outcome, j.exit_code",
+             RETURNING a.id, a.agent_id, a.chain_id, a.llm_calls, a.error, a.merge_requests, j.state, j.outcome, j.exit_code",
             vec![org_id.into(), job.into()],
         ))
         .await?
@@ -243,6 +269,8 @@ pub async fn claim_finished<C: ConnectionTrait>(
         recipe_id: None,
         extracts: BTreeMap::new(),
         texts: BTreeMap::new(),
+        merge_requests: serde_json::from_value(r.try_get("", "merge_requests")?)
+            .unwrap_or_default(),
         ts_ms: chrono::Utc::now().timestamp_millis(),
     }))
 }
@@ -428,11 +456,25 @@ pub async fn run_node(
         });
     }
     let joins = req.chain_id.is_some();
+    // Only when the deployed node maps a ticket; a joined chain keeps its own.
+    let ticket = match (&req.ticket, config.ticket_from.is_empty() || joins) {
+        (Some(v), false) => match serde_json::from_value(v.clone()) {
+            Ok(t) => Some(t),
+            Err(_) => {
+                return Ok(refused(
+                    err_codes::FIELD_INVALID_BODY,
+                    serde_json::json!({ "field": "ticket", "token": "invalid" }),
+                ))
+            }
+        },
+        _ => None,
+    };
     let start = pnex_core::agents::AgentRunStart {
         inputs,
         chain_id: req.chain_id.clone(),
         subject: if joins { None } else { req.subject.clone() },
         chain_limits: if joins { None } else { Some(config.limits) },
+        ticket,
         ..Default::default()
     };
     let started =

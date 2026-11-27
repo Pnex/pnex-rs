@@ -324,6 +324,7 @@ pub fn to_red_flows_json_with(
                     "inputs": config.inputs,
                     "texts": config.texts,
                     "subject_from": config.subject_from,
+                    "ticket_from": config.ticket_from,
                     "pnex_node_id": n.id,
                     "pnex_flow_id": meta.flow_id,
                     "pnex_version": meta.version_number,

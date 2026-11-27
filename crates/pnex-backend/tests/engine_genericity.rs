@@ -110,8 +110,11 @@ const COUPLED: &[(&str, &[&str], &str)] = &[
             "run_read_file",
             "agent_merge_request",
             "merge_request_of_run",
+            "work_item",
+            "run_works_on",
+            "merge_request_for",
         ],
-        "the fabric projects its ended runs into its own pack (agents.md D708, D761)",
+        "the fabric projects its ended runs into its own pack (agents.md D708, D761, D1055)",
     ),
     ("pnex-core/src/vision.rs", &["person"], "COCO class name"),
     (

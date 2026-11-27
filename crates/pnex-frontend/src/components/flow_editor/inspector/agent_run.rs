@@ -32,6 +32,7 @@ pub(super) fn AgentRunForm(
     // Inputs read as a text of the message instead of an artifact id.
     let mut texts = use_signal(|| initial.texts.clone());
     let mut subject = use_signal(|| initial.subject_from.clone());
+    let mut ticket = use_signal(|| initial.ticket_from.clone());
     let mut limits = use_signal(|| initial.limits);
     let mut save = move || {
         let next = AgentRunNodeConfig {
@@ -39,6 +40,7 @@ pub(super) fn AgentRunForm(
             inputs: inputs(),
             texts: texts(),
             subject_from: subject(),
+            ticket_from: ticket(),
             limits: limits(),
             ..Default::default()
         };
@@ -201,6 +203,16 @@ pub(super) fn AgentRunForm(
                     oninput: move |e| subject.set(e.value()),
                     onchange: move |_| save(),
                 }
+                label { class: FIELD_LABEL, r#for: "agent-run-ticket", {t!("flows-agent-run-ticket")} }
+                input {
+                    id: "agent-run-ticket",
+                    class: INPUT,
+                    disabled: !can_write,
+                    value: "{ticket}",
+                    oninput: move |e| ticket.set(e.value()),
+                    onchange: move |_| save(),
+                }
+                p { class: "text-xs text-gray-500", {t!("flows-agent-run-ticket-help")} }
                 {limit_field(t!("flows-agent-run-runs-max").to_string(), 0, current.runs_max)}
                 {
                     limit_field(

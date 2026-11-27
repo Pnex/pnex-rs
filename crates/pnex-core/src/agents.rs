@@ -231,6 +231,10 @@ pub struct AgentRunStart {
     /// when only `subject` is given).
     #[serde(default)]
     pub chain_limits: Option<crate::agent_chains::ChainLimits>,
+    /// Without `chain_id`: the ticket the chain opened here works on (D1054). Its branch
+    /// and merge request name it, so the tracker shows them on the ticket.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ticket: Option<crate::agent_chains::WorkTicket>,
 }
 
 /// `(field, token)` of the first problem of a record.

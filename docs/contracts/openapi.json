@@ -1087,6 +1087,10 @@
               "null"
             ]
           },
+          "ticket": {
+            "$ref": "#/components/schemas/WorkTicket",
+            "description": "Without `chain_id`: the ticket the chain opened here works on (D1054). Its branch\nand merge request name it, so the tracker shows them on the ticket."
+          },
           "timeout_secs": {
             "format": "int32",
             "minimum": 0,
@@ -35149,6 +35153,27 @@
           "right"
         ],
         "type": "string"
+      },
+      "WorkTicket": {
+        "description": "The ticket a chain works on, as its tracker (Jira, GitLab, GitHub…) names it (D1054).\nThe server writes `reference` into the branch and the merge request it opens, the way\neach tracker ties them to the ticket.",
+        "properties": {
+          "ref": {
+            "description": "As written in a commit or a merge request: `#3`, `PROJ-123`.",
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "url": {
+            "description": "The ticket's page: it identifies the ticket across trackers.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ref",
+          "url"
+        ],
+        "type": "object"
       },
       "WorldEventPoint": {
         "description": "A world event placed on the general map (D739).",

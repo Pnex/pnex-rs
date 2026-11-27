@@ -1676,8 +1676,14 @@ async fn chains_bound_their_runs_hold_a_subject_and_publish_each_end_once() {
         let runs = format!("/api/v1/agents/{}/runs", agent["id"].as_str().unwrap());
         let start = |body: Value| call(&server, &env.alice, org, "POST", &runs, Some(body));
 
+        // A ticket of any tracker is checked (D1054).
+        let (s, b) = start(json!({ "subject": "repo#9",
+            "ticket": { "ref": "#9", "title": "x", "url": "javascript:alert(1)" } })).await;
+        assert_eq!(s, 400, "{b}");
+        assert!(b.to_string().contains("ticket.url"), "{b}");
         // A subject opens a chain; a repeated report does not start a second run (D718).
         let (s, first) = start(json!({ "subject": "repo#1",
+            "ticket": { "ref": "PROJ-1", "title": "Add a search", "url": "https://acme.atlassian.net/browse/PROJ-1" },
             "chain_limits": { "runs_max": 2, "llm_calls_max": 30, "rounds_max": 2 } }))
         .await;
         assert_eq!(s, 201, "{first}");
@@ -1727,6 +1733,14 @@ async fn chains_bound_their_runs_hold_a_subject_and_publish_each_end_once() {
                 .status_code()
                 .as_u16()
         };
+        // As the forge left it before the end: the flow gets it to tie it to its ticket.
+        db.execute_unprepared(&format!(
+            "UPDATE agent_runs SET merge_requests = '[\"https://forge.test/demo/app/-/merge_requests/7\"]' \
+             WHERE id = '{}'",
+            first["id"].as_str().unwrap()
+        ))
+        .await
+        .unwrap();
         assert_eq!(finish().await, 204);
         let ev = end_of(&mut ends, &first["id"], 10)
             .await
@@ -1737,6 +1751,34 @@ async fn chains_bound_their_runs_hold_a_subject_and_publish_each_end_once() {
         assert_eq!(ev["exit_code"], 0);
         assert!(ev["outputs"]["patch"].is_string(), "{ev}");
         assert_eq!(ev["texts"]["patch"], "Which status code?", "{ev}");
+        assert_eq!(ev["merge_requests"], json!(["https://forge.test/demo/app/-/merge_requests/7"]), "{ev}");
+        // The chain's ticket is an object: the run works on it, its merge request is for it,
+        // with its branch (D1055).
+        let linked = format!(
+            "SELECT count(*) AS n FROM resource_edges w JOIN objects t ON t.id = w.target_object_id \
+             JOIN resource_edges f ON f.target_object_id = t.id AND f.relation = 'merge_request_for' \
+             JOIN objects m ON m.id = f.source_object_id \
+             WHERE w.org_id = {org} AND w.relation = 'run_works_on' AND w.valid_to IS NULL \
+               AND t.properties->>'ref' = 'PROJ-1' \
+               AND t.properties->>'url' = 'https://acme.atlassian.net/browse/PROJ-1' \
+               AND m.properties->>'branch' = 'pnex/run-{}-PROJ-1'",
+            first["id"].as_str().unwrap()
+        );
+        let mut n = 0;
+        for _ in 0..50 {
+            n = db
+                .query_one_raw(sea_orm::Statement::from_string(sea_orm::DatabaseBackend::Postgres, linked.clone()))
+                .await
+                .unwrap()
+                .unwrap()
+                .try_get::<i64>("", "n")
+                .unwrap();
+            if n == 1 {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
+        assert_eq!(n, 1, "ticket, run and merge request linked");
         finish().await;
         assert!(
             end_of(&mut ends, &first["id"], 2).await.is_none(),

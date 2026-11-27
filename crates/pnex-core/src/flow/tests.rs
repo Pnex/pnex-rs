@@ -3557,7 +3557,8 @@ fn agent_run_entry_keeps_texts() {
     let n: FlowNode = serde_json::from_value(serde_json::json!({
         "id": "run", "kind": "agent_run", "outputs": [],
         "config": {"agent_id": "34ae1939-50a6-4fc9-a638-d207e5672102", "inputs": {},
-                   "texts": {"ticket": "payload.ticket"}, "subject_from": "payload.subject"}
+                   "texts": {"ticket": "payload.ticket"}, "subject_from": "payload.subject",
+                   "ticket_from": "payload.work_ticket"}
     }))
     .expect("agent_run node");
     let meta = FlowArtifactMeta {
@@ -3577,4 +3578,5 @@ fn agent_run_entry_keeps_texts() {
         entry["texts"],
         serde_json::json!({"ticket": "payload.ticket"})
     );
+    assert_eq!(entry["ticket_from"], "payload.work_ticket");
 }
