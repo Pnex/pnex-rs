@@ -466,6 +466,19 @@ pub(super) fn HttpFetchForm(
                     }
                 }
             }
+            label { class: "flex items-center gap-2 text-sm",
+                input {
+                    r#type: "checkbox",
+                    checked: initial.url_from_msg,
+                    disabled: !can_write,
+                    onchange: move |event| {
+                        let on = event.checked();
+                        patch_http_fetch(&mut cx, move |cfg| cfg.url_from_msg = on);
+                    },
+                }
+                {t!("flows-http-fetch-url-from-msg")}
+            }
+            span { class: "text-xs text-gray-500 block", {t!("flows-http-fetch-url-from-msg-hint")} }
             label { class: "block",
                 span { class: FIELD_LABEL, {t!("flows-http-fetch-on-error")} }
                 select {

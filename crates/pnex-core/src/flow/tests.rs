@@ -123,6 +123,7 @@ fn http_fetch_full() -> HttpFetchNodeConfig {
         timeout_secs: 15,
         body: Some(r#"{"cible":"x"}"#.into()),
         on_error: HttpFetchOnError::Passthrough,
+        url_from_msg: true,
     }
 }
 

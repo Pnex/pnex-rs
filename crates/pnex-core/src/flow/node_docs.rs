@@ -170,6 +170,7 @@ pub const NODE_DOCS: &[NodeDoc] = &[
             ("timeout_secs", "1..=300 (default 30)"),
             ("body", "literal POST body; absent = the incoming payload"),
             ("on_error", "\"reject\" (default) | \"passthrough\" (payload null + statusCode + http_error)"),
+            ("url_from_msg", "bool (default false): msg.url replaces url for this request (built upstream by a function, e.g. one record of a list); refused (on_error) unless it has the origin of url — scheme, host and port — so the secrets never leave that origin"),
         ],
         notes: "Secret fields (basic and proxy passwords, bearer token, key header value) are moved to the org vault when the flow is saved; the graph then holds a reference, never the value. The server refuses targets pointing at itself or its internal services (loopback, link-local, cloud metadata, single-word host names): the request fails with egress_address_refused / egress_host_refused; LAN addresses (192.168.x.x…) stay reachable unless the platform runs in public mode.",
     },

@@ -347,6 +347,7 @@ Détail et correctifs dans `docs/journal/audit-2026-11-06.md` (référence entre
 | SEC-91 | MEDIUM | **Échec d'une étape `sql` du worker** (`pipelines.md` D934) | R4 | corrigé 2026-11-23 (bb3bc4b7) : l'erreur d'exécution citait la cellule fautive. Seule une erreur de plan, de SQL ou de schéma est citée. |
 | SEC-92 | MEDIUM | **Navigation lancée par l'assistant sans confirmation** (`try_site_recipe`, PE5.5) | D123, D782 | corrigé 2026-11-23 (9ce5d1b1) : un outil `browse:use` est retenu comme une écriture. |
 | SEC-93 | MEDIUM | **Rôle d'écriture d'une Table chargée par un membre** (`pipelines.md` D1050) : une étape `write objects` écrit avec le rôle de l'auteur de la version ; un membre qui charge la Table lue fait écrire un type réservé aux admins. La synchronisation d'un import de Table écrivait avec le rôle Member | R2 | corrigé 2026-11-25 : l'étape écrit avec le plus bas rôle entre l'auteur de la version et le dernier membre qui a chargé chaque Table lue (`dataset_transactions.created_by`). Un pack, le système ou un membre parti comptent comme Member. |
+| SEC-94 | LOW | **Clé en en-tête suivie sur une redirection** (`pnex-node-http-fetch`, mode `auth.header`) : reqwest retire `Authorization` et les cookies quand une redirection change d'hôte, pas un en-tête libre comme `X-API-Key`. Une redirection ouverte sur l'hôte de destination envoie la clé ailleurs | R9 | ouvert : retirer l'en-tête de clé quand une redirection change d'origine, ou ne plus suivre ces redirections. |
 
 ## 8. Profils de sécurité
 
@@ -678,7 +679,7 @@ La validation propre au consommateur (URL Slack, token Telegram) porte sur la va
 Règles par consommateur :
 
 - **Canaux de notification (S4)** : secret dédié `notify/<canal>/<champ>`. Il suit le renommage du canal. Le snapshot du runtime porte seulement des références.
-- **Nœud http-fetch (S5)** : `pnex_core::SecretSlot` (`Unset`, `Ref`, `Value`) pour `auth.password`, `auth.token`, `auth.value`, `proxy.password`. Secret dédié `flow/<flow_id>/<node_id>/<champ>`. Les usages couvrent la dernière version et la version déployée. Les secrets dédiés ne sont pas élagués à la sauvegarde, pour qu'un rollback retrouve ses secrets. L'éditeur adopte les références stockées (`adopt_stored_secrets`).
+- **Nœud http-fetch (S5)** : `pnex_core::SecretSlot` (`Unset`, `Ref`, `Value`) pour `auth.password`, `auth.token`, `auth.value`, `proxy.password`. Secret dédié `flow/<flow_id>/<node_id>/<champ>`. Les usages couvrent la dernière version et la version déployée. Les secrets dédiés ne sont pas élagués à la sauvegarde, pour qu'un rollback retrouve ses secrets. L'éditeur adopte les références stockées (`adopt_stored_secrets`). Avec `url_from_msg`, `msg.url` remplace l'adresse seulement sur l'origine de `url` (schéma, hôte, port) : un secret ne part jamais vers un autre hôte que sa destination (R9).
 - **WiFi (S6)** : `wifi_credentials.secret_id`, secret dédié `wifi/<ssid>/password`. Le job de build porte seulement `wifi_secret_id`. Le worker déchiffre au moment du build.
 - **Fournisseurs LLM (S7)** : table `llm_providers` par org, secret dédié `llm/<nom>/api_key`, un seul défaut par org. Pas de LLM plateforme (D119). `POST …/{id}/test` fait un ping réel.
 - **Assistant** : il ne saisit jamais de valeur. Il garde ou choisit une référence, sous R9.

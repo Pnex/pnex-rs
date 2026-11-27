@@ -328,11 +328,23 @@ impl PnexHttpFetchNode {
 
     /// One incoming message → HTTP request → payload replaced by the response.
     async fn execute(&self, msg: MsgHandle, cancel: CancellationToken) -> Result<()> {
+        let url = if self.config.url_from_msg {
+            let candidate = match msg.read().await.get("url") {
+                Some(Variant::String(u)) => Some(u.clone()),
+                _ => None,
+            };
+            match url_on_origin(&self.config.url, candidate.as_deref()) {
+                Ok(u) => u,
+                Err(reason) => return self.fail(reason.to_string(), None, msg, cancel).await,
+            }
+        } else {
+            self.config.url.clone()
+        };
         log::debug!(
             "pnex-http-fetch [{}] : {:?} {}",
             self.name(),
             self.config.method,
-            self.config.url
+            url
         );
 
         // 1) Body: config literal, otherwise incoming payload (POST only).
@@ -383,13 +395,13 @@ impl PnexHttpFetchNode {
             Err(reason) => return self.fail(reason, None, msg, cancel).await,
         };
         // An IP literal skips the resolver: checked here (R8).
-        let refused = reqwest::Url::parse(&self.config.url)
+        let refused = reqwest::Url::parse(&url)
             .ok()
             .and_then(|u| pnex_core::egress::check_url(&u));
         if let Some(code) = refused {
             return self.fail(code.to_string(), None, msg, cancel).await;
         }
-        let mut req = ready.http.request(method, &self.config.url);
+        let mut req = ready.http.request(method, &url);
         let mut explicit_content_type = false;
         for h in &self.config.headers {
             if h.name.eq_ignore_ascii_case("content-type") {
@@ -504,6 +516,18 @@ impl PnexHttpFetchNode {
     }
 }
 
+/// The URL of a `url_from_msg` request: `msg.url`, only on the origin (scheme,
+/// host, port) of the configured URL, which the node's secrets are bound to (R9).
+fn url_on_origin(base: &str, candidate: Option<&str>) -> std::result::Result<String, &'static str> {
+    let candidate = candidate.ok_or("msg.url missing or not a string")?;
+    let url = reqwest::Url::parse(candidate).map_err(|_| "msg.url is not a URL")?;
+    let base = reqwest::Url::parse(base).map_err(|_| "config url is not a URL")?;
+    if url.origin() != base.origin() || !url.username().is_empty() || url.password().is_some() {
+        return Err("msg.url is not on the origin of the configured url");
+    }
+    Ok(url.into())
+}
+
 /// serde_json ↔ Variant boundary of the edgelink model (pnex-node-device
 /// calc.rs pattern) — never a panic on an unexpected value.
 fn variant_from_json(json: serde_json::Value) -> Result<Variant> {
@@ -554,6 +578,29 @@ mod tests {
             .get("pnex-http-fetch")
             .expect("pnex-http-fetch node missing from the registry");
         assert_eq!(meta.type_, "pnex-http-fetch");
+    }
+
+    #[test]
+    fn url_from_msg_stays_on_the_configured_origin() {
+        let base = "https://api.noota.io/api/v1/report";
+        assert_eq!(
+            url_on_origin(
+                base,
+                Some("https://api.noota.io/api/v1/report/abc?format=plaintext")
+            ),
+            Ok("https://api.noota.io/api/v1/report/abc?format=plaintext".to_string())
+        );
+        for refused in [
+            None,
+            Some("not a url"),
+            Some("https://evil.example/api/v1/report/abc"),
+            Some("http://api.noota.io/api/v1/report/abc"),
+            Some("https://api.noota.io:8443/x"),
+            Some("https://api.noota.io.evil.example/x"),
+            Some("https://user:pw@api.noota.io/x"),
+        ] {
+            assert!(url_on_origin(base, refused).is_err(), "{refused:?}");
+        }
     }
 
     #[test]

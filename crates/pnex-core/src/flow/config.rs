@@ -973,6 +973,10 @@ pub struct HttpFetchNodeConfig {
     pub body: Option<String>,
     #[serde(default)]
     pub on_error: HttpFetchOnError,
+    /// `msg.url` replaces `url` for this request, refused unless it has the
+    /// same origin (scheme, host, port): the secrets stay bound to `url`'s origin.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub url_from_msg: bool,
 }
 
 fn default_http_timeout_secs() -> u64 {
@@ -1032,6 +1036,7 @@ impl Default for HttpFetchNodeConfig {
             timeout_secs: default_http_timeout_secs(),
             body: None,
             on_error: HttpFetchOnError::default(),
+            url_from_msg: false,
         }
     }
 }

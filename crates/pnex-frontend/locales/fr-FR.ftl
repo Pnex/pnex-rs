@@ -1758,6 +1758,8 @@ flows-http-fetch-proxy-hint = Providers de scraping : endpoint proxy + identifia
 flows-http-fetch-body = Corps de la requête (POST) — vide : transmet le payload entrant
 flows-http-fetch-body-placeholder = {"{"}"cible": "x"{"}"}
 flows-http-fetch-on-error = En cas d'erreur
+flows-http-fetch-url-from-msg = Adresse lue dans msg.url
+flows-http-fetch-url-from-msg-hint = msg.url remplace l'adresse pour chaque message, sur la même origine seulement (schéma, hôte, port) : les secrets ne partent jamais ailleurs.
 flows-http-fetch-on-error-reject = reject : le message rejette le nœud
 flows-http-fetch-on-error-passthrough = passthrough : payload null + statusCode, le graphe décide
 
