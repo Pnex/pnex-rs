@@ -172,6 +172,7 @@ mod m20261125_000177_personal_orgs;
 mod m20261125_000178_org_erasure_fingerprints;
 mod m20261125_000179_identity_column_spec;
 mod m20261127_000180_agent_chain_ticket;
+mod m20261127_000181_flow_null_inputs;
 
 pub struct Migrator;
 
@@ -340,6 +341,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20261125_000178_org_erasure_fingerprints::Migration),
             Box::new(m20261125_000179_identity_column_spec::Migration),
             Box::new(m20261127_000180_agent_chain_ticket::Migration),
+            Box::new(m20261127_000181_flow_null_inputs::Migration),
         ]
     }
 }

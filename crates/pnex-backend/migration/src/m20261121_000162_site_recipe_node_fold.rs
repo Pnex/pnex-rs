@@ -67,7 +67,13 @@ fn fold(graph: &mut Value) -> bool {
     }
     // Input-row annotations name the wire's source node and port.
     for n in nodes.iter_mut() {
-        for input in n["inputs"].as_array_mut().into_iter().flatten() {
+        // `get_mut`, not `n["inputs"]`: indexing a missing key inserts a null.
+        for input in n
+            .get_mut("inputs")
+            .and_then(Value::as_array_mut)
+            .into_iter()
+            .flatten()
+        {
             let from = input["from"].as_str().unwrap_or_default().to_string();
             let port = input["from_port"].as_u64().unwrap_or(0);
             if let Some((_, _, new_id)) = moved.iter().find(|(o, p, _)| *o == from && *p == port) {
@@ -136,6 +142,8 @@ mod tests {
         assert_eq!(s["kind"], "agent_run");
         assert_eq!(s["config"]["params"]["code"], "X");
         assert_eq!(s["outputs"], json!([{"port": 1, "targets": ["ko"]}]));
+        let i = nodes.iter().find(|n| n["id"] == "i").unwrap();
+        assert!(i.get("inputs").is_none());
         let ends: Vec<_> = nodes
             .iter()
             .filter(|n| n["kind"] == "agent_run_finished")
