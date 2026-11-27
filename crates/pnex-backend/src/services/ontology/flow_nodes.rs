@@ -417,6 +417,11 @@ pub async fn upsert(
         Some(o) => {
             let mut props = o.properties.as_object().cloned().unwrap_or_default();
             props.extend(req.properties.clone());
+            let title = req.title.clone().unwrap_or(o.title.clone());
+            // A sync that repeats the same values writes no new version.
+            if Value::Object(props.clone()) == o.properties && title == o.title {
+                return Ok(ack(false, objects::view(&o, &s)));
+            }
             let object = objects::update(
                 db,
                 org,
@@ -424,7 +429,7 @@ pub async fn upsert(
                 o.id,
                 &ObjectInput {
                     type_key: o.type_key.clone(),
-                    title: req.title.clone().unwrap_or(o.title.clone()),
+                    title,
                     properties: props,
                     expected_version: Some(req.expected_version.unwrap_or(o.version)),
                 },

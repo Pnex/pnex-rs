@@ -1506,6 +1506,14 @@ async fn an_employee_list_lands_on_its_company_and_skips_objections() {
         assert_eq!((st, r["opposed"].clone(), r["object"].clone()), (200, json!(true), Value::Null), "{r}");
         let (st, r) = internal_flow(&server, "upsert", upsert("John Roe")).await;
         assert_eq!((st, r["created"].clone()), (200, json!(true)), "{r}");
+        // The same values again write no new version, a change does.
+        let w = json!({"org_id": org, "flow_id": flow, "version": 1, "node_id": "w"});
+        let again = |company: &str| json!({"node": w, "title": "John Roe",
+            "properties": {"ref": format!("linkedin|{acme}|john roe"), "company": company}});
+        let (_, same) = internal_flow(&server, "upsert", again("ACME")).await;
+        assert_eq!(same["object"]["version"], r["object"]["version"], "{same}");
+        let (_, changed) = internal_flow(&server, "upsert", again("ACME Corp")).await;
+        assert_eq!(changed["object"]["version"].as_i64(), r["object"]["version"].as_i64().map(|v| v + 1), "{changed}");
 
         // Daily cap.
         for i in 1..ba::PEOPLE_CAPTURES_PER_DAY {
@@ -1575,7 +1583,8 @@ async fn deploy_contact_upsert(db: &sea_orm::DatabaseConnection, org: i64) -> i6
         flow_id: Set(flow.id),
         version_number: Set(1),
         graph: Set(json!({ "nodes": [
-            {"id": "u", "kind": "object_upsert", "config": {"object_type": "list_contact", "key": "ref", "skip_existing": true}}
+            {"id": "u", "kind": "object_upsert", "config": {"object_type": "list_contact", "key": "ref", "skip_existing": true}},
+            {"id": "w", "kind": "object_upsert", "config": {"object_type": "list_contact", "key": "ref"}}
         ] })),
         ..Default::default()
     }
